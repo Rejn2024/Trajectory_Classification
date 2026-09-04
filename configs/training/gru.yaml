@@ -1,0 +1,9 @@
+history_samples: 25
+forecast_horizons_s: [0.8, 2.0, 4.0, 8.0]
+hidden_dim: 128
+num_layers: 2
+dropout: 0.1
+batch_size: 64
+learning_rate: 0.001
+split: [0.70, 0.15, 0.15]
+
