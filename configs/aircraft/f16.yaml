@@ -1,0 +1,9 @@
+aircraft_type: F16
+bvr_unit_spec: F16
+fdm_type: jsbsim
+controller_id: default
+model_version: repo-pinned
+reference_speed_ms: 300.0
+reference_altitude_m: 10000.0
+max_g: 9.0
+

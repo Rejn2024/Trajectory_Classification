@@ -1,0 +1,10 @@
+observer_aircraft: F16
+target_aircraft: F16
+backend: cpp
+dt: 0.4
+max_steps: 400
+weapons_enabled: false
+observation_type: entity
+sensor_mode: truth
+sampling_stage: controlled
+
