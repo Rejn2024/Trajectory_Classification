@@ -1,0 +1,54 @@
+#include "test_main.hxx"
+#include "rl/action_space.hxx"
+#include "simulator/register.hxx"
+
+TEST(ActionSpace, ConstructFromRegisterWithValidAction) {
+    bvr_sim::Register reg;
+    reg.set("delta_heading", json::JSON(0.1));
+    reg.set("delta_altitude", json::JSON(0.2));
+    reg.set("delta_speed", json::JSON(0.3));
+    reg.set("fire", json::JSON());
+
+    bvr_sim::ActionSpace action(reg);
+
+    ASSERT_NEAR(action.delta_heading(), 0.1, 1e-9);
+    ASSERT_NEAR(action.delta_altitude(), 0.2, 1e-9);
+    ASSERT_NEAR(action.delta_speed(), 0.3, 1e-9);
+}
+
+TEST(ActionSpace, RegisterPenaltyKeepsStrongerAction) {
+    bvr_sim::Register reg;
+
+    reg.set("delta_heading", json::JSON(0.8));  // penalty=0 strongest
+    reg.set_with_penalty("delta_heading", json::JSON(0.1), -10);
+    reg.set_with_penalty("delta_altitude", json::JSON(0.2), -10);
+    reg.set_with_penalty("delta_speed", json::JSON(0.3), -10);
+    reg.set_with_penalty("fire", json::JSON(), -10);
+
+    bvr_sim::ActionSpace action(reg);
+    ASSERT_NEAR(action.delta_heading(), 0.8, 1e-9);
+}
+
+TEST(ActionSpace, ControlOverrideFromRegisterSupportsNumberAndNull) {
+    bvr_sim::Register reg;
+    reg.set("delta_heading", json::JSON(0.0));
+    reg.set("delta_altitude", json::JSON(0.0));
+    reg.set("delta_speed", json::JSON(0.0));
+    reg.set("aileron_cmd", json::JSON(0.5));
+    reg.set("elevator_cmd", json::JSON());
+    reg.set("rudder_cmd", json::JSON(-2));
+
+    bvr_sim::ActionSpace action(reg);
+    auto aileron = action.aileron_cmd();
+    auto elevator = action.elevator_cmd();
+    auto rudder = action.rudder_cmd();
+    auto throttle = action.throttle_cmd();
+
+    ASSERT(aileron.has_value());
+    ASSERT_NEAR(aileron.value(), 0.5, 1e-9);
+    ASSERT(!elevator.has_value());
+    ASSERT(rudder.has_value());
+    ASSERT_NEAR(rudder.value(), -2.0, 1e-9);
+    ASSERT(!throttle.has_value());
+}
+

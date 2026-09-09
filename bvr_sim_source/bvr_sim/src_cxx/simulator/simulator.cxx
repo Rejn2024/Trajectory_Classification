@@ -1,0 +1,290 @@
+#include "simulator.hxx"
+#include "data_obj.hxx"
+#include "register.hxx"
+#include "sense/sensor_manager.hxx"
+#include "support/support.hxx"
+#include <cmath>
+#include <random>
+#include <sstream>
+#include <iomanip>
+#include "c3utils/c3utils.hxx"
+
+namespace bvr_sim {
+
+using namespace c3utils;
+
+namespace {
+
+const char* sensor_detection_level_to_string(SensorDetectionLevel level) noexcept {
+    switch (level) {
+        case SensorDetectionLevel::Detection: return "Detection";
+        case SensorDetectionLevel::Localization: return "Localization";
+        case SensorDetectionLevel::Tracking: return "Tracking";
+        case SensorDetectionLevel::None:
+        default: return "None";
+    }
+}
+
+json::JSON vec3_to_json(const std::array<double, 3>& vec) {
+    json::JSON out = json::JSON::Make(json::JSON::Class::Array);
+    out.append(vec[0]);
+    out.append(vec[1]);
+    out.append(vec[2]);
+    return out;
+}
+
+json::JSON sensor_tracks_to_json(const SensorManager& sensor_manager) {
+    json::JSON tracks_json = json::JSON::Make(json::JSON::Class::Array);
+    for (const auto& [uid, track] : sensor_manager.get_tracks()) {
+        if (track.best_level == SensorDetectionLevel::None || !track.best_observation) {
+            continue;
+        }
+
+        json::JSON item = json::JSON::Make(json::JSON::Class::Object);
+        item["uid"] = json::String(uid);
+        item["best_sensor_name"] = json::String(track.best_sensor_name);
+        item["best_level"] = json::String(sensor_detection_level_to_string(track.best_level));
+        item["best_level_value"] = json::Integral(static_cast<long>(track.best_level));
+        item["position"] = vec3_to_json(track.best_observation->position);
+        item["velocity"] = vec3_to_json(track.best_observation->velocity);
+        item["is_alive"] = json::Boolean(track.best_observation->is_alive);
+        item["source_uid"] = track.source ? json::String(track.source->uid) : json::String("");
+        tracks_json.append(item);
+    }
+    return tracks_json;
+}
+
+}
+
+std::string SOT_to_string(SOT type) noexcept {
+    switch (type) {
+        case SOT::Unknown: return "Unknown";
+        case SOT::Aircraft: return "Aircraft";
+        case SOT::Missile: return "Missile";
+        case SOT::GroundUnit: return "GroundUnit";
+        case SOT::AA: return "AA";
+        case SOT::DataObj: return "DataObj";
+
+        case SOT::MAX_SOT_VALUE:
+        default:
+            colorful::printHONG("SOT_to_string: Error type");
+            check(false, "SOT_to_string: Error type");
+    }
+}
+
+std::tuple<double, double, double> NWU2LLA(double north, double west, double up) noexcept {
+    // auto result = NWU_to_LLA_deg_lowacc(north, west, up, REFERENCE_LON, REFERENCE_LAT, REFERENCE_ALT);
+    auto result = NWU_to_LLA_deg(north, west, up, REFERENCE_LON, REFERENCE_LAT, REFERENCE_ALT);
+    return std::make_tuple(result[0], result[1], result[2]);
+}
+
+std::tuple<double, double, double> LLA2NWU(double lon, double lat, double alt) noexcept {
+    // auto result = LLA_to_NWU_deg_lowacc(lon, lat, alt, REFERENCE_LON, REFERENCE_LAT, REFERENCE_ALT);
+    auto result = LLA_to_NWU_deg(lon, lat, alt, REFERENCE_LON, REFERENCE_LAT, REFERENCE_ALT);
+    return std::make_tuple(result[0], result[1], result[2]);
+}
+
+std::tuple<double, double, double> velocity_to_euler(const std::array<double, 3>& velocity, bool deg) noexcept {
+    Vector3 vel_vec(velocity);
+    auto angles = velocity_to_euler_NWU(vel_vec);
+    double roll = angles[0];
+    double pitch = angles[1];
+    double yaw = angles[2];
+
+    if (deg) {
+        roll = rad2deg(roll);
+        pitch = rad2deg(pitch);
+        yaw = rad2deg(yaw);
+    }
+
+    return std::make_tuple(roll, pitch, yaw);
+}
+
+SimulatedObject::SimulatedObject(
+    const std::string& uid_,
+    TeamColor color_,
+    const std::array<double, 3>& position_,
+    const std::array<double, 3>& velocity_,
+    double dt_,
+    SOT type_
+) noexcept
+    : Type(type_),
+      rubbish_countup(-20),
+      uid(uid_),
+      color(color_),
+      dt(dt_),
+      is_alive(true),
+      position{0.0, 0.0, 0.0},
+      velocity{0.0, 0.0, 0.0},
+      render_explosion(false),
+      sensor_manager_(std::make_unique<SensorManager>(this))
+{
+    update_state(position_, velocity_);
+}
+
+SimulatedObject::~SimulatedObject() noexcept = default;
+
+void SimulatedObject::tick() noexcept {
+    check(static_cast<int>(Type) != static_cast<int>(SOT::Unknown), "SimulatedObject::tick: SOT::Unknown is not allowed");
+    check(static_cast<int>(Type) > static_cast<int>(SOT::Unknown), "SimulatedObject::tick: Error type");
+    check(static_cast<int>(Type) < static_cast<int>(SOT::MAX_SOT_VALUE), "SimulatedObject::tick: Error type");
+
+    if (Type == SOT::DataObj) {
+        colorful::printHUANG("SimulatedObject::tick: DataObj is not allowed to tick");
+        SL::get().printf("[SimulatedObject] Warning: DataObj is not allowed to tick\n");
+        return;
+    }
+
+    if(!is_alive) {
+        if (rubbish_countup < std::numeric_limits<int>::max()){
+            rubbish_countup++;
+        }
+    } else {
+        step();
+    }
+    write_register();  //expose object state to register system, but may be a tiny bit slow
+}  
+
+
+double SimulatedObject::get_speed() const noexcept {
+    return c3u::linalg_norm(velocity);
+}
+
+double SimulatedObject::get_mach() const noexcept {
+    double speed_mps = get_speed();
+    double altitude_m = position[2];
+    return c3utils::get_mach(speed_mps, altitude_m);
+}
+
+double SimulatedObject::get_roll() const noexcept {
+    return 0.0;
+}
+
+double SimulatedObject::get_pitch() const noexcept {
+    const double horizontal_speed = std::sqrt(velocity[0] * velocity[0] + velocity[1] * velocity[1]);
+    return std::atan2(-velocity[2], horizontal_speed);
+}
+
+double SimulatedObject::get_yaw() const noexcept {
+    return std::atan2(velocity[1], velocity[0]);
+}
+
+std::array<double, 3> SimulatedObject::get_rpy() const noexcept {
+    return {get_roll(), get_pitch(), get_yaw()};
+}
+
+double SimulatedObject::get_heading() const noexcept {
+    return get_yaw();
+}
+
+double SimulatedObject::get_altitude() const noexcept {
+    return position[2];
+}
+
+void SimulatedObject::update_state(
+    const std::optional<std::array<double, 3>>& position_,
+    const std::optional<std::array<double, 3>>& velocity_
+) noexcept {
+    if (position_.has_value()) {
+        position = position_.value();
+    }
+    if (velocity_.has_value()) {
+        velocity = velocity_.value();
+    }
+}
+
+std::string SimulatedObject::get_new_uuid() noexcept {
+    static std::random_device rd;
+    static std::mt19937_64 gen(rd());
+    static std::uniform_int_distribution<uint64_t> dis;
+
+    uint64_t random_val = dis(gen);
+    std::stringstream ss;
+    ss << std::setw(8) << std::setfill('0') << (random_val % static_cast<uint64_t>(1e8));
+    return ss.str();
+}
+
+std::optional<json::JSON> SimulatedObject::get(const std::string& key) const noexcept {
+    return register_.get(key);
+}
+
+bool SimulatedObject::set(const std::string& key, const json::JSON& value) noexcept {
+    return register_.set(key, value);
+}
+
+bool SimulatedObject::set_with_penalty(const std::string& key, const json::JSON& value, int penalty) noexcept {
+    return register_.set_with_penalty(key, value, penalty);
+}
+
+void SimulatedObject::write_register() noexcept {
+    json::JSON Type_json = json::JSON::Make(json::JSON::Class::String);
+    Type_json = SOT_to_string(Type);
+    register_.set("Type", Type_json);
+
+    json::JSON uid_json = json::JSON::Make(json::JSON::Class::String);
+    uid_json = uid;
+    register_.set("uid", uid_json);
+
+    json::JSON color_json = json::JSON::Make(json::JSON::Class::String);
+    check((color == TeamColor::Red) || (color == TeamColor::Blue), "color must be Red or Blue");
+    color_json = color == TeamColor::Red ? "Red" : "Blue";
+    register_.set("color", color_json);
+
+    json::JSON dt_json = json::JSON::Make(json::JSON::Class::Floating);
+    dt_json = dt;
+    register_.set("dt", dt_json);
+
+    json::JSON is_alive_json = json::JSON::Make(json::JSON::Class::Boolean);
+    is_alive_json = is_alive;
+    register_.set("is_alive", is_alive_json);
+
+    json::JSON position_json = json::JSON::Make(json::JSON::Class::Array);
+    position_json.append(position[0]);
+    position_json.append(position[1]);
+    position_json.append(position[2]);
+    register_.set("position", position_json);
+    json::JSON velocity_json = json::JSON::Make(json::JSON::Class::Array);
+    velocity_json.append(velocity[0]);
+    velocity_json.append(velocity[1]);
+    velocity_json.append(velocity[2]);
+    register_.set("velocity", velocity_json);
+
+    const auto rpy = get_rpy();
+    register_.set("roll", json::Float(rpy[0]));
+    register_.set("pitch", json::Float(rpy[1]));
+    register_.set("yaw", json::Float(rpy[2]));
+
+    json::JSON rpy_json = json::JSON::Make(json::JSON::Class::Array);
+    rpy_json.append(rpy[0]);
+    rpy_json.append(rpy[1]);
+    rpy_json.append(rpy[2]);
+    register_.set("rpy", rpy_json);
+
+    register_.set("sensor_tracks", sensor_tracks_to_json(*sensor_manager_));
+}
+
+SensorManager& SimulatedObject::sensor_manager() noexcept {
+    return *sensor_manager_;
+}
+
+const SensorManager& SimulatedObject::sensor_manager() const noexcept {
+    return *sensor_manager_;
+}
+
+bool SimulatedObject::add_sensor(const std::string& name, const std::shared_ptr<SensorBase>& sensor) noexcept {
+    return sensor_manager_->add_sensor(name, sensor);
+}
+
+void SimulatedObject::update_sensors() noexcept {
+    sensor_manager_->update_all();
+}
+
+std::shared_ptr<SensorBase> SimulatedObject::get_sensor(const std::string& name) const noexcept {
+    return sensor_manager_->get_sensor(name);
+}
+
+const std::map<std::string, std::shared_ptr<SensorBase>>& SimulatedObject::get_sensors() const noexcept {
+    return sensor_manager_->get_sensors();
+}
+
+}

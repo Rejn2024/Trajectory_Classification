@@ -1,0 +1,62 @@
+name: Build Wheels
+
+on:
+  workflow_dispatch:
+  # push:
+  #   branches:
+  #     - master
+  #   paths:
+  #     - ".github/workflows/wheels.yml"
+  #     - "pyproject.toml"
+  #     - "bvr_sim/**"
+  #     - "scripts/tests/**"
+  pull_request:
+    paths:
+      - ".github/workflows/wheels.yml"
+      - "pyproject.toml"
+      - "bvr_sim/**"
+      - "scripts/tests/**"
+
+jobs:
+  build_wheels:
+    name: ${{ matrix.os }} wheels
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.23.3
+        env:
+          CIBW_BUILD: "cp312-* cp313-* cp314-*"
+          CIBW_ARCHS_LINUX: "x86_64"
+          CIBW_ARCHS_WINDOWS: "AMD64"
+          CIBW_SKIP: "*-musllinux_* pp*"
+
+  build_sdist:
+    name: sdist
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --sdist
