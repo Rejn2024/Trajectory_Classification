@@ -9,3 +9,5 @@ build/
 datasets/
 checkpoints/
 mlruns/
+
+artifacts/
