@@ -17,6 +17,13 @@ bvr-build-dataset --help
 See `configs/` for the initial F-16 experiment and `examples/train_pipeline.py` for
 an end-to-end training skeleton.
 
+The executable notebook
+[`notebooks/01_generate_smoke_dataset.ipynb`](notebooks/01_generate_smoke_dataset.ipynb)
+walks through the first dataset milestone with a deterministic local dynamics stub. It
+samples controlled scenarios, runs scripted policies through the same adapter used for
+BVR Sim, writes the canonical Parquet layout, and performs schema and leakage checks.
+The notebook marks the single environment-factory seam that must be replaced to run
+the workflow against a pinned BVR Sim checkout.
 ## F-16 scripted-manoeuvre video
 
 The runnable [`f16_scripted_manoeuvre_video.ipynb`](notebooks/f16_scripted_manoeuvre_video.ipynb)
