@@ -10,4 +10,23 @@ datasets/
 checkpoints/
 mlruns/
 
+bvr_sim_source/bvr_sim/build/
+bvr_sim_source/bvr_sim/install/
+smoke_logs/
+__pycache__/
+*.pyc
+
+# IDE
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# BVR Sim native build products
+bvr_sim_source/bvr_sim/build/
+bvr_sim_source/bvr_sim/install/
+
+# Generated notebook videos and trajectories
 artifacts/

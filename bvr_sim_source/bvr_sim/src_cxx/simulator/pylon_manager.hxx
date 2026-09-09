@@ -1,0 +1,46 @@
+#pragma once
+
+#include <string>
+#include <map>
+#include <iostream>
+
+namespace bvr_sim {
+
+class PylonManager {
+private:
+    std::map<std::string, std::string> pylon_mounts;
+
+    bool frozen;
+    std::map<std::string, std::string> pylon_mounts_frozen;
+
+public:
+    PylonManager() : frozen(false) {}
+    ~PylonManager() noexcept = default;
+
+    // Set weapon on specific pylon
+    void add_weapon(const std::string& pylon_name, const std::string& weapon_name) noexcept;
+    // Freeze pylon mounts
+    void freeze() noexcept;
+    bool is_frozen() const noexcept { return frozen; }
+
+    // Count frozen max weapons of specific type (with prefix matching)
+    int num_frozen_weapons(const std::string& weapon_query) const noexcept;
+    // Count frozen max weapons of specific type (with exact matching)
+    int num_frozen_weapons_exact(const std::string& weapon_query) const noexcept;
+    // Count remaining weapons of specific type (with prefix matching)
+    int num_left_weapons(const std::string& weapon_query) const noexcept;
+    // Count remaining weapons of specific type (with exact matching)
+    int num_left_weapons_exact(const std::string& weapon_query) const noexcept;
+
+    // Release weapon of specific type (with prefix matching)
+    std::string release_weapon(const std::string& weapon_query) noexcept;
+
+    // Get all pylon mounts
+    const std::map<std::string, std::string>& get_all_mounts() const noexcept { return pylon_mounts; }
+
+    // Test function: Check if weapon_name matches query (public for testing)
+    bool weapon_matches(const std::string& weapon_name, const std::string& query) const noexcept;
+    bool weapon_matches_exact(const std::string& weapon_name, const std::string& query) const noexcept;
+};
+
+}

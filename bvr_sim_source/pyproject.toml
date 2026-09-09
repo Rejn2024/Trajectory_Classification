@@ -1,0 +1,92 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.11"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "bvr-sim"
+dynamic = ["version"]
+description = "3D Beyond Visual Range (BVR) air combat environment for multi-agent reinforcement learning"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+authors = [
+    { name = "BVR Sim contributors" },
+]
+keywords = [
+    "air-combat",
+    "beyond-visual-range",
+    "multi-agent-reinforcement-learning",
+    "simulation",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "numpy",
+    "scipy",
+    "gymnasium",
+    "opencv-python",
+    "commentjson",
+    "tqdm",
+    "colorama",
+    "JSBSim==1.1.14",
+]
+
+[tool.scikit-build]
+cmake.source-dir = "bvr_sim"
+cmake.build-type = "Release"
+build.targets = ["bvr_sim_cpp"]
+wheel.packages = ["bvr_sim", "bvr_sim_rl"]
+sdist.exclude = [
+    ".git/**",
+    ".github/**",
+    "benchmark_logs/**",
+    "build/**",
+    "dist/**",
+    "rl_envs/**",
+    "test_logs/**",
+    "bvr_sim/build/**",
+    "bvr_sim/install/**",
+    "*.log",
+    "*.png",
+    "*.csv",
+]
+
+[tool.scikit-build.metadata.version]
+provider = "scikit_build_core.metadata.regex"
+input = "bvr_sim/__init__.py"
+
+[project.optional-dependencies]
+rl = [
+    "skrl",
+    "torch",
+]
+
+[project.scripts]
+bvr-sim-ppo = "bvr_sim_rl.ppo:main"
+
+[tool.scikit-build.cmake.define]
+BVR_SIM_PYTHON_MODULE_DESTINATION = "bvr_sim"
+
+[[tool.scikit-build.overrides]]
+if.platform-system = "windows"
+inherit.cmake.define = "append"
+cmake.build-type = "RelWithDebInfo"
+
+[[tool.scikit-build.overrides]]
+if.platform-system = "linux"
+inherit.cmake.define = "append"
+cmake.build-type = "Release"
+
+[tool.cibuildwheel]
+build = "cp312-* cp313-* cp314-*"
+skip = "*-musllinux_*"
+archs = ["x86_64", "AMD64"]

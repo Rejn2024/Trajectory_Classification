@@ -24,3 +24,9 @@ samples controlled scenarios, runs scripted policies through the same adapter us
 BVR Sim, writes the canonical Parquet layout, and performs schema and leakage checks.
 The notebook marks the single environment-factory seam that must be replaced to run
 the workflow against a pinned BVR Sim checkout.
+## F-16 scripted-manoeuvre video
+
+The runnable [`f16_scripted_manoeuvre_video.ipynb`](notebooks/f16_scripted_manoeuvre_video.ipynb)
+uses JSBSim to fly a scripted F-16 demonstration and export an MP4 or GIF. See the
+[setup, BVR Sim integration, validation, and troubleshooting guide](docs/f16_video_guide.md)
+before running it.
