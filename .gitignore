@@ -9,3 +9,6 @@ build/
 datasets/
 checkpoints/
 mlruns/
+
+# Generated notebook videos and trajectories
+artifacts/
