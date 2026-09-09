@@ -27,13 +27,5 @@ __pycache__/
 bvr_sim_source/bvr_sim/build/
 bvr_sim_source/bvr_sim/install/
 
-# Test/runtime output
-smoke_logs/
-test_logs/
-runs/
-*.acmi
-
-# Common CMake output
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
+# Generated notebook videos and trajectories
+artifacts/
