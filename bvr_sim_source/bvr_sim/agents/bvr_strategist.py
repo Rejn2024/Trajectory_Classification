@@ -8,8 +8,8 @@ from .skill_manager import SkillManager
 HUMAN_PROMPT = "MISSION: Air Superiority. Engage enemies beyond 20nm. Maintain altitude advantage."
 
 EMERGENCY_RULES = {
-    "missile_warning": {"skill": "missile_evasion"},
-    "low_fuel": {"skill": "disengage"}
+    "missile_warning": {"skill": "last_ditch_break"},
+    "low_fuel": {"skill": "extend"}
 }
 
 
@@ -49,7 +49,7 @@ class StrategicLLM:
             self.last_selection = SkillSelection(skill_name, skill_params)
         except:
             # Fallback to default
-            self.last_selection = SkillSelection("crank_maneuver", {"direction": "left", "offset_angle": 30})
+            self.last_selection = SkillSelection("crank_target_left", {})
 
         self.last_plan_time = obs.get("time", 0)
         return self.last_selection
@@ -60,10 +60,10 @@ class StrategicLLM:
         fuel = obs.get("self_status", {}).get("resources", {}).get("fuel", "100%")
 
         if "missile" in threats:
-            return SkillSelection("missile_evasion", {"break_direction": "right"})
+            return SkillSelection("last_ditch_break", {})
 
         if "%" in fuel and float(fuel.replace("%", "")) < 15:
-            return SkillSelection("disengage", {"priority": "high"})
+            return SkillSelection("extend", {})
 
         return None
 
@@ -86,9 +86,9 @@ Select a skill and parameters in JSON format: {{"skill": "name", "params": {{"pa
         try:
             import json
             data = json.loads(response)
-            return data.get("skill", "crank_maneuver"), data.get("params", {})
+            return data.get("skill", "crank_target_left"), data.get("params", {})
         except:
-            return "crank_maneuver", {"direction": "left", "offset_angle": 30}
+            return "crank_target_left", {}
 
 
 class SkillSelection:
