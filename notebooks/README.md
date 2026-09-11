@@ -16,3 +16,9 @@ For a simulator-backed pilot, use `02_generate_jsbsim_skill_dataset.ipynb`. It r
 Sim's `SkillManager` and a reproducible stochastic schedule manager, records canonical
 features at 10 Hz, and emits one Tacview ACMI replay per flight. Use
 `BVR_DATASET_FLIGHTS` for a shorter validation run before the full build.
+
+Train a skill classifier with `03_train_jsbsim_skill_classifier.ipynb`. It reads the
+canonical Parquet shards from notebook 02, splits complete flights between
+train/validation/test before constructing five-second windows, fits normalization on
+the training split only, and trains/evaluates a GRU tactical-skill classifier. Set
+`BVR_TRAIN_DATASET` to load a dataset from a non-default location.
