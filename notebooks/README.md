@@ -10,3 +10,9 @@ The generated files default to `artifacts/datasets/bvr_f16_1v1_smoke_demo/` and 
 safe to delete. Set `BVR_NOTEBOOK_OUTPUT` to write elsewhere. When BVR Sim is installed
 at the pinned revision, replace only the `env_factory` shown near the end of the
 notebook; keep the validation and persistence cells unchanged.
+
+For a simulator-backed pilot, use `02_generate_jsbsim_skill_dataset.ipynb`. It runs
+100 seeded 1-v-1 flights through JSBSim, selects labelled behaviours through BVR
+Sim's `SkillManager` and a reproducible stochastic schedule manager, records canonical
+features at 10 Hz, and emits one Tacview ACMI replay per flight. Use
+`BVR_DATASET_FLIGHTS` for a shorter validation run before the full build.
