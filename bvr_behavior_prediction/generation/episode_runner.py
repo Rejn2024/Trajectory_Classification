@@ -28,7 +28,10 @@ class EpisodeRunner:
                    "sensor_mode": self.adapter.config.sensor_mode, "target_skill": self.target_policy.label,
                    "target_action_heading_bin": ta.heading, "target_action_altitude_bin": ta.altitude,
                    "target_action_speed_bin": ta.speed, "target_action_fire": ta.fire}
+            selector = getattr(self.target_policy, "selector_state", None)
+            if selector:
+                row["selector_state"] = selector
+                row["transition_reason"] = selector["transition_reason"]
             rows.append(row)
             if terminated or truncated: break
         return annotate_transitions(add_temporal_dynamics(rows))
-

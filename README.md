@@ -24,6 +24,27 @@ samples controlled scenarios, runs scripted policies through the same adapter us
 BVR Sim, writes the canonical Parquet layout, and performs schema and leakage checks.
 The notebook marks the single environment-factory seam that must be replaced to run
 the workflow against a pinned BVR Sim checkout.
+
+## Stochastic skill rollouts
+
+`StochasticSkillPolicy` drives BVR Sim native actions by instantiating persistent
+skills through its `SkillManager`. Parameters and durations are sampled from bounded,
+seed-replayable distributions. Geometry controls ordinary transitions, while active
+missiles, low fuel, empty weapon stores, and target destruction interrupt immediately.
+The selector state and transition reason are included in every generated row.
+
+```python
+from bvr_sim.agents import SkillManager
+from bvr_behavior_prediction.policies import StochasticSkillPolicy
+from bvr_behavior_prediction.simulator.scenario_config import ScenarioConfig
+
+target_policy = StochasticSkillPolicy(SkillManager())
+config = ScenarioConfig(backend="cpp", weapons_enabled=True)  # C++ JSBSim rollout
+```
+
+The normal sequence is `maintain_position` → `pursue_target` → `launch` →
+`crank_maneuver` → `support_missile` → `turn_cold` → `recommit`. Pass a custom
+`dict[str, SkillSpec]` to adjust bounds without changing selector logic.
 ## F-16 scripted-manoeuvre video
 
 The runnable [`f16_scripted_manoeuvre_video.ipynb`](notebooks/f16_scripted_manoeuvre_video.ipynb)

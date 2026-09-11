@@ -9,7 +9,13 @@ class SkillManager:
             "crank_maneuver": CrankManeuverSkill,
             "missile_evasion": MissileEvasionSkill,
             "disengage": DisengageSkill,
-            "maintain_position": MaintainPositionSkill
+            "maintain_position": MaintainPositionSkill,
+            "pursue_target": PursueTargetSkill,
+            "launch": LaunchSkill,
+            "support_missile": SupportMissileSkill,
+            "turn_cold": TurnColdSkill,
+            "recommit": RecommitSkill,
+            "search": SearchSkill,
         }
 
     def create_skill(self, skill_name, params=None):
@@ -214,3 +220,61 @@ class MaintainPositionSkill(TacticalSkill):
                 "speed_target": {"type": "integer", "min": 150, "max": 400}
             }
         }
+
+
+class GeometrySkill(TacticalSkill):
+    """Small geometry-driven command used by the stochastic rollout selector."""
+
+    defaults = {"offset_angle": 0, "speed_target": 300}
+
+    def __init__(self, skill_name, params):
+        super().__init__(skill_name, params)
+        self.params = {**self.defaults, **params}
+
+    def _execute(self, obs):
+        own_speed = obs.get("self_status", {}).get("performance", {}).get("speed_mps", 250)
+        sign = -1 if self.params.get("direction", "right") == "left" else 1
+        return {
+            "skill_name": self.skill_name,
+            "delta_heading": sign * np.deg2rad(self.params.get("offset_angle", 0)),
+            "delta_altitude": self.params.get("altitude_change", 0),
+            "delta_speed": self.params.get("speed_target", 300) - own_speed,
+            "shoot": int(self.skill_name == "launch"),
+        }, self.skill_name == "launch"
+
+
+class PursueTargetSkill(GeometrySkill):
+    def __init__(self, params):
+        super().__init__("pursue_target", params)
+
+
+class LaunchSkill(GeometrySkill):
+    def __init__(self, params):
+        super().__init__("launch", params)
+
+
+class SupportMissileSkill(GeometrySkill):
+    defaults = {"offset_angle": 20, "speed_target": 300}
+
+    def __init__(self, params):
+        super().__init__("support_missile", params)
+
+
+class TurnColdSkill(GeometrySkill):
+    defaults = {"offset_angle": 165, "speed_target": 350}
+
+    def __init__(self, params):
+        super().__init__("turn_cold", params)
+
+
+class RecommitSkill(GeometrySkill):
+    def __init__(self, params):
+        super().__init__("recommit", params)
+
+
+class SearchSkill(GeometrySkill):
+    defaults = {"offset_angle": 35, "speed_target": 260}
+
+    def __init__(self, params):
+        params = {"offset_angle": params.get("sweep_angle", 35), **params}
+        super().__init__("search", params)

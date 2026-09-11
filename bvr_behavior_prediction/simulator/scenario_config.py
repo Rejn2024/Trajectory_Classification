@@ -7,7 +7,7 @@ import json
 class ScenarioConfig:
     observer_aircraft: str = "F16"
     target_aircraft: str = "F16"
-    backend: str = "python"
+    backend: str = "cpp"
     dt: float = 0.4
     max_steps: int = 400
     weapons_enabled: bool = False
@@ -24,4 +24,3 @@ class ScenarioConfig:
     def config_hash(self) -> str:
         payload = json.dumps(asdict(self), sort_keys=True).encode()
         return hashlib.sha256(payload).hexdigest()
-
