@@ -43,3 +43,19 @@ def test_training_limits_torch_threads_to_avoid_notebook_resource_exhaustion():
 
     assert 'BVR_TORCH_THREADS' in source
     assert "torch.set_num_threads(TORCH_THREADS)" in source
+
+
+def test_cuda_gru_uses_safe_aten_fallback_by_default():
+    source = _notebook_source()
+
+    assert 'BVR_GRU_USE_CUDNN' in source
+    assert 'os.getenv("BVR_GRU_USE_CUDNN", "0") == "1"' in source
+    assert "with torch.backends.cudnn.flags(enabled=GRU_USE_CUDNN):" in source
+
+
+def test_cuda_configuration_runs_a_synchronized_device_probe():
+    source = _notebook_source()
+
+    assert "probe = torch.ones(1, device=DEVICE)" in source
+    assert "torch.cuda.synchronize(DEVICE)" in source
+    assert '"device_name": torch.cuda.get_device_name(DEVICE)' in source
