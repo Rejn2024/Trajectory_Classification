@@ -15,7 +15,9 @@ For a simulator-backed pilot, use `02_generate_jsbsim_skill_dataset.ipynb`. It r
 100 seeded 1-v-1 flights through JSBSim, selects labelled behaviours through BVR
 Sim's `SkillManager` and a reproducible stochastic schedule manager, records canonical
 features at 10 Hz, and emits one Tacview ACMI replay per flight. Use
-`BVR_DATASET_FLIGHTS` for a shorter validation run before the full build.
+`BVR_DATASET_FLIGHTS` for a shorter validation run before the full build. Flights run in
+spawn-compatible loky worker processes on Windows and POSIX; set `BVR_DATASET_WORKERS=1`
+to run serially while debugging. Install the `video` extra before running this notebook.
 
 Train a skill classifier with `03_train_jsbsim_skill_classifier.ipynb`. It reads the
 canonical Parquet shards from notebook 02, splits complete flights between
