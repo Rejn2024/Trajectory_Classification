@@ -17,6 +17,19 @@ def _notebook_source():
     )
 
 
+def test_skill_manager_catalogue_is_shown_directly_after_imports():
+    notebook = json.loads(NOTEBOOK.read_text())
+    import_cell_index = next(
+        index
+        for index, cell in enumerate(notebook["cells"])
+        if "from bvr_sim.agents.skill_manager import SkillManager" in "".join(cell.get("source", []))
+    )
+    catalogue_cell = "".join(notebook["cells"][import_cell_index + 1].get("source", []))
+
+    assert "SkillManager().list_skills()" in catalogue_cell
+    assert "Skills available in SkillManager for selection" in catalogue_cell
+
+
 def _target_controls():
     tree = ast.parse(_notebook_source())
     wanted = {"clamp", "angle_error_deg", "target_controls"}
