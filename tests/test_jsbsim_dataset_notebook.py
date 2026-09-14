@@ -3,7 +3,6 @@ import json
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 
 
 NOTEBOOK = Path(__file__).parents[1] / "notebooks" / "02_generate_jsbsim_skill_dataset.ipynb"
@@ -15,22 +14,6 @@ def _notebook_source():
         "".join(cell.get("source", []))
         for cell in notebook["cells"]
         if cell.get("cell_type") == "code"
-    )
-
-
-def _validation_assertion():
-    notebook = json.loads(NOTEBOOK.read_text())
-    validation_cell = next(
-        cell
-        for cell in notebook["cells"]
-        if "intervals = trajectories" in "".join(cell.get("source", []))
-    )
-    tree = ast.parse("".join(validation_cell["source"]))
-    return next(
-        statement.test
-        for statement in tree.body
-        if isinstance(statement, ast.Assert)
-        and "intervals.max()" in ast.unparse(statement.test)
     )
 
 
@@ -46,25 +29,31 @@ def _target_controls():
     return namespace["target_controls"]
 
 
-def test_sample_interval_validation_allows_floating_point_drift():
-    intervals = pd.Series([index * 0.1 for index in range(601)]).diff().dropna()
-    assert intervals.max() > 0.1
+def test_generation_defaults_to_100000_flights_and_streams_each_flight():
+    source = _notebook_source()
 
-    expression = ast.Expression(_validation_assertion())
-    assert eval(compile(expression, NOTEBOOK.name, "eval"), {"np": np}, {
-        "intervals": intervals,
-        "SAMPLE_DT_S": 0.1,
-    })
+    assert 'os.getenv("BVR_DATASET_FLIGHTS", "100000")' in source
+    assert "scenarios = [" not in source
+    assert "trajectory_rows.extend" not in source
+    assert "episode_rows.append" not in source
+    assert "writer.write_flight(index, rows, episode_row)" in source
+    assert "del rows, episode_row" in source
 
 
-def test_sample_interval_validation_rejects_intervals_above_tolerance():
-    intervals = pd.Series([0.1, 0.100_000_002])
-    expression = ast.Expression(_validation_assertion())
+def test_sample_cadence_is_validated_per_flight_with_tolerance():
+    source = _notebook_source()
 
-    assert not eval(compile(expression, NOTEBOOK.name, "eval"), {"np": np}, {
-        "intervals": intervals,
-        "SAMPLE_DT_S": 0.1,
-    })
+    assert 'abs(row["time_s"] - step * SAMPLE_DT_S) <= 1e-9' in source
+
+
+def test_stochastic_manager_uses_runtime_skill_allow_list():
+    source = _notebook_source()
+
+    assert 'os.getenv("BVR_DATASET_SKILLS"' in source
+    assert "self.available_skills = tuple(available_skills)" in source
+    assert "primary = self.available_skills[flight_index % len(self.available_skills)]" in source
+    assert "label for label in self.available_skills if label != primary" in source
+    assert '"available_skills":list(AVAILABLE_SKILLS)' in source.replace(" ", "")
 
 
 def test_controller_levels_wings_after_reaching_commanded_bank():
