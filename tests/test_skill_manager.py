@@ -1,14 +1,9 @@
-import importlib.util
-from pathlib import Path
+import importlib
 import sys
 import unittest
 
 
-MODULE = Path(__file__).parents[1] / "bvr_sim_source/bvr_sim/agents/skill_manager.py"
-spec = importlib.util.spec_from_file_location("skill_manager", MODULE)
-skill_manager = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(skill_manager)
-SkillManager = skill_manager.SkillManager
+from bvr_sim.agents.skill_manager import SkillManager
 
 
 EXPECTED = {
@@ -56,21 +51,10 @@ class SkillManagerTests(unittest.TestCase):
         self.assertTrue(completed)
 
     def test_agents_package_does_not_eagerly_import_optional_api_clients(self):
-        agents_dir = MODULE.parent
-        package_name = "bundled_agents_for_test"
-        package_spec = importlib.util.spec_from_file_location(
-            package_name,
-            agents_dir / "__init__.py",
-            submodule_search_locations=[str(agents_dir)],
-        )
-        agents = importlib.util.module_from_spec(package_spec)
-        sys.modules[package_name] = agents
-        self.addCleanup(sys.modules.pop, package_name, None)
-
-        package_spec.loader.exec_module(agents)
+        agents = importlib.import_module("bvr_sim.agents")
 
         self.assertIs(agents.SkillManager, agents.SkillManager)
-        self.assertNotIn(f"{package_name}.bvr_strategist", sys.modules)
+        self.assertNotIn("bvr_sim.agents.bvr_strategist", sys.modules)
 
 
 if __name__ == "__main__":

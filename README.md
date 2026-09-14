@@ -14,6 +14,13 @@ pytest
 bvr-build-dataset --help
 ```
 
+The lightweight tactical skill catalogue is included in this installation and
+can be imported without installing the full simulator runtime or native backend:
+
+```python
+from bvr_sim.agents.skill_manager import SkillManager
+```
+
 See `configs/` for the initial F-16 experiment and `examples/train_pipeline.py` for
 an end-to-end training skeleton.
 
