@@ -58,8 +58,8 @@ def test_generation_parallelises_flights_with_bounded_ordered_results():
 
     assert 'os.getenv("BVR_DATASET_WORKERS"' in source
     assert 'os.getenv("BVR_DATASET_MAX_IN_FLIGHT"' in source
-    assert 'mp.get_context("fork")' in source
     assert "ProcessPoolExecutor(max_workers=MAX_WORKERS" in source
+    assert "from loky import ProcessPoolExecutor" in source
     assert "executor.submit(run_flight, index, scenario)" in source
     assert "pending = deque()" in source
     assert "index, scenario, future = pending.popleft()" in source
@@ -73,14 +73,14 @@ def test_single_worker_path_avoids_process_pool():
     assert "yield index, scenario, run_flight(index, scenario)" in source
 
 
-def test_platforms_without_fork_fall_back_to_serial_generation():
+def test_spawn_based_executor_supports_parallel_generation_without_fork():
     source = _notebook_source()
 
-    assert 'if "fork" not in mp.get_all_start_methods():' in source
-    assert "POSIX fork is unavailable; falling back to serial flight generation" in source
-    assert 'RuntimeError("Parallel notebook generation' not in source
-    # Both the explicit single-worker branch and the no-fork fallback stream serially.
-    assert source.count("yield index, scenario, run_flight(index, scenario)") == 2
+    assert "multiprocessing as mp" not in source
+    assert 'mp.get_context("fork")' not in source
+    assert "POSIX fork is unavailable" not in source
+    # Only an explicitly requested single worker streams serially.
+    assert source.count("yield index, scenario, run_flight(index, scenario)") == 1
 
 
 def test_skill_instance_is_reused_until_the_scheduled_transition():
