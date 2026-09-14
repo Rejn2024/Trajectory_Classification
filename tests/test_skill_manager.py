@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import sys
 import unittest
 
 
@@ -53,6 +54,23 @@ class SkillManagerTests(unittest.TestCase):
         self.assertEqual(set(action), set(self.manager.get_contract("launch")["output_contract"]["required"]))
         self.assertEqual(action["shoot"], 1)
         self.assertTrue(completed)
+
+    def test_agents_package_does_not_eagerly_import_optional_api_clients(self):
+        agents_dir = MODULE.parent
+        package_name = "bundled_agents_for_test"
+        package_spec = importlib.util.spec_from_file_location(
+            package_name,
+            agents_dir / "__init__.py",
+            submodule_search_locations=[str(agents_dir)],
+        )
+        agents = importlib.util.module_from_spec(package_spec)
+        sys.modules[package_name] = agents
+        self.addCleanup(sys.modules.pop, package_name, None)
+
+        package_spec.loader.exec_module(agents)
+
+        self.assertIs(agents.SkillManager, agents.SkillManager)
+        self.assertNotIn(f"{package_name}.bvr_strategist", sys.modules)
 
 
 if __name__ == "__main__":
