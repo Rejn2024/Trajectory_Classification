@@ -36,6 +36,8 @@ def test_training_uses_a_safe_cpu_default_and_allows_explicit_cuda_opt_in():
     assert 'os.getenv("BVR_TRAIN_DEVICE", "cpu")' in source
     assert 'if REQUESTED_DEVICE.startswith("cuda") and not torch.cuda.is_available():' in source
     assert 'torch.device(REQUESTED_DEVICE)' in source
+    assert "DEVICE = torch.device('cuda')" not in source
+    assert 'DEVICE = torch.device("cuda")' not in source
 
 
 def test_training_limits_torch_threads_to_avoid_notebook_resource_exhaustion():
