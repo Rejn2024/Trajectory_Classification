@@ -22,3 +22,9 @@ canonical Parquet shards from notebook 02, splits complete flights between
 train/validation/test before constructing five-second windows, fits normalization on
 the training split only, and trains/evaluates a GRU tactical-skill classifier. Set
 `BVR_TRAIN_DATASET` to load a dataset from a non-default location.
+
+If Parquet loading fails with `ArrowKeyError: No type extension with name
+arrow.py_extension_type found`, update the environment with `pip install -e '.[ml]'`,
+restart the notebook kernel, and run all cells again. The project requires
+PyArrow 14.0.1 or newer because 14.0.1 includes PyArrow's own legacy-extension
+hotfix; restarting clears any partially imported pandas modules from the old session.
