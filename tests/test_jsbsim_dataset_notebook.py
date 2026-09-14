@@ -73,6 +73,16 @@ def test_single_worker_path_avoids_process_pool():
     assert "yield index, scenario, run_flight(index, scenario)" in source
 
 
+def test_platforms_without_fork_fall_back_to_serial_generation():
+    source = _notebook_source()
+
+    assert 'if "fork" not in mp.get_all_start_methods():' in source
+    assert "POSIX fork is unavailable; falling back to serial flight generation" in source
+    assert 'RuntimeError("Parallel notebook generation' not in source
+    # Both the explicit single-worker branch and the no-fork fallback stream serially.
+    assert source.count("yield index, scenario, run_flight(index, scenario)") == 2
+
+
 def test_skill_instance_is_reused_until_the_scheduled_transition():
     source = _notebook_source()
 
