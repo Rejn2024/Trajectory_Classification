@@ -21,11 +21,12 @@ video = [
 bvr-build-dataset = "bvr_behavior_prediction.generation.dataset_builder:main"
 
 [tool.setuptools.packages.find]
-include = ["bvr_behavior_prediction*"]
+where = [".", "bvr_sim_source"]
+include = ["bvr_behavior_prediction*", "bvr_sim", "bvr_sim.agents*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["bvr_sim_source"]
 
 [tool.ruff]
 line-length = 100
-
