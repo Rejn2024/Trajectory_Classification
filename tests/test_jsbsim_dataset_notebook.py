@@ -53,6 +53,34 @@ def test_generation_defaults_to_100000_flights_and_streams_each_flight():
     assert "del rows, episode_row" in source
 
 
+def test_generation_parallelises_flights_with_bounded_ordered_results():
+    source = _notebook_source()
+
+    assert 'os.getenv("BVR_DATASET_WORKERS"' in source
+    assert 'os.getenv("BVR_DATASET_MAX_IN_FLIGHT"' in source
+    assert 'mp.get_context("fork")' in source
+    assert "ProcessPoolExecutor(max_workers=MAX_WORKERS" in source
+    assert "executor.submit(run_flight, index, scenario)" in source
+    assert "pending = deque()" in source
+    assert "index, scenario, future = pending.popleft()" in source
+    assert "for index, scenario, result in completed_flights():" in source
+
+
+def test_single_worker_path_avoids_process_pool():
+    source = _notebook_source()
+
+    assert "if MAX_WORKERS == 1:" in source
+    assert "yield index, scenario, run_flight(index, scenario)" in source
+
+
+def test_skill_instance_is_reused_until_the_scheduled_transition():
+    source = _notebook_source()
+
+    assert "if label != active_label:" in source
+    assert "active_label, active_skill, contract = stochastic_manager.active" in source
+    assert "active_skill.execute" in source
+
+
 def test_sample_cadence_is_validated_per_flight_with_tolerance():
     source = _notebook_source()
 
