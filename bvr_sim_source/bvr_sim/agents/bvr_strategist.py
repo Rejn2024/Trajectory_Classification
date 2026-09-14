@@ -47,7 +47,7 @@ class StrategicLLM:
             response = await self.api.chat_completion(prompt)
             skill_name, skill_params = self._parse_llm_response(response)
             self.last_selection = SkillSelection(skill_name, skill_params)
-        except:
+        except Exception:
             # Fallback to default
             self.last_selection = SkillSelection("crank_target_left", {})
 
@@ -87,7 +87,7 @@ Select a skill and parameters in JSON format: {{"skill": "name", "params": {{"pa
             import json
             data = json.loads(response)
             return data.get("skill", "crank_target_left"), data.get("params", {})
-        except:
+        except (TypeError, ValueError):
             return "crank_target_left", {}
 
 

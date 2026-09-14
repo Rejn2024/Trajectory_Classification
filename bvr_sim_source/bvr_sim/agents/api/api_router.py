@@ -1,4 +1,4 @@
-from api.api import *
+from .api import OpenAI_API, Volcano_API, WWXQ_API
 
 def get_api_class(model_name):
     # a router to get correct API client class
@@ -65,12 +65,12 @@ def unit_test():
                 max_tokens=100
             )
 
-            print(f"✓ SUCCESS")
+            print("✓ SUCCESS")
             print(f"Response: {response[:200]}..." if len(response) > 200 else f"Response: {response}")
 
         except Exception as e:
             error_str = str(e)
-            print(f"✗ FAILED")
+            print("✗ FAILED")
             print(f"Error Type: {type(e).__name__}")
 
             # Parse specific error messages
