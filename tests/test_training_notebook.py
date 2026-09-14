@@ -28,3 +28,18 @@ def test_parquet_registry_error_has_actionable_recovery_message():
     assert "except pa.ArrowKeyError as error:" in source
     assert "restart the " in source
     assert "notebook kernel, and run all cells again." in source
+
+
+def test_training_uses_a_safe_cpu_default_and_allows_explicit_cuda_opt_in():
+    source = _notebook_source()
+
+    assert 'os.getenv("BVR_TRAIN_DEVICE", "cpu")' in source
+    assert 'if REQUESTED_DEVICE.startswith("cuda") and not torch.cuda.is_available():' in source
+    assert 'torch.device(REQUESTED_DEVICE)' in source
+
+
+def test_training_limits_torch_threads_to_avoid_notebook_resource_exhaustion():
+    source = _notebook_source()
+
+    assert 'BVR_TORCH_THREADS' in source
+    assert "torch.set_num_threads(TORCH_THREADS)" in source
