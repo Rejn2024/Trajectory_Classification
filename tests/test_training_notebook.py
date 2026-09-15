@@ -151,7 +151,26 @@ def test_metadata_cache_documents_speed_and_reports_elapsed_time():
     )
     source = _notebook_source()
 
-    assert "2–4×" in markdown
+    assert "compact `episodes.parquet` index plus Parquet footer" in markdown
     assert "10–100× or more" in markdown
     assert "time.perf_counter()" in source
     assert "metadata_elapsed_s" in source
+
+
+def test_metadata_uses_compact_episode_index_and_parquet_footers_first():
+    source = _notebook_source()
+
+    assert 'import pyarrow.parquet as pq' in source
+    assert 'def load_compact_metadata():' in source
+    assert 'episode_file.read(columns=sorted(required_episode_columns))' in source
+    assert '.metadata.num_rows for shard in shards' in source
+    assert 'read_row_group(0, columns=["time_s"])' in source
+    assert '"BVR_FORCE_METADATA_SCAN"' in source
+    assert 'compact episode index + Parquet footers' in source
+
+
+def test_metadata_fingerprint_invalidates_when_episode_index_changes():
+    source = _notebook_source()
+
+    assert '"episodes": file_identity(episodes_path)' in source
+    assert 'METADATA_CACHE_VERSION = 2' in source
