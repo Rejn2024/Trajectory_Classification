@@ -21,9 +21,12 @@ to run serially while debugging. Install the `video` extra before running this n
 
 Train a skill classifier with `03_train_jsbsim_skill_classifier.ipynb`. It reads the
 canonical Parquet shards from notebook 02, splits complete flights between
-train/validation/test before constructing five-second windows, fits normalization on
-the training split only, and trains/evaluates a GRU tactical-skill classifier. Set
-`BVR_TRAIN_DATASET` to load a dataset from a non-default location.
+train/test/validation (approximately 60%/20%/20%) while stratifying on every skill
+demonstrated in a flight, then constructs five-second windows and fits normalization
+on the training split only. It trains a Transformer classifier, uses test loss for
+checkpoint selection, reserves validation for the final report, and records parameters,
+metrics, and artifacts with MLflow. Set `BVR_TRAIN_DATASET` to load a dataset from a
+non-default location.
 
 If Parquet loading fails with `ArrowKeyError: No type extension with name
 arrow.py_extension_type found`, update the environment with `pip install -e '.[ml]'`,

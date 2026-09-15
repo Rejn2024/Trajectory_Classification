@@ -45,3 +45,33 @@ def test_training_limits_torch_threads_to_avoid_notebook_resource_exhaustion():
 
     assert 'BVR_TORCH_THREADS' in source
     assert "torch.set_num_threads(TORCH_THREADS)" in source
+
+
+def test_training_stratifies_episode_skill_sets_into_60_20_20_splits():
+    source = _notebook_source()
+
+    assert 'SPLIT_FRACTIONS = {"train": 0.60, "test": 0.20, "validation": 0.20}' in source
+    assert '.agg(lambda values: tuple(sorted(set(values))))' in source
+    assert "stratify=episode_skills[\"stratum\"]" in source
+    assert "stratify=selection_episodes[\"stratum\"]" in source
+
+
+def test_training_uses_transformer_and_test_selected_checkpoints():
+    source = _notebook_source()
+
+    assert "class SkillTransformer(nn.Module):" in source
+    assert "nn.TransformerEncoderLayer(" in source
+    assert 'test_metrics = run_epoch(loaders["test"])' in source
+    assert 'if test_metrics["loss"] < best_test_loss - 1e-4:' in source
+    assert 'CHECKPOINT_PATH = OUTPUT_DIR / "checkpoint.pt"' in source
+
+
+def test_training_tracks_experiment_with_mlflow():
+    source = _notebook_source()
+
+    assert "import mlflow" in source
+    assert "mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)" in source
+    assert "with mlflow.start_run(" in source
+    assert "mlflow.log_params(mlflow_params)" in source
+    assert "mlflow.log_metrics(" in source
+    assert "mlflow.log_artifacts(" in source
