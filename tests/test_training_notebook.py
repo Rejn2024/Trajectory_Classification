@@ -75,3 +75,26 @@ def test_training_tracks_experiment_with_mlflow():
     assert "mlflow.log_params(mlflow_params)" in source
     assert "mlflow.log_metrics(" in source
     assert "mlflow.log_artifacts(" in source
+
+
+def test_training_prepares_windows_without_peak_memory_copies():
+    source = _notebook_source()
+
+    assert 'to_table(columns=required_columns)' in source
+    assert 'dtype=np.float32' in source
+    assert 'sequences = np.empty(' in source
+    assert 'np.stack(sequences)' not in source
+    assert 'x -= normalization_mean' in source
+    assert 'x /= normalization_scale' in source
+
+
+def test_cuda_training_uses_memory_saving_acceleration_paths():
+    source = _notebook_source()
+
+    assert 'AMP_ENABLED = USE_AMP and DEVICE.type == "cuda"' in source
+    assert 'torch.autocast(' in source
+    assert 'GradScaler(enabled=AMP_ENABLED)' in source
+    assert 'fused=DEVICE.type == "cuda"' in source
+    assert 'pin_memory=DEVICE.type == "cuda"' in source
+    assert 'non_blocking=True' in source
+    assert 'torch.inference_mode()' in source
