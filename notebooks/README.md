@@ -26,7 +26,9 @@ demonstrated in a flight, then constructs five-second windows and fits normaliza
 on the training split only. It trains a Transformer classifier, uses test loss for
 checkpoint selection, reserves validation for the final report, and records parameters,
 metrics, and artifacts with MLflow. Set `BVR_TRAIN_DATASET` to load a dataset from a
-non-default location.
+non-default location. By default, MLflow stores tracking data in
+`artifacts/mlflow.db` using its SQLite backend; set `BVR_MLFLOW_TRACKING_URI` to use a
+different database or tracking server.
 
 If Parquet loading fails with `ArrowKeyError: No type extension with name
 arrow.py_extension_type found`, update the environment with `pip install -e '.[ml]'`,
