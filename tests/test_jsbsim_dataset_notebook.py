@@ -49,8 +49,21 @@ def test_generation_defaults_to_100000_flights_and_streams_each_flight():
     assert "scenarios = [" not in source
     assert "trajectory_rows.extend" not in source
     assert "episode_rows.append" not in source
-    assert "writer.write_flight(index, rows, episode_row)" in source
-    assert "del rows, episode_row" in source
+    assert "writer.write_flight(index, batch_path, episode_row)" in source
+    assert "row_batch.clear()" in source
+    assert "batch_path.unlink(missing_ok=True)" in source
+
+
+
+def test_flight_results_are_spooled_in_bounded_record_batches():
+    source = _notebook_source()
+
+    assert 'os.getenv("BVR_DATASET_ROW_BATCH_SIZE", "128")' in source
+    assert "rows = []" not in source
+    assert "return rows, skill_version, acmi_path" not in source
+    assert "if len(row_batch) == ROW_BATCH_SIZE" in source
+    assert "pq.ParquetFile(batch_path)" in source
+    assert "iter_batches(batch_size=ROW_BATCH_SIZE)" in source
 
 
 def test_generation_parallelises_flights_with_bounded_ordered_results():
@@ -94,7 +107,7 @@ def test_skill_instance_is_reused_until_the_scheduled_transition():
 def test_sample_cadence_is_validated_per_flight_with_tolerance():
     source = _notebook_source()
 
-    assert 'abs(row["time_s"] - step * SAMPLE_DT_S) <= 1e-9' in source
+    assert 'abs(time_s - sample_index * SAMPLE_DT_S) <= 1e-9' in source
 
 
 def test_stochastic_manager_uses_runtime_skill_allow_list():
