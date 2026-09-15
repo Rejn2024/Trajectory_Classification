@@ -97,6 +97,16 @@ def test_training_prepares_windows_without_peak_memory_copies():
     assert 'x[left:left + len(chunk)] /= normalization_scale' in source
 
 
+def test_training_bulk_writes_windows_with_a_bounded_temporary():
+    source = _notebook_source()
+
+    assert 'BVR_WINDOW_WRITE_BUFFER_MB' in source
+    assert 'np.lib.stride_tricks.sliding_window_view(' in source
+    assert 'for chunk_left in range(0, len(starts), chunk_windows):' in source
+    assert 'destination[output_left:output_left + len(chunk_starts)] = windows[chunk_starts]' in source
+    assert 'for output_index, start in enumerate(starts, left):' not in source
+
+
 def test_training_streams_parquet_into_disk_backed_windows():
     source = _notebook_source()
 
