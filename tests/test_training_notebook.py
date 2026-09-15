@@ -51,7 +51,7 @@ def test_training_stratifies_episode_skill_sets_into_60_20_20_splits():
     source = _notebook_source()
 
     assert 'SPLIT_FRACTIONS = {"train": 0.60, "test": 0.20, "validation": 0.20}' in source
-    assert '.agg(lambda values: tuple(sorted(set(values))))' in source
+    assert 'skills = tuple(sorted(set(episode["tactical_label"])))' in source
     assert "stratify=episode_skills[\"stratum\"]" in source
     assert "stratify=selection_episodes[\"stratum\"]" in source
 
@@ -74,18 +74,36 @@ def test_training_tracks_experiment_with_mlflow():
     assert "with mlflow.start_run(" in source
     assert "mlflow.log_params(mlflow_params)" in source
     assert "mlflow.log_metrics(" in source
-    assert "mlflow.log_artifacts(" in source
+    assert "mlflow.log_artifact(" in source
 
 
 def test_training_prepares_windows_without_peak_memory_copies():
     source = _notebook_source()
 
-    assert 'to_table(columns=required_columns)' in source
+    assert "trajectory_dataset.scanner(" in source
     assert 'dtype=np.float32' in source
-    assert 'sequences = np.empty(' in source
+    assert 'np.lib.format.open_memmap(' in source
     assert 'np.stack(sequences)' not in source
-    assert 'x -= normalization_mean' in source
-    assert 'x /= normalization_scale' in source
+    assert 'x[left:left + len(chunk)] -= normalization_mean' in source
+    assert 'x[left:left + len(chunk)] /= normalization_scale' in source
+
+
+def test_training_streams_parquet_into_disk_backed_windows():
+    source = _notebook_source()
+
+    assert ".scanner(" in source
+    assert "np.lib.format.open_memmap" in source
+    assert "scaler.partial_fit" in source
+    assert "write_window_metadata" in source
+
+
+def test_training_supports_micro_batches_and_activation_checkpointing():
+    source = _notebook_source()
+
+    assert 'BVR_MICRO_BATCH_SIZE' in source
+    assert 'BVR_GRADIENT_CHECKPOINTING' in source
+    assert "torch_checkpoint(" in source
+    assert "ACCUMULATION_STEPS" in source
 
 
 def test_cuda_training_uses_memory_saving_acceleration_paths():
