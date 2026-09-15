@@ -62,18 +62,19 @@ def test_flight_results_are_spooled_in_bounded_record_batches():
     assert "rows = []" not in source
     assert "return rows, skill_version, acmi_path" not in source
     assert "if len(row_batch) == ROW_BATCH_SIZE" in source
-    assert "pq.ParquetFile(batch_path)" in source
-    assert "iter_batches(batch_size=ROW_BATCH_SIZE)" in source
+    assert "pa.ipc.new_stream(batch_sink, table.schema)" in source
+    assert "pa.ipc.open_stream(batch_source)" in source
 
 
-def test_temporary_flight_batches_skip_redundant_parquet_encoding():
+def test_temporary_flight_batches_use_low_overhead_arrow_ipc():
     source = _notebook_source()
 
-    # Temporary batches are immediately read and encoded into their final shard.
-    # Avoid spending CPU on compression, dictionaries, and statistics twice.
-    assert "compression=None" in source
-    assert "use_dictionary=False" in source
-    assert "write_statistics=False" in source
+    # IPC preserves Arrow record batches without paying Parquet's encode/decode cost;
+    # only the final dataset is compressed as Parquet.
+    assert 'f"{episode_id}.arrow"' in source
+    assert "pa.OSFile(str(batch_path), \"wb\")" in source
+    assert "batch_writer.write_table(table)" in source
+    assert 'f"{episode_id}.parquet"' not in source
     assert source.count('compression="zstd"') == 2
 
 
