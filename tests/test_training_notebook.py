@@ -93,8 +93,8 @@ def test_training_prepares_windows_without_peak_memory_copies():
     assert 'dtype=np.float32' in source
     assert 'np.lib.format.open_memmap(' in source
     assert 'np.stack(sequences)' not in source
-    assert 'x[left:left + len(chunk)] -= normalization_mean' in source
-    assert 'x[left:left + len(chunk)] /= normalization_scale' in source
+    assert "chunk -= normalization_mean" in source
+    assert "chunk /= normalization_scale" in source
 
 
 def test_training_bulk_writes_windows_with_a_bounded_temporary():
@@ -234,3 +234,21 @@ def test_normalized_window_cache_is_not_normalized_twice():
     assert '"normalization_mean": normalization_mean.tolist()' in source
     assert '"normalization_scale": normalization_scale.tolist()' in source
     assert 'print("Reused normalized window maps and cached scaler parameters")' in source
+
+
+def test_normalization_parallelizes_splits_without_increasing_chunk_budget():
+    source = _notebook_source()
+
+    assert '"BVR_PREPROCESS_WORKERS"' in source
+    assert (
+        "normalization_workers = min(PREPROCESS_WORKERS, len(raw), "
+        "PREPROCESS_CHUNK_WINDOWS)"
+    ) in source
+    assert (
+        "normalization_chunk_windows = max(1, PREPROCESS_CHUNK_WINDOWS // "
+        "normalization_workers)"
+    ) in source
+    assert "ThreadPoolExecutor(max_workers=normalization_workers)" in source
+    assert "executor.map(normalize_split, raw.values())" in source
+    assert "chunk -= normalization_mean" in source
+    assert "chunk /= normalization_scale" in source
