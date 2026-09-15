@@ -54,6 +54,12 @@ def test_training_stratifies_episode_skill_sets_into_60_20_20_splits():
     assert 'skills = tuple(sorted(set(episode["tactical_label"])))' in source
     assert "stratify=episode_skills[\"stratum\"]" in source
     assert "stratify=selection_episodes[\"stratum\"]" in source
+    assert (
+        'split_audit = pd.concat([\n'
+        '    table.assign(split=name).explode("skills")\n'
+        '    for name, table in split_tables.items()\n'
+        '], ignore_index=True)'
+    ) in source
 
 
 def test_training_uses_transformer_and_test_selected_checkpoints():
