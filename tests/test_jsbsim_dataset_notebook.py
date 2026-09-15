@@ -66,6 +66,17 @@ def test_flight_results_are_spooled_in_bounded_record_batches():
     assert "iter_batches(batch_size=ROW_BATCH_SIZE)" in source
 
 
+def test_temporary_flight_batches_skip_redundant_parquet_encoding():
+    source = _notebook_source()
+
+    # Temporary batches are immediately read and encoded into their final shard.
+    # Avoid spending CPU on compression, dictionaries, and statistics twice.
+    assert "compression=None" in source
+    assert "use_dictionary=False" in source
+    assert "write_statistics=False" in source
+    assert source.count('compression="zstd"') == 2
+
+
 def test_generation_parallelises_flights_with_bounded_ordered_results():
     source = _notebook_source()
 
