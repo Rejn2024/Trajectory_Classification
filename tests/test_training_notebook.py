@@ -162,11 +162,24 @@ def test_metadata_uses_compact_episode_index_and_parquet_footers_first():
 
     assert 'import pyarrow.parquet as pq' in source
     assert 'def load_compact_metadata():' in source
-    assert 'episode_file.read(columns=sorted(required_episode_columns))' in source
-    assert '.metadata.num_rows for shard in shards' in source
-    assert 'read_row_group(0, columns=["time_s"])' in source
+    assert 'episode_file.iter_batches(' in source
+    assert 'batch_size=METADATA_BATCH_ROWS' in source
+    assert 'executor.map(parquet_row_count, shards)' in source
+    assert 'first_file.iter_batches(batch_size=2, columns=["time_s"])' in source
     assert '"BVR_FORCE_METADATA_SCAN"' in source
     assert 'compact episode index + Parquet footers' in source
+
+
+def test_compact_metadata_path_keeps_parallelism_and_memory_bounded():
+    source = _notebook_source()
+
+    assert '"BVR_METADATA_BATCH_ROWS"' in source
+    assert "if METADATA_BATCH_ROWS < 1:" in source
+    assert "for batch in episode_file.iter_batches(" in source
+    assert "columns = batch.to_pydict()" in source
+    assert "for episode_id, episode_duration_s, schedule_json in records:" in source
+    assert "episode_table.to_pylist()" not in source
+    assert "read_row_group(0" not in source
 
 
 def test_metadata_fingerprint_invalidates_when_episode_index_changes():
