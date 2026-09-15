@@ -83,7 +83,7 @@ def test_training_tracks_experiment_with_mlflow():
 def test_training_prepares_windows_without_peak_memory_copies():
     source = _notebook_source()
 
-    assert "trajectory_dataset.scanner(" in source
+    assert "dataset.scanner(" in source
     assert 'dtype=np.float32' in source
     assert 'np.lib.format.open_memmap(' in source
     assert 'np.stack(sequences)' not in source
@@ -119,3 +119,39 @@ def test_cuda_training_uses_memory_saving_acceleration_paths():
     assert 'pin_memory=DEVICE.type == "cuda"' in source
     assert 'non_blocking=True' in source
     assert 'torch.inference_mode()' in source
+
+
+def test_metadata_scan_is_parallel_bounded_and_persistently_cached():
+    notebook = json.loads(NOTEBOOK.read_text())
+    source = _notebook_source()
+
+    assert "ThreadPoolExecutor(max_workers=worker_count)" in source
+    assert "executor.map(scan_metadata_shard, shards)" in source
+    assert '"BVR_METADATA_SCAN_WORKERS"' in source
+    assert '"fingerprint": metadata_fingerprint' in source
+    assert "os.replace(temporary_cache_path, METADATA_CACHE_PATH)" in source
+
+    scan_cell_index = next(
+        index for index, cell in enumerate(notebook["cells"])
+        if cell["cell_type"] == "code"
+        and "shards = sorted((DATASET_DIR / \"trajectories\").glob(\"*.parquet\"))"
+        in "".join(cell.get("source", []))
+    )
+    reload_source = "".join(notebook["cells"][scan_cell_index + 1].get("source", []))
+    assert "reloaded_metadata = load_metadata_cache()" in reload_source
+    assert 'reloaded_metadata["episode_rows"] == episode_rows' in reload_source
+
+
+def test_metadata_cache_documents_speed_and_reports_elapsed_time():
+    notebook = json.loads(NOTEBOOK.read_text())
+    markdown = "\n".join(
+        "".join(cell.get("source", []))
+        for cell in notebook["cells"]
+        if cell.get("cell_type") == "markdown"
+    )
+    source = _notebook_source()
+
+    assert "2–4×" in markdown
+    assert "10–100× or more" in markdown
+    assert "time.perf_counter()" in source
+    assert "metadata_elapsed_s" in source
