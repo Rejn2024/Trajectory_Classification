@@ -203,3 +203,34 @@ def test_metadata_fingerprint_invalidates_when_episode_index_changes():
 
     assert '"episodes": file_identity(episodes_path)' in source
     assert 'METADATA_CACHE_VERSION = 2' in source
+
+
+def test_window_products_are_parallel_counted_and_persistently_cached():
+    notebook = json.loads(NOTEBOOK.read_text())
+    source = _notebook_source()
+
+    assert "executor.map(count_window_shard, shards)" in source
+    assert 'WINDOW_CACHE_MANIFEST = CACHE_DIR / "manifest.json"' in source
+    assert '"fingerprint": window_cache_fingerprint' in source
+    assert 'np.load(CACHE_DIR / f"{split_name}_{suffix}.npy", mmap_mode="r+")' in source
+    assert "os.replace(temporary_manifest, WINDOW_CACHE_MANIFEST)" in source
+    assert 'BVR_KEEP_WINDOW_CACHE", "1"' in source
+
+    cache_cell_index = next(
+        index for index, cell in enumerate(notebook["cells"])
+        if cell["cell_type"] == "code"
+        and "episode_to_split = {" in "".join(cell.get("source", []))
+    )
+    reload_source = "".join(notebook["cells"][cache_cell_index + 1].get("source", []))
+    assert "reloaded_window_cache = load_window_cache()" in reload_source
+    assert "reloaded_window_counts == window_counts" in reload_source
+    assert "raw = reloaded_raw" in reload_source
+
+
+def test_normalized_window_cache_is_not_normalized_twice():
+    source = _notebook_source()
+
+    assert 'if window_cache_manifest.get("normalized", False):' in source
+    assert '"normalization_mean": normalization_mean.tolist()' in source
+    assert '"normalization_scale": normalization_scale.tolist()' in source
+    assert 'print("Reused normalized window maps and cached scaler parameters")' in source
