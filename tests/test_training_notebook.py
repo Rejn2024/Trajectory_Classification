@@ -70,6 +70,9 @@ def test_training_tracks_experiment_with_mlflow():
     source = _notebook_source()
 
     assert "import mlflow" in source
+    assert 'REPO_ROOT / "artifacts/mlflow.db"' in source
+    assert 'f"sqlite:///{MLFLOW_DB_PATH.as_posix()}"' in source
+    assert '(REPO_ROOT / "artifacts/mlruns").resolve().as_uri()' not in source
     assert "mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)" in source
     assert "with mlflow.start_run(" in source
     assert "mlflow.log_params(mlflow_params)" in source
