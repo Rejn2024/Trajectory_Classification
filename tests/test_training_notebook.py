@@ -97,23 +97,24 @@ def test_training_prepares_windows_without_peak_memory_copies():
     assert "chunk /= normalization_scale" in source
 
 
-def test_training_bulk_writes_windows_in_bounded_chunks():
+def test_training_indexes_windows_without_materializing_overlapping_features():
     source = _notebook_source()
 
-    assert 'BVR_WINDOW_WRITE_BUFFER_MB' in source
-    assert 'np.lib.stride_tricks.sliding_window_view(' in source
-    assert 'for chunk_left in range(run_left, run_right, chunk_windows):' in source
-    assert 'destination[output_left:output_right] = windows[' in source
-    assert 'for output_index, start in enumerate(starts, left):' not in source
+    assert 'WINDOW_CACHE_VERSION = 2' in source
+    assert '"representation": "trajectory_samples_with_window_offsets"' in source
+    assert 'destination["window_start"][window_left:window_right] = sample_left + starts' in source
+    assert 'destination["features"][sample_left:sample_right, feature_index]' in source
+    assert 'sliding_window_view' not in source
+    assert 'TensorDataset' not in source
 
 
-def test_window_writes_use_basic_slices_instead_of_advanced_indexing_copies():
+def test_lazy_window_dataset_resolves_compact_offsets_on_demand():
     source = _notebook_source()
 
-    assert "np.diff(starts) != STRIDE_SAMPLES" in source
-    assert "first_start:source_stop:STRIDE_SAMPLES" in source
-    assert "windows[chunk_starts]" not in source
-
+    assert 'class TrajectoryWindowDataset(torch.utils.data.Dataset):' in source
+    assert 'start = int(self.window_start[index])' in source
+    assert 'self.features[start:start + self.window_samples]' in source
+    assert 'dataset = TrajectoryWindowDataset(values, WINDOW_SAMPLES)' in source
 
 def test_training_streams_parquet_into_disk_backed_windows():
     source = _notebook_source()
@@ -259,7 +260,9 @@ def test_window_count_pass_reuses_compact_selection_metadata():
 def test_window_materialization_uses_additional_parallelism_for_the_hot_path():
     source = _notebook_source()
 
-    assert '"BVR_WINDOW_BUILD_WORKERS", str(min(8, os.cpu_count() or 1))' in source
+    assert '"BVR_WINDOW_BUILD_WORKERS"' in source
+    assert "executor.map(write_window_shard, shards)" in source
+    assert 'split_sample_counts[split_name]' in source
 
 
 def test_window_cache_reports_major_stage_timings_and_slowest_stage():
@@ -267,7 +270,7 @@ def test_window_cache_reports_major_stage_timings_and_slowest_stage():
 
     assert 'window_cell_started = time.perf_counter()' in source
     assert 'window_stage_seconds["label scan/window selection"]' in source
-    assert 'window_stage_seconds["feature scan/window writes"]' in source
+    assert 'window_stage_seconds["feature scan/index writes"]' in source
     assert 'window_stage_seconds["memory-map flush"]' in source
     assert '"[windows] Performance summary (wall time):"' in source
     assert 'f"[windows] Slowest measured stage: {slowest_stage}' in source
@@ -279,7 +282,7 @@ def test_normalized_window_cache_is_not_normalized_twice():
     assert 'if window_cache_manifest.get("normalized", False):' in source
     assert '"normalization_mean": normalization_mean.tolist()' in source
     assert '"normalization_scale": normalization_scale.tolist()' in source
-    assert 'print("Reused normalized window maps and cached scaler parameters")' in source
+    assert 'print("Reused normalized trajectory maps and cached scaler parameters")' in source
 
 
 def test_normalization_parallelizes_splits_without_increasing_chunk_budget():
@@ -291,7 +294,7 @@ def test_normalization_parallelizes_splits_without_increasing_chunk_budget():
         "PREPROCESS_CHUNK_WINDOWS)"
     ) in source
     assert (
-        "normalization_chunk_windows = max(1, PREPROCESS_CHUNK_WINDOWS // "
+        "normalization_chunk_rows = max(1, PREPROCESS_CHUNK_WINDOWS // "
         "normalization_workers)"
     ) in source
     assert "ThreadPoolExecutor(max_workers=normalization_workers)" in source
