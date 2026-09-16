@@ -237,6 +237,17 @@ def test_window_feature_materialization_is_parallel_and_vectorizes_labels():
     assert "np.fromiter(" not in source
 
 
+def test_window_count_pass_reuses_compact_selection_metadata():
+    source = _notebook_source()
+
+    assert "episode_window_selection[episode_id]" in source
+    assert "prepared_episodes.append(" in source
+    assert 'feature_columns = ["episode_id", "time_s", *MODEL_FEATURE_COLUMNS]' in source
+    assert "iter_dataset_episodes(shard_dataset, feature_columns)" in source
+    assert "starts, mixed, encoded_targets = episode_window_selection[episode_id]" in source
+    assert "del episode_window_selection" in source
+
+
 def test_normalized_window_cache_is_not_normalized_twice():
     source = _notebook_source()
 
