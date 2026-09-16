@@ -86,12 +86,13 @@ def test_training_tracks_experiment_with_mlflow():
     assert "mlflow.log_artifact(" in source
 
 
-def test_training_prepares_windows_without_peak_memory_copies():
+def test_training_prepares_windows_with_ram_accelerated_serialization():
     source = _notebook_source()
 
     assert "dataset.scanner(" in source
     assert 'dtype=np.float32' in source
-    assert 'np.lib.format.open_memmap(' in source
+    assert 'np.empty(shape, dtype=dtype)' in source
+    assert 'np.save(path, array, allow_pickle=False)' in source
     assert 'np.stack(sequences)' not in source
     assert "chunk -= normalization_mean" in source
     assert "chunk /= normalization_scale" in source
@@ -103,7 +104,7 @@ def test_training_indexes_windows_without_materializing_overlapping_features():
     assert 'WINDOW_CACHE_VERSION = 2' in source
     assert '"representation": "trajectory_samples_with_window_offsets"' in source
     assert 'destination["window_start"][window_left:window_right] = sample_left + starts' in source
-    assert 'destination["features"][sample_left:sample_right, feature_index]' in source
+    assert 'destination["features"][sample_left:sample_right] = np.column_stack(' in source
     assert 'sliding_window_view' not in source
     assert 'TensorDataset' not in source
 
@@ -116,11 +117,12 @@ def test_lazy_window_dataset_resolves_compact_offsets_on_demand():
     assert 'self.features[start:start + self.window_samples]' in source
     assert 'dataset = TrajectoryWindowDataset(values, WINDOW_SAMPLES)' in source
 
-def test_training_streams_parquet_into_disk_backed_windows():
+def test_training_streams_parquet_into_persisted_disk_backed_windows():
     source = _notebook_source()
 
     assert ".scanner(" in source
-    assert "np.lib.format.open_memmap" in source
+    assert "np.save(path, array, allow_pickle=False)" in source
+    assert 'np.load(CACHE_DIR / f"{split_name}_{suffix}.npy", mmap_mode="r+")' in source
     assert "scaler.partial_fit" in source
     assert "write_window_metadata" in source
 
@@ -273,6 +275,19 @@ def test_window_preparation_retains_features_and_avoids_a_second_parquet_scan():
     assert "episode_window_layout.keys() != episode_indices.keys()" in source
 
 
+def test_window_materialization_uses_ram_and_contiguous_serialization():
+    source = _notebook_source()
+
+    assert "destination[\"features\"][sample_left:sample_right] = np.column_stack(" in source
+    assert "for feature_index, column in enumerate(MODEL_FEATURE_COLUMNS)" not in source
+    assert "np.empty(shape, dtype=dtype)" in source
+    assert "np.save(path, array, allow_pickle=False)" in source
+    assert "serialization_workers = min(4, WINDOW_BUILD_WORKERS, len(cache_arrays))" in source
+    assert "executor.map(save_cache_array, cache_arrays)" in source
+    assert 'mmap_mode="r+"' in source
+    assert 'array.flush()' not in source
+
+
 def test_window_materialization_uses_additional_parallelism_for_the_hot_path():
     source = _notebook_source()
 
@@ -287,7 +302,7 @@ def test_window_cache_reports_major_stage_timings_and_slowest_stage():
     assert 'window_cell_started = time.perf_counter()' in source
     assert 'window_stage_seconds["Parquet scan/window selection"]' in source
     assert 'window_stage_seconds["in-memory cache writes"]' in source
-    assert 'window_stage_seconds["memory-map flush"]' in source
+    assert 'window_stage_seconds["contiguous cache serialization"]' in source
     assert '"[windows] Performance summary (wall time):"' in source
     assert 'f"[windows] Slowest measured stage: {slowest_stage}' in source
 
