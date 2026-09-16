@@ -101,7 +101,7 @@ def test_training_prepares_windows_with_ram_accelerated_serialization():
 def test_training_indexes_windows_without_materializing_overlapping_features():
     source = _notebook_source()
 
-    assert 'WINDOW_CACHE_VERSION = 2' in source
+    assert 'WINDOW_CACHE_VERSION = 3' in source
     assert '"representation": "trajectory_samples_with_window_offsets"' in source
     assert 'destination["window_start"][window_left:window_right] = sample_left + starts' in source
     assert 'destination["features"][sample_left:sample_right] = np.column_stack(' in source
@@ -286,6 +286,21 @@ def test_window_materialization_uses_ram_and_contiguous_serialization():
     assert "executor.map(save_cache_array, cache_arrays)" in source
     assert 'mmap_mode="r+"' in source
     assert 'array.flush()' not in source
+
+
+def test_window_cache_fuses_normalization_before_its_only_disk_write():
+    source = _notebook_source()
+
+    normalization = source.index('normalization_started = time.perf_counter()')
+    serialization = source.index('serialization_started = time.perf_counter()')
+    assert normalization < serialization
+    assert 'def normalize_resident_split(values):' in source
+    assert 'executor.map(normalize_resident_split, raw.values())' in source
+    assert '"normalized": True' in source
+    assert '"normalization_mean": normalization_mean.tolist()' in source
+    assert '"normalization_scale": normalization_scale.tolist()' in source
+    assert 'cold_io_speedup = (serialized_bytes + 2 * feature_bytes) / serialized_bytes' in source
+    assert 'estimated I/O-bound acceleration' in source
 
 
 def test_window_materialization_uses_additional_parallelism_for_the_hot_path():
