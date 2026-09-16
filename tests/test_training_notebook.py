@@ -248,6 +248,23 @@ def test_window_count_pass_reuses_compact_selection_metadata():
     assert "del episode_window_selection" in source
 
 
+def test_window_materialization_uses_additional_parallelism_for_the_hot_path():
+    source = _notebook_source()
+
+    assert '"BVR_WINDOW_BUILD_WORKERS", str(min(8, os.cpu_count() or 1))' in source
+
+
+def test_window_cache_reports_major_stage_timings_and_slowest_stage():
+    source = _notebook_source()
+
+    assert 'window_cell_started = time.perf_counter()' in source
+    assert 'window_stage_seconds["label scan/window selection"]' in source
+    assert 'window_stage_seconds["feature scan/window writes"]' in source
+    assert 'window_stage_seconds["memory-map flush"]' in source
+    assert '"[windows] Performance summary (wall time):"' in source
+    assert 'f"[windows] Slowest measured stage: {slowest_stage}' in source
+
+
 def test_normalized_window_cache_is_not_normalized_twice():
     source = _notebook_source()
 
