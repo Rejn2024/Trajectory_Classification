@@ -218,7 +218,7 @@ def test_window_products_are_parallel_counted_and_persistently_cached():
     notebook = json.loads(NOTEBOOK.read_text())
     source = _notebook_source()
 
-    assert "executor.map(count_window_shard, shards)" in source
+    assert "executor.map(prepare_window_shard, shards)" in source
     assert 'WINDOW_CACHE_MANIFEST = CACHE_DIR / "manifest.json"' in source
     assert '"fingerprint": window_cache_fingerprint' in source
     assert 'np.load(CACHE_DIR / f"{split_name}_{suffix}.npy", mmap_mode="r+")' in source
@@ -240,7 +240,7 @@ def test_window_feature_materialization_is_parallel_and_vectorizes_labels():
     source = _notebook_source()
 
     assert '"BVR_WINDOW_BUILD_WORKERS"' in source
-    assert "executor.map(write_window_shard, shards)" in source
+    assert "executor.map(write_prepared_shard, prepared_shards)" in source
     assert "episode_window_layout[episode_id]" in source
     assert "selected_targets == label" in source
     assert "np.fromiter(" not in source
@@ -252,16 +252,32 @@ def test_window_count_pass_reuses_compact_selection_metadata():
     assert "episode_window_selection[episode_id]" in source
     assert "prepared_episodes.append(" in source
     assert 'feature_columns = ["episode_id", "time_s", *MODEL_FEATURE_COLUMNS]' in source
-    assert "iter_dataset_episodes(shard_dataset, feature_columns)" in source
+    assert "iter_dataset_episodes(shard_dataset, selection_columns)" in source
     assert "starts, mixed, encoded_targets = episode_window_selection[episode_id]" in source
     assert "del episode_window_selection" in source
+
+
+def test_window_preparation_retains_features_and_avoids_a_second_parquet_scan():
+    source = _notebook_source()
+
+    assert 'feature_columns = ["episode_id", "time_s", *MODEL_FEATURE_COLUMNS]' in source
+    assert "def prepare_window_shard(shard):" in source
+    assert 'selection_columns = [*feature_columns, "tactical_label"]' in source
+    assert "iter_dataset_episodes(shard_dataset, selection_columns)" in source
+    assert "prepared_episodes.append(" in source
+    assert "episode, starts, is_mixed, encoded_targets" in source
+    assert "def write_prepared_shard(prepared_episodes):" in source
+    assert "executor.map(write_prepared_shard, prepared_shards)" in source
+    assert "def write_window_shard(shard):" not in source
+    assert 'episode_skills["episode_id"].to_numpy(copy=False)' in source
+    assert "episode_window_layout.keys() != episode_indices.keys()" in source
 
 
 def test_window_materialization_uses_additional_parallelism_for_the_hot_path():
     source = _notebook_source()
 
     assert '"BVR_WINDOW_BUILD_WORKERS"' in source
-    assert "executor.map(write_window_shard, shards)" in source
+    assert "executor.map(write_prepared_shard, prepared_shards)" in source
     assert 'split_sample_counts[split_name]' in source
 
 
@@ -269,8 +285,8 @@ def test_window_cache_reports_major_stage_timings_and_slowest_stage():
     source = _notebook_source()
 
     assert 'window_cell_started = time.perf_counter()' in source
-    assert 'window_stage_seconds["label scan/window selection"]' in source
-    assert 'window_stage_seconds["feature scan/index writes"]' in source
+    assert 'window_stage_seconds["Parquet scan/window selection"]' in source
+    assert 'window_stage_seconds["in-memory cache writes"]' in source
     assert 'window_stage_seconds["memory-map flush"]' in source
     assert '"[windows] Performance summary (wall time):"' in source
     assert 'f"[windows] Slowest measured stage: {slowest_stage}' in source
