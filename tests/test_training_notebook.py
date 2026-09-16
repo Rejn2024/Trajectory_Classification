@@ -227,6 +227,16 @@ def test_window_products_are_parallel_counted_and_persistently_cached():
     assert "raw = reloaded_raw" in reload_source
 
 
+def test_window_feature_materialization_is_parallel_and_vectorizes_labels():
+    source = _notebook_source()
+
+    assert '"BVR_WINDOW_BUILD_WORKERS"' in source
+    assert "executor.map(write_window_shard, shards)" in source
+    assert "episode_window_layout[episode_id]" in source
+    assert "selected_targets == label" in source
+    assert "np.fromiter(" not in source
+
+
 def test_normalized_window_cache_is_not_normalized_twice():
     source = _notebook_source()
 
