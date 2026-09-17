@@ -340,10 +340,10 @@ def test_canonical_window_scan_avoids_per_row_string_decoding_and_estimates_spee
 
     assert 'FAST_CANONICAL_SCAN = os.getenv("BVR_FAST_CANONICAL_SCAN", "1") == "1"' in source
     assert 'def assign_canonical_episodes_to_shards():' in source
-    assert 'scan_columns = ["time_s", *MODEL_FEATURE_COLUMNS]' in source
+    assert "scan_columns = list(MODEL_FEATURE_COLUMNS)" in source
     assert 'def iter_canonical_shard_episodes(shard, summaries):' in source
     assert 'columns=scan_columns, use_threads=False' in source
-    assert 'np.searchsorted(times, summary["switch_time_s"]' in source
+    assert 'summary["switch_time_s"] / SAMPLE_DT_S - 1e-12' in source
     assert 'projection_speedup_ceiling = old_projection_bytes / max(1, active_projection_bytes)' in source
     assert '24556.06 / projection_speedup_ceiling' in source
 
@@ -370,9 +370,22 @@ def test_canonical_scan_converts_each_numeric_column_once_per_shard():
 def test_canonical_window_selection_uses_numeric_schedule_directly():
     source = _notebook_source()
 
-    assert "def canonical_window_selection(times, summary, target_dtype):" in source
-    assert 'switch_index = int(np.searchsorted(times, summary["switch_time_s"], side="left"))' in source
+    assert "def canonical_window_selection(sample_count, summary, target_dtype):" in source
+    assert 'summary["switch_time_s"] / SAMPLE_DT_S - 1e-12' in source
     assert "mixed = (starts < switch_index) & (ends >= switch_index)" in source
     assert 'label_to_index[summary["primary_label"]]' in source
     assert 'label_to_index[summary["secondary_label"]]' in source
     assert 'episode["tactical_label"] = np.where(' not in source
+
+
+def test_canonical_scan_reconstructs_regular_timestamps_without_reading_them():
+    source = _notebook_source()
+
+    assert "scan_columns = list(MODEL_FEATURE_COLUMNS)" in source
+    assert "def canonical_window_selection(sample_count, summary, target_dtype):" in source
+    assert 'summary["switch_time_s"] / SAMPLE_DT_S - 1e-12' in source
+    assert "canonical_times = starts * SAMPLE_DT_S" in source
+    assert "canonical_end_times = (starts + WINDOW_SAMPLES - 1) * SAMPLE_DT_S" in source
+    scan_assignment = source.index("scan_columns = list(MODEL_FEATURE_COLUMNS)")
+    scan_read = source.index("table = parquet_file.read(columns=scan_columns", scan_assignment)
+    assert '"time_s"' not in source[scan_assignment:scan_read]
