@@ -242,7 +242,7 @@ def test_window_feature_materialization_is_parallel_and_vectorizes_labels():
     source = _notebook_source()
 
     assert '"BVR_WINDOW_BUILD_WORKERS"' in source
-    assert "executor.map(write_prepared_shard, prepared_shards)" in source
+    assert "executor.map(write_prepared_shard, prepared_episode_shards)" in source
     assert "episode_window_layout[episode_id]" in source
     assert "selected_targets == label" in source
     assert "np.fromiter(" not in source
@@ -269,7 +269,8 @@ def test_window_preparation_retains_features_and_avoids_a_second_parquet_scan():
     assert "prepared_episodes.append(" in source
     assert "episode, starts, is_mixed, encoded_targets" in source
     assert "def write_prepared_shard(prepared_episodes):" in source
-    assert "executor.map(write_prepared_shard, prepared_shards)" in source
+    assert "prepared_episode_shards = [prepared[3] for prepared in prepared_shards]" in source
+    assert "executor.map(write_prepared_shard, prepared_episode_shards)" in source
     assert "def write_window_shard(shard):" not in source
     assert 'episode_skills["episode_id"].to_numpy(copy=False)' in source
     assert "episode_window_layout.keys() != episode_indices.keys()" in source
@@ -292,7 +293,7 @@ def test_window_materialization_uses_additional_parallelism_for_the_hot_path():
     source = _notebook_source()
 
     assert '"BVR_WINDOW_BUILD_WORKERS"' in source
-    assert "executor.map(write_prepared_shard, prepared_shards)" in source
+    assert "executor.map(write_prepared_shard, prepared_episode_shards)" in source
     assert 'split_sample_counts[split_name]' in source
 
 
