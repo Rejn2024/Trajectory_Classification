@@ -40,6 +40,12 @@ def test_training_uses_a_safe_cpu_default_and_allows_explicit_cuda_opt_in():
     assert 'DEVICE = torch.device("cuda")' not in source
 
 
+def test_training_dataset_path_can_be_configured_without_editing_notebook():
+    source = _notebook_source()
+
+    assert '"BVR_TRAIN_DATASET"' in source
+
+
 def test_training_limits_torch_threads_to_avoid_notebook_resource_exhaustion():
     source = _notebook_source()
 
@@ -154,6 +160,45 @@ def test_cuda_training_uses_memory_saving_acceleration_paths():
     assert 'pin_memory=DEVICE.type == "cuda"' in source
     assert 'non_blocking=True' in source
     assert 'torch.inference_mode()' in source
+
+
+def test_training_defaults_spend_available_memory_for_throughput():
+    source = _notebook_source()
+
+    assert 'BVR_BATCH_SIZE", "256"' in source
+    assert 'BVR_GRADIENT_CHECKPOINTING", "0"' in source
+    assert 'BVR_PRELOAD_FEATURES", "1"' in source
+    assert 'np.array(values["features"], copy=True, order="C")' in source
+    assert 'prefetch_factor=DATALOADER_PREFETCH if DATALOADER_WORKERS > 0 else None' in source
+
+
+def test_cuda_training_uses_compile_tf32_and_reports_throughput():
+    source = _notebook_source()
+
+    assert 'torch.set_float32_matmul_precision("high")' in source
+    assert 'BVR_COMPILE_MODEL", "1"' in source
+    assert 'torch.compile(model, mode="max-autotune")' in source
+    assert 'torch.cuda.reset_peak_memory_stats()' in source
+    assert '"samples_per_second": total / elapsed_s' in source
+    assert '"peak_gpu_memory_gib": peak_gpu_memory_gib' in source
+    assert 'steady_state_reference = history[1]["train_samples_per_second"]' in source
+
+
+def test_training_documents_acceleration_estimate_and_reproducible_baseline():
+    notebook = json.loads(NOTEBOOK.read_text())
+    markdown = "\n".join(
+        "".join(cell.get("source", []))
+        for cell in notebook["cells"]
+        if cell.get("cell_type") == "markdown"
+    )
+    source = _notebook_source()
+
+    assert "1.3–2.5×" in markdown
+    assert "about 1.8× midpoint" in markdown
+    assert "engineering estimate, not a benchmark result" in markdown
+    assert 'BVR_BATCH_SIZE=64' in source
+    assert 'BVR_GRADIENT_CHECKPOINTING=1' in source
+    assert 'BVR_COMPILE_MODEL=0' in source
 
 
 def test_transformer_explicitly_disables_incompatible_nested_tensor_optimization():
