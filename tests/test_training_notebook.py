@@ -213,7 +213,7 @@ def test_metadata_fingerprint_invalidates_when_episode_index_changes():
     source = _notebook_source()
 
     assert '"episodes": file_identity(episodes_path)' in source
-    assert 'METADATA_CACHE_VERSION = 2' in source
+    assert 'METADATA_CACHE_VERSION = 3' in source
 
 
 def test_window_products_are_parallel_counted_and_persistently_cached():
@@ -332,3 +332,24 @@ def test_normalization_parallelizes_splits_without_increasing_chunk_budget():
     assert "executor.map(normalize_split, raw.values())" in source
     assert "chunk -= normalization_mean" in source
     assert "chunk /= normalization_scale" in source
+
+
+def test_canonical_window_scan_avoids_per_row_string_decoding_and_estimates_speedup():
+    source = _notebook_source()
+
+    assert 'FAST_CANONICAL_SCAN = os.getenv("BVR_FAST_CANONICAL_SCAN", "1") == "1"' in source
+    assert 'def assign_canonical_episodes_to_shards():' in source
+    assert 'scan_columns = ["time_s", *MODEL_FEATURE_COLUMNS]' in source
+    assert 'def iter_canonical_shard_episodes(shard, summaries):' in source
+    assert 'columns=scan_columns, use_threads=False' in source
+    assert 'times < summary["switch_time_s"]' in source
+    assert 'projection_speedup_ceiling = old_projection_bytes / max(1, active_projection_bytes)' in source
+    assert '24556.06 / projection_speedup_ceiling' in source
+
+
+def test_compact_metadata_retains_schedule_for_fast_window_scan():
+    source = _notebook_source()
+
+    assert '"switch_time_s": float(schedule["switch_time_s"])' in source
+    assert '"primary_label": schedule["primary"]' in source
+    assert '"secondary_label": schedule["secondary"]' in source
