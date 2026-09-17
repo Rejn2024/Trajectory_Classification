@@ -343,7 +343,7 @@ def test_canonical_window_scan_avoids_per_row_string_decoding_and_estimates_spee
     assert 'scan_columns = ["time_s", *MODEL_FEATURE_COLUMNS]' in source
     assert 'def iter_canonical_shard_episodes(shard, summaries):' in source
     assert 'columns=scan_columns, use_threads=False' in source
-    assert 'times < summary["switch_time_s"]' in source
+    assert 'np.searchsorted(times, summary["switch_time_s"]' in source
     assert 'projection_speedup_ceiling = old_projection_bytes / max(1, active_projection_bytes)' in source
     assert '24556.06 / projection_speedup_ceiling' in source
 
@@ -354,3 +354,25 @@ def test_compact_metadata_retains_schedule_for_fast_window_scan():
     assert '"switch_time_s": float(schedule["switch_time_s"])' in source
     assert '"primary_label": schedule["primary"]' in source
     assert '"secondary_label": schedule["secondary"]' in source
+
+
+def test_canonical_scan_converts_each_numeric_column_once_per_shard():
+    source = _notebook_source()
+
+    assert "table = parquet_file.read(columns=scan_columns, use_threads=False)" in source
+    assert "arrays = {" in source
+    assert "array[left:right]" in source
+    assert "for summary in summaries:" in source
+    assert "pieces = {column: [] for column in scan_columns}" not in source
+    assert "conversion_call_reduction = canonical_episode_count / len(shards)" in source
+
+
+def test_canonical_window_selection_uses_numeric_schedule_directly():
+    source = _notebook_source()
+
+    assert "def canonical_window_selection(times, summary, target_dtype):" in source
+    assert 'switch_index = int(np.searchsorted(times, summary["switch_time_s"], side="left"))' in source
+    assert "mixed = (starts < switch_index) & (ends >= switch_index)" in source
+    assert 'label_to_index[summary["primary_label"]]' in source
+    assert 'label_to_index[summary["secondary_label"]]' in source
+    assert 'episode["tactical_label"] = np.where(' not in source
