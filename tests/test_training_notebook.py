@@ -172,6 +172,21 @@ def test_training_defaults_spend_available_memory_for_throughput():
     assert 'prefetch_factor=DATALOADER_PREFETCH if DATALOADER_WORKERS > 0 else None' in source
 
 
+def test_evaluation_spends_available_memory_without_changing_train_batch():
+    source = _notebook_source()
+    notebook = json.loads(NOTEBOOK.read_text())
+    markdown = "\n".join(
+        "".join(cell.get("source", []))
+        for cell in notebook["cells"] if cell.get("cell_type") == "markdown"
+    )
+
+    assert 'BVR_EVAL_BATCH_SIZE' in source
+    assert 'batch_size=MICRO_BATCH_SIZE if split_name == "train" else EVAL_BATCH_SIZE' in source
+    assert '"evaluation_batch_size": EVAL_BATCH_SIZE' in source
+    assert "1.1–2.0× faster" in markdown
+    assert "about 1.81× end-to-end" in markdown
+
+
 def test_cuda_training_uses_compile_tf32_and_reports_throughput():
     source = _notebook_source()
 
