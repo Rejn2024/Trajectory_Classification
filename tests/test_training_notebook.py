@@ -129,7 +129,8 @@ def test_lazy_window_dataset_resolves_compact_offsets_on_demand():
     assert 'class TrajectoryWindowDataset(torch.utils.data.Dataset):' in source
     assert 'start = int(self.window_start[index])' in source
     assert 'self.features[start:start + self.window_samples]' in source
-    assert 'dataset = TrajectoryWindowDataset(values, WINDOW_SAMPLES)' in source
+    assert 'dataset = TrajectoryWindowDataset(' in source
+    assert 'values, WINDOW_SAMPLES, preload_features=' in source
 
 def test_training_streams_parquet_into_persisted_disk_backed_windows():
     source = _notebook_source()
@@ -181,7 +182,7 @@ def test_evaluation_spends_available_memory_without_changing_train_batch():
     )
 
     assert 'BVR_EVAL_BATCH_SIZE' in source
-    assert 'batch_size=MICRO_BATCH_SIZE if split_name == "train" else EVAL_BATCH_SIZE' in source
+    assert 'batch_size = MICRO_BATCH_SIZE if split_name == "train" else EVAL_BATCH_SIZE' in source
     assert '"evaluation_batch_size": EVAL_BATCH_SIZE' in source
     assert "1.1–2.0× faster" in markdown
     assert "about 1.81× end-to-end" in markdown
@@ -475,3 +476,21 @@ def test_canonical_scan_reconstructs_regular_timestamps_without_reading_them():
     scan_assignment = source.index("scan_columns = list(MODEL_FEATURE_COLUMNS)")
     scan_read = source.index("table = parquet_file.read(columns=scan_columns", scan_assignment)
     assert '"time_s"' not in source[scan_assignment:scan_read]
+
+
+def test_cuda_resident_loader_gathers_compact_windows_on_device():
+    source = _notebook_source()
+    notebook = json.loads(NOTEBOOK.read_text())
+    markdown = "\n".join(
+        "".join(cell.get("source", []))
+        for cell in notebook["cells"] if cell.get("cell_type") == "markdown"
+    )
+
+    assert 'BVR_CUDA_RESIDENT_DATASET", "1"' in source
+    assert "class CudaTrajectoryLoader:" in source
+    assert "self.features[sample_indices], self.targets[selection]" in source
+    assert "self.window_start[selection, None] + self.window_offsets[None, :]" in source
+    assert 'getattr(loader, "device_resident", False)' in source
+    assert '"cuda_resident_dataset": CUDA_RESIDENT_DATASET' in source
+    assert "1.05–1.4×" in markdown
+    assert "unique_samples × features × 4 bytes" in markdown
