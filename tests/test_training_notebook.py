@@ -86,6 +86,14 @@ def test_training_tracks_experiment_with_mlflow():
     assert "mlflow.log_artifact(" in source
 
 
+def test_training_handles_missing_git_without_mlflow_warning_noise():
+    source = _notebook_source()
+
+    assert 'if shutil.which("git") is None:' in source
+    assert 'os.environ.setdefault("GIT_PYTHON_REFRESH", "quiet")' in source
+    assert 'logging.getLogger("mlflow.utils.git_utils").setLevel(logging.ERROR)' in source
+
+
 def test_training_prepares_windows_with_ram_accelerated_serialization():
     source = _notebook_source()
 
@@ -141,11 +149,17 @@ def test_cuda_training_uses_memory_saving_acceleration_paths():
 
     assert 'AMP_ENABLED = USE_AMP and DEVICE.type == "cuda"' in source
     assert 'torch.autocast(' in source
-    assert 'GradScaler(enabled=AMP_ENABLED)' in source
+    assert 'torch.amp.GradScaler("cuda", enabled=AMP_ENABLED)' in source
     assert 'fused=DEVICE.type == "cuda"' in source
     assert 'pin_memory=DEVICE.type == "cuda"' in source
     assert 'non_blocking=True' in source
     assert 'torch.inference_mode()' in source
+
+
+def test_transformer_explicitly_disables_incompatible_nested_tensor_optimization():
+    source = _notebook_source()
+
+    assert "enable_nested_tensor=False" in source
 
 
 def test_metadata_scan_is_parallel_bounded_and_persistently_cached():
