@@ -184,6 +184,17 @@ def test_cuda_training_uses_compile_tf32_and_reports_throughput():
     assert 'steady_state_reference = history[1]["train_samples_per_second"]' in source
 
 
+def test_cuda_training_overlaps_host_to_device_copies_with_compute():
+    source = _notebook_source()
+
+    assert 'BVR_CUDA_PREFETCH", "1"' in source
+    assert "class DevicePrefetcher:" in source
+    assert "self.stream = torch.cuda.Stream()" in source
+    assert "torch.cuda.current_stream().wait_stream(self.stream)" in source
+    assert "features.record_stream(torch.cuda.current_stream())" in source
+    assert "for batch_index, (features, target) in enumerate(device_batches(loader)):" in source
+
+
 def test_training_documents_acceleration_estimate_and_reproducible_baseline():
     notebook = json.loads(NOTEBOOK.read_text())
     markdown = "\n".join(
@@ -193,12 +204,13 @@ def test_training_documents_acceleration_estimate_and_reproducible_baseline():
     )
     source = _notebook_source()
 
-    assert "1.3–2.5×" in markdown
-    assert "about 1.8× midpoint" in markdown
+    assert "1.3–2.7×" in markdown
+    assert "about 1.9× midpoint" in markdown
     assert "engineering estimate, not a benchmark result" in markdown
     assert 'BVR_BATCH_SIZE=64' in source
     assert 'BVR_GRADIENT_CHECKPOINTING=1' in source
     assert 'BVR_COMPILE_MODEL=0' in source
+    assert 'BVR_CUDA_PREFETCH=0' in source
 
 
 def test_transformer_explicitly_disables_incompatible_nested_tensor_optimization():
