@@ -160,6 +160,19 @@ def test_loader_avoids_worker_cache_duplication_and_notebook_output_backpressure
     assert "print(f'computing loss')" not in source
 
 
+def test_windows_notebook_defaults_to_in_process_data_loading():
+    source = _notebook_source()
+    notebook = json.loads(NOTEBOOK.read_text())
+    markdown = "\n".join(
+        "".join(cell.get("source", []))
+        for cell in notebook["cells"] if cell.get("cell_type") == "markdown"
+    )
+
+    assert '"BVR_DATALOADER_WORKERS", "0"' in source
+    assert "DataLoader subprocesses are disabled by default" in markdown
+    assert "exited unexpectedly" in markdown
+
+
 def test_training_streams_parquet_into_persisted_disk_backed_windows():
     source = _notebook_source()
 
