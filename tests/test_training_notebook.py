@@ -144,6 +144,18 @@ def test_loader_vectorizes_window_batches_before_device_transfer():
     assert "sample_indices" not in source
 
 
+def test_in_process_loaders_pack_shuffled_epochs_and_slice_contiguous_batches():
+    source = _notebook_source()
+
+    assert "class InProcessTrajectoryLoader:" in source
+    assert "epoch_windows = self.dataset.window_tensor.index_select(0, order)" in source
+    assert "epoch_targets = self.dataset.target_tensor.index_select(0, order)" in source
+    assert "yield epoch_windows[left:right], epoch_targets[left:right]" in source
+    assert "DATALOADER_WORKERS == 0 and DEVICE.type == \"cpu\"" in source
+    assert "epoch_windows = self.windows.index_select(0, order)" in source
+    assert "del epoch_windows, epoch_targets" in source
+
+
 def test_loader_avoids_worker_cache_duplication_and_notebook_output_backpressure():
     source = _notebook_source()
 
