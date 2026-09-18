@@ -123,12 +123,12 @@ def test_training_indexes_windows_without_materializing_overlapping_features():
     assert 'TensorDataset' not in source
 
 
-def test_lazy_window_dataset_resolves_compact_offsets_on_demand():
+def test_window_dataset_supports_lazy_offset_resolution():
     source = _notebook_source()
 
     assert 'class TrajectoryWindowDataset(torch.utils.data.Dataset):' in source
-    assert 'start = int(self.window_start_tensor[index])' in source
-    assert 'self.feature_tensor[start:start + self.window_samples]' in source
+    assert 'start = index if self.materialized_windows else int(self.window_start_tensor[index])' in source
+    assert 'self.window_tensor[start]' in source
     assert 'dataset = TrajectoryWindowDataset(' in source
     assert 'values, WINDOW_SAMPLES, preload_features=' in source
 
@@ -137,7 +137,7 @@ def test_loader_vectorizes_window_batches_before_device_transfer():
 
     assert "def __getitems__(self, indices):" in source
     assert "self.feature_tensor.unfold(0, window_samples, 1).transpose(1, 2)" in source
-    assert "self.window_tensor.index_select(0, starts)" in source
+    assert "self.window_tensor.index_select(0, window_indices)" in source
     assert "self.target_tensor.index_select(0, selection)" in source
     assert "collate_fn=identity_collate" in source
     assert "self.feature_tensor = torch.from_numpy" in source
@@ -522,9 +522,25 @@ def test_cuda_resident_loader_gathers_compact_windows_on_device():
     assert 'BVR_CUDA_RESIDENT_DATASET", "1"' in source
     assert "class CudaTrajectoryLoader:" in source
     assert "self.features.unfold(0, dataset.window_samples, 1).transpose(1, 2)" in source
-    assert "self.windows.index_select(0, starts)" in source
+    assert "self.windows.index_select(0, window_indices)" in source
     assert "self.targets.index_select(0, selection)" in source
     assert 'getattr(loader, "device_resident", False)' in source
     assert '"cuda_resident_dataset": CUDA_RESIDENT_DATASET' in source
     assert "1.05–1.4×" in markdown
     assert "unique_samples × features × 4 bytes" in markdown
+
+
+def test_training_materializes_windows_once_when_memory_is_available():
+    source = _notebook_source()
+    notebook = json.loads(NOTEBOOK.read_text())
+    markdown = "\n".join(
+        "".join(cell.get("source", []))
+        for cell in notebook["cells"] if cell.get("cell_type") == "markdown"
+    )
+
+    assert 'BVR_MATERIALIZE_WINDOWS", "1"' in source
+    assert "all_windows.index_select(0, self.window_start_tensor)" in source
+    assert "selection if self.materialized_windows" in source
+    assert '"materialize_windows": MATERIALIZE_WINDOWS' in source
+    assert "1.1–1.6×" in markdown
+    assert "window_count × window_samples × feature_count × 4" in markdown
