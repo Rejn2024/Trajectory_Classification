@@ -37,3 +37,6 @@ The runnable [`f16_scripted_manoeuvre_video.ipynb`](notebooks/f16_scripted_manoe
 uses JSBSim to fly a scripted F-16 demonstration and export an MP4 or GIF. See the
 [setup, BVR Sim integration, validation, and troubleshooting guide](docs/f16_video_guide.md)
 before running it.
+
+To inspect a generated ACMI replay and turn it into a shareable presentation, follow the
+step-by-step [Tacview visualisation and video-recording guide](docs/tacview_video_guide.md).
