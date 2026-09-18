@@ -261,7 +261,18 @@ def test_cuda_training_overlaps_host_to_device_copies_with_compute():
     assert "self.stream = torch.cuda.Stream()" in source
     assert "torch.cuda.current_stream().wait_stream(self.stream)" in source
     assert "features.record_stream(torch.cuda.current_stream())" in source
-    assert "for batch_index, (features, target) in enumerate(device_batches(loader)):" in source
+    assert "for batch_index, (features, target) in enumerate(progress_batches):" in source
+
+
+def test_device_batches_have_inline_notebook_progress():
+    source = _notebook_source()
+
+    assert "from tqdm.auto import tqdm" in source
+    assert "progress_batches = tqdm(" in source
+    assert "device_batches(loader)," in source
+    assert "total=len(loader)" in source
+    assert 'unit="batch"' in source
+    assert 'desc="Training" if training else "Evaluating"' in source
 
 
 def test_training_documents_acceleration_estimate_and_reproducible_baseline():
