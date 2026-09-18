@@ -128,9 +128,20 @@ def test_lazy_window_dataset_resolves_compact_offsets_on_demand():
 
     assert 'class TrajectoryWindowDataset(torch.utils.data.Dataset):' in source
     assert 'start = int(self.window_start[index])' in source
-    assert 'self.features[start:start + self.window_samples]' in source
+    assert 'self.feature_tensor[start:start + self.window_samples]' in source
     assert 'dataset = TrajectoryWindowDataset(' in source
     assert 'values, WINDOW_SAMPLES, preload_features=' in source
+
+def test_loader_vectorizes_window_batches_before_device_transfer():
+    source = _notebook_source()
+
+    assert "def __getitems__(self, indices):" in source
+    assert "self.feature_tensor[sample_indices]" in source
+    assert "self.target_tensor[selection]" in source
+    assert "collate_fn=identity_collate" in source
+    assert "self.feature_tensor = torch.from_numpy" in source
+    assert "self.window_offsets = torch.arange" in source
+
 
 def test_training_streams_parquet_into_persisted_disk_backed_windows():
     source = _notebook_source()
