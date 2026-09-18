@@ -153,7 +153,7 @@ def test_in_process_loaders_pack_shuffled_epochs_and_slice_contiguous_batches():
     assert "yield epoch_windows[left:right], epoch_targets[left:right]" in source
     assert "DATALOADER_WORKERS == 0 and DEVICE.type == \"cpu\"" in source
     assert "epoch_windows = self.windows.index_select(0, order)" in source
-    assert "del epoch_windows, epoch_targets" in source
+    assert "SHUFFLE_CONTIGUOUS_BATCHES" in source
 
 
 def test_loader_avoids_worker_cache_duplication_and_notebook_output_backpressure():
@@ -553,6 +553,23 @@ def test_cuda_resident_loader_gathers_compact_windows_on_device():
     assert '"cuda_resident_dataset": CUDA_RESIDENT_DATASET' in source
     assert "1.05–1.4×" in markdown
     assert "unique_samples × features × 4 bytes" in markdown
+
+
+def test_materialized_loaders_shuffle_zero_copy_batch_views():
+    source = _notebook_source()
+    notebook = json.loads(NOTEBOOK.read_text())
+    markdown = "\n".join(
+        "".join(cell.get("source", []))
+        for cell in notebook["cells"] if cell.get("cell_type") == "markdown"
+    )
+
+    assert 'BVR_SHUFFLE_CONTIGUOUS_BATCHES", "1"' in source
+    assert "batch_order = torch.randperm(batch_count, generator=self.generator)" in source
+    assert "yield self.dataset.window_tensor[left:right]" in source
+    assert "len(self), generator=self.generator, device=DEVICE" in source
+    assert '"shuffle_contiguous_batches": SHUFFLE_CONTIGUOUS_BATCHES' in source
+    assert "reduces batch-production work" in markdown
+    assert "cuts peak memory by one expanded dataset" in markdown
 
 
 def test_training_materializes_windows_once_when_memory_is_available():
