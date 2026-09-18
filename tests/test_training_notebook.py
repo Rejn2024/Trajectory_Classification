@@ -253,6 +253,16 @@ def test_cuda_training_uses_compile_tf32_and_reports_throughput():
     assert 'steady_state_reference = history[1]["train_samples_per_second"]' in source
 
 
+def test_cuda_compile_falls_back_to_eager_when_triton_is_unavailable():
+    source = _notebook_source()
+
+    assert "from torch.utils._triton import has_triton" in source
+    assert 'triton_available = DEVICE.type == "cuda" and has_triton()' in source
+    assert "compile_enabled = COMPILE_MODEL and triton_available" in source
+    assert "continuing with eager CUDA execution" in source
+    assert "model execution: {'torch.compile' if compile_enabled else 'eager'}" in source
+
+
 def test_cuda_training_overlaps_host_to_device_copies_with_compute():
     source = _notebook_source()
 
