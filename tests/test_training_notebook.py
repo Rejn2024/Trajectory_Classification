@@ -127,7 +127,7 @@ def test_lazy_window_dataset_resolves_compact_offsets_on_demand():
     source = _notebook_source()
 
     assert 'class TrajectoryWindowDataset(torch.utils.data.Dataset):' in source
-    assert 'start = int(self.window_start[index])' in source
+    assert 'start = int(self.window_start_tensor[index])' in source
     assert 'self.feature_tensor[start:start + self.window_samples]' in source
     assert 'dataset = TrajectoryWindowDataset(' in source
     assert 'values, WINDOW_SAMPLES, preload_features=' in source
@@ -136,11 +136,28 @@ def test_loader_vectorizes_window_batches_before_device_transfer():
     source = _notebook_source()
 
     assert "def __getitems__(self, indices):" in source
-    assert "self.feature_tensor[sample_indices]" in source
-    assert "self.target_tensor[selection]" in source
+    assert "self.feature_tensor.unfold(0, window_samples, 1).transpose(1, 2)" in source
+    assert "self.window_tensor.index_select(0, starts)" in source
+    assert "self.target_tensor.index_select(0, selection)" in source
     assert "collate_fn=identity_collate" in source
     assert "self.feature_tensor = torch.from_numpy" in source
-    assert "self.window_offsets = torch.arange" in source
+    assert "sample_indices" not in source
+
+
+def test_loader_avoids_worker_cache_duplication_and_notebook_output_backpressure():
+    source = _notebook_source()
+
+    dataset_source = source[
+        source.index("class TrajectoryWindowDataset"):
+        source.index("def identity_collate")
+    ]
+    assert "self.features =" not in dataset_source
+    assert "self.window_start =" not in dataset_source
+    assert "self.targets =" not in dataset_source
+    assert 'BVR_BATCH_LOG_INTERVAL", "0"' in source
+    assert "if BATCH_LOG_INTERVAL and batch_index % BATCH_LOG_INTERVAL == 0:" in source
+    assert "print(f'computing logits')" not in source
+    assert "print(f'computing loss')" not in source
 
 
 def test_training_streams_parquet_into_persisted_disk_backed_windows():
@@ -177,7 +194,7 @@ def test_cuda_training_uses_memory_saving_acceleration_paths():
 def test_training_defaults_spend_available_memory_for_throughput():
     source = _notebook_source()
 
-    assert 'BVR_BATCH_SIZE", "256"' in source
+    assert 'BVR_BATCH_SIZE", "2000"' in source
     assert 'BVR_GRADIENT_CHECKPOINTING", "0"' in source
     assert 'BVR_PRELOAD_FEATURES", "1"' in source
     assert 'np.array(values["features"], copy=True, order="C")' in source
@@ -330,7 +347,12 @@ def test_window_products_are_parallel_counted_and_persistently_cached():
         if cell["cell_type"] == "code"
         and "episode_to_split = {" in "".join(cell.get("source", []))
     )
-    reload_source = "".join(notebook["cells"][cache_cell_index + 1].get("source", []))
+    reload_source = "".join(
+        cell_source
+        for cell in notebook["cells"][cache_cell_index + 1:]
+        if (cell_source := "".join(cell.get("source", [])))
+        and "reloaded_window_cache = load_window_cache()" in cell_source
+    )
     assert "reloaded_window_cache = load_window_cache()" in reload_source
     assert "reloaded_window_counts == window_counts" in reload_source
     assert "raw = reloaded_raw" in reload_source
@@ -499,8 +521,9 @@ def test_cuda_resident_loader_gathers_compact_windows_on_device():
 
     assert 'BVR_CUDA_RESIDENT_DATASET", "1"' in source
     assert "class CudaTrajectoryLoader:" in source
-    assert "self.features[sample_indices], self.targets[selection]" in source
-    assert "self.window_start[selection, None] + self.window_offsets[None, :]" in source
+    assert "self.features.unfold(0, dataset.window_samples, 1).transpose(1, 2)" in source
+    assert "self.windows.index_select(0, starts)" in source
+    assert "self.targets.index_select(0, selection)" in source
     assert 'getattr(loader, "device_resident", False)' in source
     assert '"cuda_resident_dataset": CUDA_RESIDENT_DATASET' in source
     assert "1.05–1.4×" in markdown
