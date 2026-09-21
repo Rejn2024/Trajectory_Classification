@@ -24,6 +24,10 @@ from bvr_sim.agents.skill_manager import SkillManager
 See `configs/` for the initial F-16 experiment and `examples/train_pipeline.py` for
 an end-to-end training skeleton.
 
+For a comparison of downloadable 1-v-1 policy resources, the bundled JSBSim PPO
+training path, and a concrete plan for producing classifier-compatible RL trajectories,
+see [`docs/jsbsim_1v1_ai_options.md`](docs/jsbsim_1v1_ai_options.md).
+
 The executable notebook
 [`notebooks/01_generate_smoke_dataset.ipynb`](notebooks/01_generate_smoke_dataset.ipynb)
 walks through the first dataset milestone with a deterministic local dynamics stub. It
