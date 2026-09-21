@@ -17,11 +17,11 @@ class BluePilotEnvironment:
         backend_factory: Callable,
         scenario,
         planning_horizon_s=1.0,
-        episode_duration_s=90.0,
+        episode_duration_s=120.0,
         recording_path=None,
     ):
-        if episode_duration_s > 90:
-            raise ValueError("episodes may not exceed 90 in-game seconds")
+        if episode_duration_s > 120:
+            raise ValueError("episodes may not exceed 120 in-game seconds")
         self.horizon = planning_horizon_s
         self.limit = episode_duration_s
         self.backend = backend_factory(scenario.as_dict(), recording_path)

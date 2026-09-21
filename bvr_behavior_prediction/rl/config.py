@@ -48,8 +48,8 @@ class PilotTrainingConfig:
     def __post_init__(self):
         if self.planning_horizon_s <= 0:
             raise ValueError("planning_horizon_s must be positive")
-        if not 0 < self.episode_duration_s <= 90:
-            raise ValueError("episode_duration_s must be in (0, 90]")
+        if not 0 < self.episode_duration_s <= 120:
+            raise ValueError("episode_duration_s must be in (0, 120]")
         if self.scenarios_per_epoch < 3:
             raise ValueError("scenarios_per_epoch must be at least 3")
         if self.epochs < 1 or self.simulation_dt_s <= 0:
