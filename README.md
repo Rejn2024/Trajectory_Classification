@@ -24,6 +24,18 @@ from bvr_sim.agents.skill_manager import SkillManager
 See `configs/` for the initial F-16 experiment and `examples/train_pipeline.py` for
 an end-to-end training skeleton.
 
+## Reinforcement-learning 1-v-1 pilot
+
+`bvr_behavior_prediction.rl` contains a PPO training path for a **blue-controlled**
+pilot against a level, constant-course red opponent. The hybrid policy chooses among
+all 33 `SkillManager` skills and predicts the bounded numeric parameters of the chosen
+skill. `PilotTrainingConfig` centralizes the one-second planning horizon, 90-second
+episode cap, number of randomized geometries per epoch, checkpoint cadence, and total
+epochs. Training writes JSONL diagnostics, MLflow parameters/metrics, the improving
+best checkpoint, and seeded ACMI demonstration directories. Supply
+`PPOTrainer` with a `BluePilotEnvironment` factory backed by JSBSim; its narrow backend
+contract is documented in `bvr_behavior_prediction/rl/environment.py`.
+
 For a comparison of downloadable 1-v-1 policy resources, the bundled JSBSim PPO
 training path, and a concrete plan for producing classifier-compatible RL trajectories,
 see [`docs/jsbsim_1v1_ai_options.md`](docs/jsbsim_1v1_ai_options.md).
