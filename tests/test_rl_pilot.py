@@ -9,7 +9,7 @@ from bvr_behavior_prediction.rl.scenarios import ScenarioSampler
 def test_config_enforces_episode_and_scenario_requirements():
     assert PilotTrainingConfig().decisions_per_episode == 90
     with pytest.raises(ValueError):
-        PilotTrainingConfig(episode_duration_s=91)
+        PilotTrainingConfig(episode_duration_s=121)
     with pytest.raises(ValueError):
         PilotTrainingConfig(scenarios_per_epoch=2)
 
@@ -36,10 +36,11 @@ def test_reward_is_escalating_and_events_are_edge_triggered():
 
 
 def test_hybrid_policy_exposes_every_skill_and_nn_parameters():
-    pytest.importorskip("torch")
+    torch = pytest.importorskip("torch")
     from bvr_behavior_prediction.rl.pilot import HybridSkillPilot
 
     pilot = HybridSkillPilot(12, hidden_size=16)
+    assert isinstance(pilot.encoder, torch.nn.TransformerEncoder)
     assert len(pilot.skill_names) == 33
     name, params, _, _, raw = pilot.act(np.zeros(12, dtype=np.float32), deterministic=True)
     assert name in pilot.skill_names
@@ -50,3 +51,41 @@ def test_hybrid_policy_exposes_every_skill_and_nn_parameters():
         if contract[key]["type"] == "number":
             assert contract[key].get("minimum", -np.inf) <= value
             assert value <= contract[key].get("maximum", np.inf)
+
+
+def test_environment_builds_10_hz_history_with_separate_energy_features():
+    from bvr_behavior_prediction.rl.environment import BluePilotEnvironment
+
+    class Backend:
+        def __init__(self, *_):
+            self.tick = 0
+
+        def reset(self, seed):
+            return np.array([seed], dtype=np.float32), {
+                "blue_speed_mps": 200,
+                "blue_altitude_m": 6_000,
+                "red_speed_mps": 400,
+                "red_altitude_m": 12_000,
+            }
+
+        def step(self, blue, red):
+            self.tick += 1
+            return np.array([self.tick], dtype=np.float32), 0.0, False, {
+                "blue_speed_mps": 200 + self.tick,
+                "blue_altitude_m": 6_000,
+                "red_speed_mps": 400,
+                "red_altitude_m": 12_000,
+            }
+
+        def close(self):
+            pass
+
+    scenario = type("Scenario", (), {"as_dict": lambda self: {}})()
+    env = BluePilotEnvironment(Backend, scenario, planning_horizon_s=1.0)
+    initial = env.reset(3)
+    assert initial.shape == (20, 5)
+    np.testing.assert_allclose(initial[-1, 1:], [0.25, 0.5, 1.0, 1.0])
+    history, _, _, info = env.step("maintain_heading", {})
+    assert history.shape == (20, 5)
+    np.testing.assert_array_equal(history[-10:, 0], np.arange(1, 11))
+    assert info["elapsed_game_s"] == pytest.approx(1.0)

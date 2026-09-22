@@ -29,10 +29,13 @@ an end-to-end training skeleton.
 `bvr_behavior_prediction.rl` contains a PPO training path for a **blue-controlled**
 pilot against a level, constant-course red opponent. The hybrid policy chooses among
 all 33 `SkillManager` skills and predicts the bounded numeric parameters of the chosen
-skill. `PilotTrainingConfig` centralizes the one-second planning horizon, 90-second
-episode cap, number of randomized geometries per epoch, checkpoint cadence, and total
-epochs. Training writes JSONL diagnostics, MLflow parameters/metrics, the improving
-best checkpoint, and seeded ACMI demonstration directories. Supply
+skill. A transformer processes a rolling two-second, 10 Hz history containing the normal
+flight observations plus separate normalized kinetic- and potential-energy estimates for
+blue and red. `PilotTrainingConfig` centralizes that sampling/history setup, the one-second
+planning horizon, 90-second episode default, number of randomized geometries per epoch,
+checkpoint cadence, and total epochs. Training writes JSONL diagnostics, MLflow
+parameters/metrics, the improving best checkpoint, and seeded ACMI demonstration
+directories. Supply
 `PPOTrainer` with a `BluePilotEnvironment` factory backed by JSBSim; its narrow backend
 contract is documented in `bvr_behavior_prediction/rl/environment.py`.
 

@@ -40,7 +40,10 @@ Train the hybrid-action reinforcement-learning pilot with
 `04_train_rl_pilot.ipynb`. The notebook runs the production `PPOTrainer` against a fast,
 deterministic backend that implements the documented simulator contract, then plots return
 and PPO loss and inspects an evaluation rollout. This makes the complete training,
-checkpointing, MLflow, and diagnostics path reproducible without a native simulator. Replace
-only the notebook's backend factory to connect JSBSim/BVR Sim. Configure the example with
+checkpointing, MLflow, and diagnostics path reproducible without a native simulator. Its
+transformer receives two seconds of 10 Hz history, including separate kinetic and potential
+energy approximations for both aircraft. Replace only the notebook's backend factory to
+connect JSBSim/BVR Sim, ensuring its info mapping reports speed and altitude for both sides.
+Configure the example with
 `BVR_PILOT_EPOCHS`, `BVR_PILOT_EPISODE_SECONDS`, `BVR_PILOT_DEVICE`, and
 `BVR_PILOT_OUTPUT`.
