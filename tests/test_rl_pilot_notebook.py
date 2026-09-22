@@ -33,5 +33,6 @@ def test_rl_pilot_notebook_uses_real_pipeline_and_visualizes_after_training():
     assert "BluePilotEnvironment(" in source
     assert "PilotTrainingConfig(" in source
     assert "class LearningSmokeBackend:" in source
+    assert "OBSERVATION_SIZE = 8" in source
     assert 'pd.read_json(OUTPUT_DIR / "training_metrics.jsonl", lines=True)' in source
     assert training_index < plot_index
