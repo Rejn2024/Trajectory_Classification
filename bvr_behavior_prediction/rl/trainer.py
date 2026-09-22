@@ -30,7 +30,13 @@ class PPOTrainer:
     def __init__(self, env_factory, observation_size, config, device=None):
         self.env_factory, self.config = env_factory, config
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
-        self.pilot = HybridSkillPilot(observation_size, config.hidden_size).to(self.device)
+        self.pilot = HybridSkillPilot(
+            observation_size,
+            config.hidden_size,
+            history_steps=config.history_steps,
+            transformer_heads=config.transformer_heads,
+            transformer_layers=config.transformer_layers,
+        ).to(self.device)
         self.optimizer = torch.optim.Adam(self.pilot.parameters(), lr=config.learning_rate)
         self.sampler = ScenarioSampler(config.seed)
         self.output = Path(config.output_dir)

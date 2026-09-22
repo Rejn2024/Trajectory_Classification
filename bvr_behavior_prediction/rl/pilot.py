@@ -17,7 +17,15 @@ class HybridSkillPilot(nn.Module):
     by fixed primitive defaults.
     """
 
-    def __init__(self, observation_size: int, hidden_size: int = 256, manager=None):
+    def __init__(
+        self,
+        observation_size: int,
+        hidden_size: int = 256,
+        manager=None,
+        history_steps: int = 20,
+        transformer_heads: int = 4,
+        transformer_layers: int = 2,
+    ):
         super().__init__()
         self.manager = manager or SkillManager()
         self.skill_names = tuple(self.manager.list_skills())
@@ -26,19 +34,42 @@ class HybridSkillPilot(nn.Module):
             properties = self.manager.get_contract(name)["parameter_schema"]["properties"]
             numeric.update(key for key, schema in properties.items() if schema["type"] == "number")
         self.parameter_names = tuple(sorted(numeric))
-        self.encoder = nn.Sequential(
-            nn.Linear(observation_size, hidden_size),
-            nn.Tanh(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Tanh(),
+        if transformer_heads < 1 or transformer_layers < 1:
+            raise ValueError("transformer heads and layers must be positive")
+        if hidden_size % transformer_heads:
+            raise ValueError("hidden_size must be divisible by transformer_heads")
+        self.history_steps = history_steps
+        self.input_projection = nn.Linear(observation_size, hidden_size)
+        self.position_embedding = nn.Parameter(torch.zeros(1, history_steps, hidden_size))
+        layer = nn.TransformerEncoderLayer(
+            d_model=hidden_size,
+            nhead=transformer_heads,
+            dim_feedforward=hidden_size * 4,
+            dropout=0.0,
+            activation="gelu",
+            batch_first=True,
+            norm_first=True,
         )
+        self.encoder = nn.TransformerEncoder(
+            layer, transformer_layers, enable_nested_tensor=False
+        )
+        self.encoder_norm = nn.LayerNorm(hidden_size)
         self.skill_head = nn.Linear(hidden_size, len(self.skill_names))
         self.parameter_mean = nn.Linear(hidden_size, len(self.parameter_names))
         self.parameter_log_std = nn.Parameter(torch.full((len(self.parameter_names),), -0.5))
         self.value_head = nn.Linear(hidden_size, 1)
 
     def distributions(self, observations):
-        hidden = self.encoder(observations)
+        if observations.ndim == 2:
+            observations = observations.unsqueeze(1)
+        if observations.ndim != 3:
+            raise ValueError("observations must have shape (batch, time, features)")
+        if observations.shape[1] > self.history_steps:
+            raise ValueError("observation history exceeds configured history_steps")
+        tokens = self.input_projection(observations)
+        tokens = tokens + self.position_embedding[:, -tokens.shape[1] :]
+        # The newest token attends to the complete chronological energy/flight history.
+        hidden = self.encoder_norm(self.encoder(tokens)[:, -1])
         skill = Categorical(logits=self.skill_head(hidden))
         mean = self.parameter_mean(hidden)
         params = Normal(mean, self.parameter_log_std.clamp(-5, 2).exp().expand_as(mean))
