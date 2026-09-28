@@ -9,6 +9,7 @@ from bvr_behavior_prediction.rl.scenarios import ScenarioSampler
 def test_config_enforces_episode_and_scenario_requirements():
     config = PilotTrainingConfig()
     assert config.decisions_per_episode == 90
+    assert config.scenarios_per_epoch == 50
     assert config.evaluation_scenarios_per_epoch == 50
     with pytest.raises(ValueError):
         PilotTrainingConfig(episode_duration_s=121)
@@ -44,6 +45,32 @@ def test_evaluation_reuses_fixed_setups_seeds_and_deterministic_actions():
         for scenario, seed in zip(trainer.evaluation_scenarios, range(23, 26))
     ]
     assert trainer.pilot.training
+
+
+def test_trainer_establishes_fixed_training_setups_and_episode_seeds(tmp_path):
+    pytest.importorskip("torch")
+    pytest.importorskip("mlflow")
+    from bvr_behavior_prediction.rl.trainer import PPOTrainer
+
+    config = PilotTrainingConfig(
+        seed=23,
+        scenarios_per_epoch=50,
+        evaluation_scenarios_per_epoch=3,
+        hidden_size=16,
+        output_dir=tmp_path,
+    )
+    trainer = PPOTrainer(lambda *_: None, observation_size=1, config=config, device="cpu")
+
+    assert len(trainer.training_scenarios) == 50
+    assert trainer.training_scenarios == ScenarioSampler(23).sample_batch(50)
+    assert trainer.training_episode_seeds == tuple(range(23, 73))
+
+    calls = []
+    trainer._episode = lambda scenario, seed: calls.append((scenario, seed)) or (None, 0, None)
+    trainer._training_episodes()
+    trainer._training_episodes()
+    expected = list(zip(trainer.training_scenarios, trainer.training_episode_seeds))
+    assert calls == expected * 2
 
 
 def test_scenarios_are_reproducible_diverse_and_safe():

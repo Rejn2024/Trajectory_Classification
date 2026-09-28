@@ -39,7 +39,9 @@ def test_rl_pilot_notebook_uses_real_pipeline_and_visualizes_after_training():
     assert '"blue_speed_mps"' in source
     assert '"red_speed_mps"' in source
     assert 'pd.read_json(OUTPUT_DIR / "training_metrics.jsonl", lines=True)' in source
+    assert "scenarios_per_epoch=50" in source
     assert "evaluation_scenarios_per_epoch=50" in source
+    assert "Every epoch reuses those set-ups and their fixed simulator seeds" in source
     assert "generated once from the configured seed" in source
     assert 'metrics["evaluation_return_std"]' in source
     assert 'metrics["training_mean_return"]' in source

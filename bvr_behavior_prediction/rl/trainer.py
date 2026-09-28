@@ -39,6 +39,13 @@ class PPOTrainer:
         ).to(self.device)
         self.optimizer = torch.optim.Adam(self.pilot.parameters(), lr=config.learning_rate)
         self.sampler = ScenarioSampler(config.seed)
+        # Establish the randomized training geometries and simulator seeds once.
+        # Reusing both on every epoch prevents changing initial conditions from
+        # obscuring the effect of successive policy updates.
+        self.training_scenarios = self.sampler.sample_batch(config.scenarios_per_epoch)
+        self.training_episode_seeds = tuple(
+            config.seed + index for index in range(config.scenarios_per_epoch)
+        )
         # Evaluation uses an independent sampler so training-batch sampling cannot
         # alter the benchmark.  Materialising the set once guarantees that every
         # epoch sees exactly the same initial geometries.
@@ -95,6 +102,15 @@ class PPOTrainer:
         finally:
             self.pilot.train(was_training)
         return np.asarray(scores, dtype=np.float64)
+
+    def _training_episodes(self):
+        """Collect one epoch from the fixed training geometries and reset seeds."""
+        return [
+            self._episode(scenario, seed)
+            for scenario, seed in zip(
+                self.training_scenarios, self.training_episode_seeds
+            )
+        ]
 
     def _advantages(self, rollout):
         advantages, gae, next_value = [], 0.0, 0.0
@@ -167,11 +183,7 @@ class PPOTrainer:
             )
             mlflow.log_params(run_parameters)
             for epoch in range(1, self.config.epochs + 1):
-                scenarios = self.sampler.sample_batch(self.config.scenarios_per_epoch)
-                episodes = [
-                    self._episode(s, self.config.seed + epoch * 1000 + i)
-                    for i, s in enumerate(scenarios)
-                ]
+                episodes = self._training_episodes()
                 loss, scores = (
                     self._update([item[0] for item in episodes]),
                     [item[1] for item in episodes],
