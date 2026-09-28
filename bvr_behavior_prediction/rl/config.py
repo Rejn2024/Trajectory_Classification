@@ -91,7 +91,7 @@ class PilotTrainingConfig:
         """Number of concurrent environments; zero selects a conservative CPU default."""
         if self.simulator_workers:
             return self.simulator_workers
-        return min(8, os.cpu_count() or 1)
+        return min(10, os.cpu_count() or 1)
 
     def as_dict(self) -> dict:
         result = asdict(self)
