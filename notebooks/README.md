@@ -37,17 +37,16 @@ PyArrow 14.0.1 or newer because 14.0.1 includes PyArrow's own legacy-extension
 hotfix; restarting clears any partially imported pandas modules from the old session.
 
 Train the hybrid-action reinforcement-learning pilot with
-`04_train_rl_pilot.ipynb`. The notebook runs the production `PPOTrainer` against a fast,
-deterministic backend that implements the documented simulator contract, then plots return
-and PPO loss and inspects an evaluation rollout. This makes the complete training,
-checkpointing, MLflow, and diagnostics path reproducible without a native simulator. Its
+`04_train_rl_pilot.ipynb`. The notebook runs the production `PPOTrainer` against the
+repository-pinned Python BVR Sim environment and its JSBSim F-16 flight-dynamics model,
+then plots return and PPO loss and records deterministic final-model ACMI replays for every
+fixed evaluation scenario. A JSON manifest maps each Tacview file to its seed, scenario,
+return, and terminal information. Its
 transformer receives two seconds of 10 Hz history, including separate kinetic and potential
 energy approximations for both aircraft. After every epoch, the plotted pilot return is a
-deterministic evaluation over the same 50 seeded engagement set-ups; the separate training
-batch likewise reuses 50 randomly established set-ups and their fixed simulator seeds, while
-its return remains available in the diagnostics as a noisy on-policy measurement. The best
-checkpoint is selected by the fixed-set evaluation mean. Replace only the notebook's backend factory to
-connect JSBSim/BVR Sim, ensuring its info mapping reports speed and altitude for both sides.
-Configure the example with
-`BVR_PILOT_EPOCHS`, `BVR_PILOT_EPISODE_SECONDS`, `BVR_PILOT_DEVICE`, and
-`BVR_PILOT_OUTPUT`.
+deterministic evaluation over the same seeded engagement set-ups; the training batch likewise
+reuses its initially sampled set-ups and simulator seeds. The best checkpoint is selected by
+the fixed-set evaluation mean and reloaded before the final recorded flight. Install the
+`ml` and `video` extras, and use `BVR_PILOT_EPOCHS`, `BVR_PILOT_EPISODE_SECONDS`,
+`BVR_PILOT_SCENARIOS`, `BVR_PILOT_EVALUATION_SCENARIOS`, `BVR_PILOT_WORKERS`,
+`BVR_PILOT_DEVICE`, and `BVR_PILOT_OUTPUT` to configure the experiment.
