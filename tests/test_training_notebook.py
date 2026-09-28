@@ -92,12 +92,12 @@ def test_training_tracks_experiment_with_mlflow():
     assert "mlflow.log_artifact(" in source
 
 
-def test_training_handles_missing_git_without_mlflow_warning_noise():
+def test_training_silences_unavailable_or_misconfigured_git_warning_noise():
     source = _notebook_source()
 
-    assert 'if shutil.which("git") is None:' in source
-    assert 'os.environ.setdefault("GIT_PYTHON_REFRESH", "quiet")' in source
+    assert 'os.environ["GIT_PYTHON_REFRESH"] = "quiet"' in source
     assert 'logging.getLogger("mlflow.utils.git_utils").setLevel(logging.ERROR)' in source
+    assert source.index('GIT_PYTHON_REFRESH') < source.index("import mlflow")
 
 
 def test_training_prepares_windows_with_ram_accelerated_serialization():
