@@ -50,7 +50,13 @@ acceleration as `(R + U + E) / (R + U + E / evaluation_interval)`. For similarly
 training and evaluation batches where simulation dominates, the default approaches
 `2 / 1.2 = 1.67x`; the measured phase times and `estimated_epoch_speedup` are written to
 the per-epoch JSONL/MLflow diagnostics rather than attributing a hardware-independent
-number to mixed precision.
+number to mixed precision. The diagnostics also separate batched-policy time, concurrent
+simulator wall time, and summed simulator worker time. Their ratio reports the observed
+simulator parallel speedup, while `estimated_total_speedup` compares the optimized epoch
+with a conservative counterfactual that runs simulator steps sequentially and evaluates
+every epoch. PPO updates shuffle each training tensor once per update pass and then use
+zero-copy contiguous minibatch views; the mean loss is transferred to the CPU only once,
+eliminating five GPU gathers and one device synchronization per minibatch.
 
 For a comparison of downloadable 1-v-1 policy resources, the bundled JSBSim PPO
 training path, and a concrete plan for producing classifier-compatible RL trajectories,
