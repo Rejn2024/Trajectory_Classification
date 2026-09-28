@@ -27,7 +27,7 @@ def test_rl_pilot_notebook_uses_real_pipeline_and_visualizes_after_training():
     cells = _source_cells()
     source = "\n".join(cells)
     training_index = next(i for i, cell in enumerate(cells) if "trained_pilot = trainer.train()" in cell)
-    plot_index = next(i for i, cell in enumerate(cells) if 'axes[0].plot(metrics["epoch"]' in cell)
+    plot_index = next(i for i, cell in enumerate(cells) if 'axes[0].plot(epochs, evaluation_mean' in cell)
 
     assert "PPOTrainer(" in source
     assert "BluePilotEnvironment(" in source
@@ -39,4 +39,8 @@ def test_rl_pilot_notebook_uses_real_pipeline_and_visualizes_after_training():
     assert '"blue_speed_mps"' in source
     assert '"red_speed_mps"' in source
     assert 'pd.read_json(OUTPUT_DIR / "training_metrics.jsonl", lines=True)' in source
+    assert "evaluation_scenarios_per_epoch=50" in source
+    assert "generated once from the configured seed" in source
+    assert 'metrics["evaluation_return_std"]' in source
+    assert 'metrics["training_mean_return"]' in source
     assert training_index < plot_index

@@ -39,18 +39,26 @@ class PPOTrainer:
         ).to(self.device)
         self.optimizer = torch.optim.Adam(self.pilot.parameters(), lr=config.learning_rate)
         self.sampler = ScenarioSampler(config.seed)
+        # Evaluation uses an independent sampler so training-batch sampling cannot
+        # alter the benchmark.  Materialising the set once guarantees that every
+        # epoch sees exactly the same initial geometries.
+        self.evaluation_scenarios = ScenarioSampler(config.seed).sample_batch(
+            config.evaluation_scenarios_per_epoch
+        )
         self.output = Path(config.output_dir)
         self.output.mkdir(parents=True, exist_ok=True)
         self.diagnostics_path = self.output / "training_metrics.jsonl"
         self.best_score = -float("inf")
 
-    def _episode(self, scenario, seed, recording_path=None):
+    def _episode(self, scenario, seed, recording_path=None, deterministic=False):
         env = self.env_factory(scenario, recording_path)
         reward_fn, rollout = CombatReward(self.config.reward), Rollout([], [], [], [], [], [], [])
         obs, total, final_info = env.reset(seed), 0.0, {}
         try:
             for _ in range(self.config.decisions_per_episode):
-                name, params, logp, value, raw = self.pilot.act(obs)
+                name, params, logp, value, raw = self.pilot.act(
+                    obs, deterministic=deterministic
+                )
                 next_obs, terminated, truncated, info = env.step(name, params)
                 reward, components = reward_fn(info)
                 rollout.observations.append(obs)
@@ -70,6 +78,23 @@ class PPOTrainer:
         finally:
             env.close()
         return rollout, total, final_info
+
+    def _evaluate(self):
+        """Evaluate deterministically on the fixed scenario and episode seeds."""
+        was_training = self.pilot.training
+        self.pilot.eval()
+        try:
+            scores = [
+                self._episode(
+                    scenario,
+                    self.config.seed + index,
+                    deterministic=True,
+                )[1]
+                for index, scenario in enumerate(self.evaluation_scenarios)
+            ]
+        finally:
+            self.pilot.train(was_training)
+        return np.asarray(scores, dtype=np.float64)
 
     def _advantages(self, rollout):
         advantages, gae, next_value = [], 0.0, 0.0
@@ -151,12 +176,17 @@ class PPOTrainer:
                     self._update([item[0] for item in episodes]),
                     [item[1] for item in episodes],
                 )
+                evaluation_scores = self._evaluate()
+                evaluation_mean = float(np.mean(evaluation_scores))
                 metrics = {
                     "epoch": epoch,
-                    "mean_return": float(np.mean(scores)),
+                    "mean_return": evaluation_mean,
+                    "evaluation_return_std": float(np.std(evaluation_scores)),
+                    "training_mean_return": float(np.mean(scores)),
                     "loss": loss,
                     "episodes": len(scores),
-                    "best_return": max(self.best_score, float(np.mean(scores))),
+                    "evaluation_episodes": len(evaluation_scores),
+                    "best_return": max(self.best_score, evaluation_mean),
                 }
                 with self.diagnostics_path.open("a", encoding="utf8") as stream:
                     stream.write(json.dumps(metrics) + "\n")
@@ -166,8 +196,8 @@ class PPOTrainer:
                         f"epoch={epoch:04d} return={metrics['mean_return']:.2f} loss={loss:.4f}",
                         flush=True,
                     )
-                if metrics["mean_return"] > self.best_score:
-                    self.best_score = metrics["mean_return"]
+                if evaluation_mean > self.best_score:
+                    self.best_score = evaluation_mean
                     torch.save(self.pilot.state_dict(), self.output / "best_model.pt")
                 if epoch % self.config.checkpoint_interval == 0:
                     demo_dir = self.output / "demonstrations" / f"epoch_{epoch:04d}"
