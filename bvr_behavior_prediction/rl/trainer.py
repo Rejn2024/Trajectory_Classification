@@ -9,6 +9,7 @@ from time import perf_counter
 import mlflow
 import numpy as np
 import torch
+from tqdm.auto import tqdm
 
 from .pilot import HybridSkillPilot
 from .reward import CombatReward
@@ -242,6 +243,15 @@ class PPOTrainer:
                 {f"reward.{key}": value for key, value in reward_parameters.items()}
             )
             mlflow.log_params(run_parameters)
+            progress = tqdm(
+                total=self.config.epochs,
+                desc="Training",
+                unit="epoch",
+                bar_format=(
+                    "{l_bar}{bar}| {n_fmt}/{total_fmt} epochs "
+                    "[elapsed {elapsed} < ETA {remaining}, {rate_fmt}{postfix}]"
+                ),
+            )
             for epoch in range(1, self.config.epochs + 1):
                 epoch_started = perf_counter()
                 episodes = self._training_episodes()
@@ -268,16 +278,7 @@ class PPOTrainer:
                     "rollout_seconds": rollout_seconds,
                     "update_seconds": update_seconds,
                     "evaluation_seconds": evaluation_seconds,
-                    "epoch_seconds": perf_counter() - epoch_started,
                 }
-                with self.diagnostics_path.open("a", encoding="utf8") as stream:
-                    stream.write(json.dumps(metrics) + "\n")
-                mlflow.log_metrics({k: v for k, v in metrics.items() if k != "epoch"}, step=epoch)
-                if epoch % self.config.diagnostic_interval == 0:
-                    print(
-                        f"epoch={epoch:04d} return={metrics['mean_return']:.2f} loss={loss:.4f}",
-                        flush=True,
-                    )
                 if evaluation_mean > self.best_score:
                     self.best_score = evaluation_mean
                     torch.save(self.pilot.state_dict(), self.output / "best_model.pt")
@@ -307,6 +308,18 @@ class PPOTrainer:
                     mlflow.log_artifacts(
                         str(demo_dir), artifact_path=f"demonstrations/epoch_{epoch:04d}"
                     )
+                metrics["epoch_seconds"] = perf_counter() - epoch_started
+                with self.diagnostics_path.open("a", encoding="utf8") as stream:
+                    stream.write(json.dumps(metrics) + "\n")
+                mlflow.log_metrics({k: v for k, v in metrics.items() if k != "epoch"}, step=epoch)
+                progress.set_postfix(
+                    epoch=f"{metrics['epoch_seconds']:.1f}s",
+                    loss=f"{loss:.4f}",
+                    return_=f"{evaluation_mean:.2f}",
+                    refresh=False,
+                )
+                progress.update()
+            progress.close()
             self.pilot.load_state_dict(
                 torch.load(
                     self.output / "best_model.pt", map_location=self.device, weights_only=True
