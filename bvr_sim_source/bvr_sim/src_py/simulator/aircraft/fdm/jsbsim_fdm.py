@@ -3,11 +3,10 @@ import numpy as np
 import math
 from .base import BaseFDM
 from bvr_sim.resource_paths import get_jsbsim_dir
-from bvr_sim.uhtk.c3utils.i3utils import norm_pi, NWU_to_LLA_deg, LLA_to_NWU_deg, feet_to_meters, meters_to_feet, get_mps, get_mach, Vector3
+from bvr_sim.uhtk.c3utils.i3utils import Vector3, meters_to_feet, norm_pi
 from ...simulator import NWU2LLA, LLA2NWU
 from ..fc.fc_old import StdFlightController
-from bvr_sim.uhtk.print_pack import print_green, print_red, print_blue, print_dict
-from .catalog import Catalog, JsbsimCatalog, ExtraCatalog, Property
+from .catalog import Catalog, Property
 
 if TYPE_CHECKING:
     import jsbsim
@@ -67,7 +66,6 @@ class JSBSimFDM(BaseFDM):
             assert isinstance(props, list)
         Catalog.add_jsbsim_props(props)
 
-        print_red(f"JSBSim dt: {self._jsbsim_inner_dt}")
         self._jsbsim_exec.set_dt(self._jsbsim_inner_dt)
 
         self._clear_default_condition()
@@ -125,8 +123,6 @@ class JSBSimFDM(BaseFDM):
         self._update_properties()
         self._initialized = True
 
-        print_green(f"JSBSim {self.aircraft_model} reset at ({lon:.2f} E, {lat:.2f} N, N{self.position[0]:.2f}, W{self.position[1]:.2f}, U(true alt){alt:.0f}m, {meters_to_feet(alt):.0f}ft, {np.rad2deg(yaw):.2f} deg)")
-
     def get_mach(self) -> float:
         return self.mach
 
@@ -137,7 +133,8 @@ class JSBSimFDM(BaseFDM):
         delta_pitch = -np.clip(action['delta_altitude'], -1, 1) * np.deg2rad(60)
         delta_pitch = self.fc_delta_pitch_filter.update(delta_pitch)
         self._delta_pitch = delta_pitch
-        fix_vec = self.get_heading_vec(); fix_vec[2] = 0
+        fix_vec = self.get_heading_vec()
+        fix_vec[2] = 0
         fix_vec = fix_vec.rotate_zyx_self(0, delta_pitch, delta_heading)
 
         mach = self.get_mach()
@@ -156,7 +153,8 @@ class JSBSimFDM(BaseFDM):
             fake_fighter.height = self.position[2]
             fake_fighter.heading = Vector3([1,0,0]).rotate_zyx_self(self.roll, -self.pitch, -self.yaw)
 
-            fix_vec_neu = fix_vec.copy(); fix_vec_neu[1] = -fix_vec_neu[1]
+            fix_vec_neu = fix_vec.copy()
+            fix_vec_neu[1] = -fix_vec_neu[1]
             control_commands = self.fc.direct_LU_flight_controler(
                 fighter=fake_fighter,
                 fix_vec=fix_vec_neu,

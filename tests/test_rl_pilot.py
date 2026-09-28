@@ -136,6 +136,22 @@ def test_cpp_simulator_releases_gil_while_advancing():
     assert 'py::arg("steps"), py::call_guard<py::gil_scoped_release>())' in bindings
 
 
+def test_trainer_reports_epoch_timing_and_overall_eta():
+    source = Path("bvr_behavior_prediction/rl/trainer.py").read_text()
+    assert 'desc="Training"' in source
+    assert 'unit="epoch"' in source
+    assert "elapsed {elapsed} < ETA {remaining}" in source
+    assert 'epoch=f"{metrics[\'epoch_seconds\']:.1f}s"' in source
+
+
+def test_jsbsim_fdm_does_not_print_routine_startup_diagnostics():
+    source = Path(
+        "bvr_sim_source/bvr_sim/src_py/simulator/aircraft/fdm/jsbsim_fdm.py"
+    ).read_text()
+    assert 'print_red(f"JSBSim dt:' not in source
+    assert 'print_green(f"JSBSim {self.aircraft_model} reset at' not in source
+
+
 def test_scenarios_are_reproducible_diverse_and_safe():
     first = ScenarioSampler(42).sample_batch(3)
     second = ScenarioSampler(42).sample_batch(3)
