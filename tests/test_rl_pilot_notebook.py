@@ -27,6 +27,9 @@ def test_rl_pilot_notebook_uses_real_pipeline_and_visualizes_after_training():
     cells = _source_cells()
     source = "\n".join(cells)
     training_index = next(i for i, cell in enumerate(cells) if "trained_pilot = trainer.train()" in cell)
+    replay_index = next(
+        i for i, cell in enumerate(cells) if "final_evaluation_manifest = []" in cell
+    )
     plot_index = next(i for i, cell in enumerate(cells) if 'axes[0].plot(epochs, evaluation_mean' in cell)
 
     assert "PPOTrainer(" in source
@@ -46,6 +49,11 @@ def test_rl_pilot_notebook_uses_real_pipeline_and_visualizes_after_training():
     assert "generated once from the configured seed" in source
     assert 'metrics["evaluation_return_std"]' in source
     assert 'metrics["training_mean_return"]' in source
-    assert 'OUTPUT_DIR / "final_evaluation" / "blue_vs_red.acmi"' in source
-    assert "recording_path=final_acmi, deterministic=True" in source
-    assert training_index < plot_index
+    assert 'FINAL_EVALUATION_DIR = OUTPUT_DIR / "final_evaluation"' in source
+    assert "for index, scenario in enumerate(trainer.evaluation_scenarios):" in source
+    assert "episode_seed = config.seed + index" in source
+    assert 'f"scenario_{index:03d}_seed_{episode_seed}.txt.acmi"' in source
+    assert "recording_path=acmi_path" in source
+    assert "deterministic=True" in source
+    assert 'FINAL_EVALUATION_DIR / "manifest.json"' in source
+    assert training_index < replay_index < plot_index

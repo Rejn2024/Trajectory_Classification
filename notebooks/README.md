@@ -39,7 +39,9 @@ hotfix; restarting clears any partially imported pandas modules from the old ses
 Train the hybrid-action reinforcement-learning pilot with
 `04_train_rl_pilot.ipynb`. The notebook runs the production `PPOTrainer` against the
 repository-pinned Python BVR Sim environment and its JSBSim F-16 flight-dynamics model,
-then plots return and PPO loss and records a deterministic final-model ACMI replay. Its
+then plots return and PPO loss and records deterministic final-model ACMI replays for every
+fixed evaluation scenario. A JSON manifest maps each Tacview file to its seed, scenario,
+return, and terminal information. Its
 transformer receives two seconds of 10 Hz history, including separate kinetic and potential
 energy approximations for both aircraft. After every epoch, the plotted pilot return is a
 deterministic evaluation over the same seeded engagement set-ups; the training batch likewise
