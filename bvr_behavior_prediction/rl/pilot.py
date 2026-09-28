@@ -79,7 +79,7 @@ class HybridSkillPilot(nn.Module):
 
     def act(self, observation, deterministic=False):
         actions = self.act_batch(np.asarray(observation)[None], deterministic=deterministic)
-        return tuple(item[0] for item in actions)
+        return actions[0]
 
     def act_batch(self, observations, deterministic=False):
         """Choose actions for multiple simulators in one accelerator forward pass."""
