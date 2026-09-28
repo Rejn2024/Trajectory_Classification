@@ -29,9 +29,13 @@ class HybridSkillPilot(nn.Module):
         super().__init__()
         self.manager = manager or SkillManager()
         self.skill_names = tuple(self.manager.list_skills())
+        self._skill_indices = {name: index for index, name in enumerate(self.skill_names)}
+        self._skill_contracts = tuple(
+            self.manager.get_contract(name)["parameter_schema"]["properties"]
+            for name in self.skill_names
+        )
         numeric = set()
-        for name in self.skill_names:
-            properties = self.manager.get_contract(name)["parameter_schema"]["properties"]
+        for properties in self._skill_contracts:
             numeric.update(key for key, schema in properties.items() if schema["type"] == "number")
         self.parameter_names = tuple(sorted(numeric))
         if transformer_heads < 1 or transformer_layers < 1:
@@ -81,7 +85,9 @@ class HybridSkillPilot(nn.Module):
         """Choose actions for multiple simulators in one accelerator forward pass."""
         device = next(self.parameters()).device
         obs = torch.as_tensor(observations, dtype=torch.float32, device=device)
-        with torch.no_grad():
+        # Rollouts only retain plain numbers, so inference mode can also skip
+        # autograd's version-counter bookkeeping.
+        with torch.inference_mode():
             skill_dist, param_dist, value = self.distributions(obs)
             skill_index = skill_dist.probs.argmax(-1) if deterministic else skill_dist.sample()
             raw = param_dist.mean if deterministic else param_dist.sample()
@@ -104,8 +110,7 @@ class HybridSkillPilot(nn.Module):
         )
 
     def decode_parameters(self, skill_index: int, raw_values) -> dict:
-        contract = self.manager.get_contract(self.skill_names[skill_index])
-        schemas = contract["parameter_schema"]["properties"]
+        schemas = self._skill_contracts[skill_index]
         raw_by_name = dict(zip(self.parameter_names, np.asarray(raw_values)))
         result = {}
         for name, schema in schemas.items():

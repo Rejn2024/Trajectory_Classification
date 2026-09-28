@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
+from time import perf_counter
 
 import mlflow
 import numpy as np
@@ -38,7 +39,14 @@ class PPOTrainer:
             transformer_heads=config.transformer_heads,
             transformer_layers=config.transformer_layers,
         ).to(self.device)
-        self.optimizer = torch.optim.Adam(self.pilot.parameters(), lr=config.learning_rate)
+        adam_options = {"fused": True} if self.device.type == "cuda" else {}
+        self.optimizer = torch.optim.Adam(
+            self.pilot.parameters(), lr=config.learning_rate, **adam_options
+        )
+        if self.device.type == "cuda":
+            # Use TensorFloat-32 matrix multiplies where supported. This changes
+            # neither the network nor the number of PPO updates.
+            torch.set_float32_matmul_precision("high")
         self.sampler = ScenarioSampler(config.seed)
         # Establish the randomized training geometries and simulator seeds once.
         # Reusing both on every epoch prevents changing initial conditions from
@@ -68,7 +76,7 @@ class PPOTrainer:
                 next_obs, terminated, truncated, info = env.step(name, params)
                 reward, components = reward_fn(info)
                 rollout.observations.append(obs)
-                rollout.skills.append(self.pilot.skill_names.index(name))
+                rollout.skills.append(self.pilot._skill_indices[name])
                 rollout.parameters.append(raw)
                 rollout.log_probs.append(logp)
                 rollout.values.append(value)
@@ -147,7 +155,7 @@ class PPOTrainer:
                         reward, components = rewards[index](info)
                         rollout = rollouts[index]
                         rollout.observations.append(observations[index])
-                        rollout.skills.append(self.pilot.skill_names.index(name))
+                        rollout.skills.append(self.pilot._skill_indices[name])
                         rollout.parameters.append(raw)
                         rollout.log_probs.append(logp)
                         rollout.values.append(value)
@@ -217,7 +225,7 @@ class PPOTrainer:
                     + self.config.value_coefficient * (values - ret[indices]).pow(2).mean()
                     - self.config.entropy_coefficient * entropy.mean()
                 )
-                self.optimizer.zero_grad()
+                self.optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.pilot.parameters(), self.config.gradient_clip)
                 self.optimizer.step()
@@ -235,12 +243,18 @@ class PPOTrainer:
             )
             mlflow.log_params(run_parameters)
             for epoch in range(1, self.config.epochs + 1):
+                epoch_started = perf_counter()
                 episodes = self._training_episodes()
+                rollout_seconds = perf_counter() - epoch_started
+                update_started = perf_counter()
                 loss, scores = (
                     self._update([item[0] for item in episodes]),
                     [item[1] for item in episodes],
                 )
+                update_seconds = perf_counter() - update_started
+                evaluation_started = perf_counter()
                 evaluation_scores = self._evaluate()
+                evaluation_seconds = perf_counter() - evaluation_started
                 evaluation_mean = float(np.mean(evaluation_scores))
                 metrics = {
                     "epoch": epoch,
@@ -251,6 +265,10 @@ class PPOTrainer:
                     "episodes": len(scores),
                     "evaluation_episodes": len(evaluation_scores),
                     "best_return": max(self.best_score, evaluation_mean),
+                    "rollout_seconds": rollout_seconds,
+                    "update_seconds": update_seconds,
+                    "evaluation_seconds": evaluation_seconds,
+                    "epoch_seconds": perf_counter() - epoch_started,
                 }
                 with self.diagnostics_path.open("a", encoding="utf8") as stream:
                     stream.write(json.dumps(metrics) + "\n")

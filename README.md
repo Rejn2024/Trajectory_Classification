@@ -39,6 +39,13 @@ directories. Supply
 `PPOTrainer` with a `BluePilotEnvironment` factory backed by JSBSim; its narrow backend
 contract is documented in `bvr_behavior_prediction/rl/environment.py`.
 
+Training throughput is improved without reducing scenario or epoch counts: independent
+simulators advance concurrently, policy inference is batched and uses PyTorch inference
+mode, skill contracts are cached instead of reparsed on every action, and CUDA runs use
+fused Adam plus high-precision TF32 matrix multiplication. Per-epoch diagnostics include
+separate `rollout_seconds`, `update_seconds`, and `evaluation_seconds` measurements so the
+next bottleneck can be identified on the target machine rather than guessed.
+
 For a comparison of downloadable 1-v-1 policy resources, the bundled JSBSim PPO
 training path, and a concrete plan for producing classifier-compatible RL trajectories,
 see [`docs/jsbsim_1v1_ai_options.md`](docs/jsbsim_1v1_ai_options.md).
