@@ -24,7 +24,7 @@ class PilotTrainingConfig:
 
     planning_horizon_s: float = 1.0
     episode_duration_s: float = 90.0
-    scenarios_per_epoch: int = 3
+    scenarios_per_epoch: int = 50
     evaluation_scenarios_per_epoch: int = 50
     epochs: int = 100
     simulation_dt_s: float = 0.1

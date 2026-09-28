@@ -44,7 +44,8 @@ checkpointing, MLflow, and diagnostics path reproducible without a native simula
 transformer receives two seconds of 10 Hz history, including separate kinetic and potential
 energy approximations for both aircraft. After every epoch, the plotted pilot return is a
 deterministic evaluation over the same 50 seeded engagement set-ups; the separate training
-return remains available in the diagnostics as a noisy on-policy measurement. The best
+batch likewise reuses 50 randomly established set-ups and their fixed simulator seeds, while
+its return remains available in the diagnostics as a noisy on-policy measurement. The best
 checkpoint is selected by the fixed-set evaluation mean. Replace only the notebook's backend factory to
 connect JSBSim/BVR Sim, ensuring its info mapping reports speed and altitude for both sides.
 Configure the example with
