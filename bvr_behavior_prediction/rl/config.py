@@ -1,6 +1,7 @@
 """Configuration for the short-horizon hybrid-action pilot."""
 
 from dataclasses import asdict, dataclass, field
+import os
 from pathlib import Path
 
 
@@ -26,6 +27,7 @@ class PilotTrainingConfig:
     episode_duration_s: float = 90.0
     scenarios_per_epoch: int = 50
     evaluation_scenarios_per_epoch: int = 50
+    simulator_workers: int = 0
     epochs: int = 100
     simulation_dt_s: float = 0.1
     seed: int = 7
@@ -59,6 +61,8 @@ class PilotTrainingConfig:
             raise ValueError("scenarios_per_epoch must be at least 3")
         if self.evaluation_scenarios_per_epoch < 3:
             raise ValueError("evaluation_scenarios_per_epoch must be at least 3")
+        if self.simulator_workers < 0:
+            raise ValueError("simulator_workers must be non-negative")
         if self.epochs < 1 or self.simulation_dt_s <= 0:
             raise ValueError("epochs and simulation_dt_s must be positive")
         if self.history_duration_s <= 0 or self.sample_interval_s <= 0:
@@ -78,7 +82,15 @@ class PilotTrainingConfig:
     def history_steps(self) -> int:
         return int(round(self.history_duration_s / self.sample_interval_s))
 
+    @property
+    def resolved_simulator_workers(self) -> int:
+        """Number of concurrent environments; zero selects a conservative CPU default."""
+        if self.simulator_workers:
+            return self.simulator_workers
+        return min(8, os.cpu_count() or 1)
+
     def as_dict(self) -> dict:
         result = asdict(self)
         result["output_dir"] = str(self.output_dir)
+        result["resolved_simulator_workers"] = self.resolved_simulator_workers
         return result

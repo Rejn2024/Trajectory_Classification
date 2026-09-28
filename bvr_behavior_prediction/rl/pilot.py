@@ -50,9 +50,7 @@ class HybridSkillPilot(nn.Module):
             batch_first=True,
             norm_first=True,
         )
-        self.encoder = nn.TransformerEncoder(
-            layer, transformer_layers, enable_nested_tensor=False
-        )
+        self.encoder = nn.TransformerEncoder(layer, transformer_layers, enable_nested_tensor=False)
         self.encoder_norm = nn.LayerNorm(hidden_size)
         self.skill_head = nn.Linear(hidden_size, len(self.skill_names))
         self.parameter_mean = nn.Linear(hidden_size, len(self.parameter_names))
@@ -76,21 +74,33 @@ class HybridSkillPilot(nn.Module):
         return skill, params, self.value_head(hidden).squeeze(-1)
 
     def act(self, observation, deterministic=False):
+        actions = self.act_batch(np.asarray(observation)[None], deterministic=deterministic)
+        return tuple(item[0] for item in actions)
+
+    def act_batch(self, observations, deterministic=False):
+        """Choose actions for multiple simulators in one accelerator forward pass."""
         device = next(self.parameters()).device
-        obs = torch.as_tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
+        obs = torch.as_tensor(observations, dtype=torch.float32, device=device)
         with torch.no_grad():
             skill_dist, param_dist, value = self.distributions(obs)
             skill_index = skill_dist.probs.argmax(-1) if deterministic else skill_dist.sample()
             raw = param_dist.mean if deterministic else param_dist.sample()
             log_prob = skill_dist.log_prob(skill_index) + param_dist.log_prob(raw).sum(-1)
-        index = int(skill_index.item())
-        params = self.decode_parameters(index, raw[0].cpu().numpy())
-        return (
-            self.skill_names[index],
-            params,
-            float(log_prob.item()),
-            float(value.item()),
-            raw[0].cpu().numpy(),
+        indices = skill_index.cpu().tolist()
+        raw_cpu = raw.cpu().numpy()
+        log_prob_cpu = log_prob.cpu().tolist()
+        value_cpu = value.cpu().tolist()
+        return tuple(
+            (
+                self.skill_names[index],
+                self.decode_parameters(index, raw_values),
+                float(action_log_prob),
+                float(action_value),
+                raw_values,
+            )
+            for index, raw_values, action_log_prob, action_value in zip(
+                indices, raw_cpu, log_prob_cpu, value_cpu
+            )
         )
 
     def decode_parameters(self, skill_index: int, raw_values) -> dict:

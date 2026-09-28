@@ -1,6 +1,7 @@
 """Batched PPO training, diagnostics, MLflow tracking, and replay checkpoints."""
 
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 
@@ -63,9 +64,7 @@ class PPOTrainer:
         obs, total, final_info = env.reset(seed), 0.0, {}
         try:
             for _ in range(self.config.decisions_per_episode):
-                name, params, logp, value, raw = self.pilot.act(
-                    obs, deterministic=deterministic
-                )
+                name, params, logp, value, raw = self.pilot.act(obs, deterministic=deterministic)
                 next_obs, terminated, truncated, info = env.step(name, params)
                 reward, components = reward_fn(info)
                 rollout.observations.append(obs)
@@ -92,12 +91,14 @@ class PPOTrainer:
         self.pilot.eval()
         try:
             scores = [
-                self._episode(
-                    scenario,
-                    self.config.seed + index,
+                item[1]
+                for item in self._episodes(
+                    self.evaluation_scenarios,
+                    tuple(
+                        self.config.seed + index for index in range(len(self.evaluation_scenarios))
+                    ),
                     deterministic=True,
-                )[1]
-                for index, scenario in enumerate(self.evaluation_scenarios)
+                )
             ]
         finally:
             self.pilot.train(was_training)
@@ -105,12 +106,63 @@ class PPOTrainer:
 
     def _training_episodes(self):
         """Collect one epoch from the fixed training geometries and reset seeds."""
-        return [
-            self._episode(scenario, seed)
-            for scenario, seed in zip(
-                self.training_scenarios, self.training_episode_seeds
-            )
-        ]
+        return self._episodes(self.training_scenarios, self.training_episode_seeds)
+
+    def _episodes(self, scenarios, seeds, deterministic=False):
+        """Run independent simulators concurrently and batch policy work on the GPU."""
+        environments = [self.env_factory(scenario, None) for scenario in scenarios]
+        rollouts = [Rollout([], [], [], [], [], [], []) for _ in environments]
+        totals = [0.0] * len(environments)
+        final_info = [{} for _ in environments]
+        active = list(range(len(environments)))
+
+        try:
+            with ThreadPoolExecutor(
+                max_workers=min(self.config.resolved_simulator_workers, len(environments))
+            ) as executor:
+                observations = list(
+                    executor.map(lambda item: item[0].reset(item[1]), zip(environments, seeds))
+                )
+                rewards = [CombatReward(self.config.reward) for _ in environments]
+                for _ in range(self.config.decisions_per_episode):
+                    if not active:
+                        break
+                    actions = self.pilot.act_batch(
+                        np.stack([observations[index] for index in active]),
+                        deterministic=deterministic,
+                    )
+                    steps = list(
+                        executor.map(
+                            lambda item: item[0].step(item[1][0], item[1][1]),
+                            (
+                                (environments[index], action)
+                                for index, action in zip(active, actions)
+                            ),
+                        )
+                    )
+                    next_active = []
+                    for index, action, step in zip(active, actions, steps):
+                        name, _, logp, value, raw = action
+                        next_obs, terminated, truncated, info = step
+                        reward, components = rewards[index](info)
+                        rollout = rollouts[index]
+                        rollout.observations.append(observations[index])
+                        rollout.skills.append(self.pilot.skill_names.index(name))
+                        rollout.parameters.append(raw)
+                        rollout.log_probs.append(logp)
+                        rollout.values.append(value)
+                        rollout.rewards.append(reward)
+                        rollout.dones.append(terminated or truncated)
+                        totals[index] += reward
+                        observations[index] = next_obs
+                        final_info[index] = {**info, "reward_components": components}
+                        if not (terminated or truncated):
+                            next_active.append(index)
+                    active = next_active
+        finally:
+            for environment in environments:
+                environment.close()
+        return list(zip(rollouts, totals, final_info))
 
     def _advantages(self, rollout):
         advantages, gae, next_value = [], 0.0, 0.0
