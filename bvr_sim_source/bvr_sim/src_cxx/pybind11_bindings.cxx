@@ -104,10 +104,12 @@ PYBIND11_MODULE(bvr_sim_cpp, m) {
         .def("stop", &SimCore::stop)
         .def("pause", &SimCore::pause)
         .def("resume", &SimCore::resume)
-        .def("step", &SimCore::step)
+        // Simulation is CPU-bound and independent across SimCore instances.  Do
+        // not serialize Python worker threads on the GIL while C++ advances one.
+        .def("step", &SimCore::step, py::call_guard<py::gil_scoped_release>())
         .def("step_sync", [](SimCore& self, int steps) {
             self.step(steps);
-        }, py::arg("steps"))
+        }, py::arg("steps"), py::call_guard<py::gil_scoped_release>())
         .def("handle", [](SimCore& self, const std::string& cmd) -> py::object {
             auto result = self.handle(cmd);
             return json_to_python(result);
@@ -178,4 +180,3 @@ PYBIND11_MODULE(bvr_sim_cpp, m) {
         .def("get_obs_dim", &RLManager::get_obs_dim);
 
 }
-

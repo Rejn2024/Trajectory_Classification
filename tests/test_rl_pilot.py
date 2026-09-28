@@ -1,5 +1,8 @@
 import numpy as np
 import pytest
+import threading
+import time
+from pathlib import Path
 
 from bvr_behavior_prediction.rl.config import PilotTrainingConfig, RewardWeights
 from bvr_behavior_prediction.rl.reward import CombatReward
@@ -11,12 +14,15 @@ def test_config_enforces_episode_and_scenario_requirements():
     assert config.decisions_per_episode == 90
     assert config.scenarios_per_epoch == 50
     assert config.evaluation_scenarios_per_epoch == 50
+    assert 1 <= config.resolved_simulator_workers <= 8
     with pytest.raises(ValueError):
         PilotTrainingConfig(episode_duration_s=121)
     with pytest.raises(ValueError):
         PilotTrainingConfig(scenarios_per_epoch=2)
     with pytest.raises(ValueError):
         PilotTrainingConfig(evaluation_scenarios_per_epoch=2)
+    with pytest.raises(ValueError):
+        PilotTrainingConfig(simulator_workers=-1)
 
 
 def test_evaluation_reuses_fixed_setups_seeds_and_deterministic_actions():
@@ -29,20 +35,19 @@ def test_evaluation_reuses_fixed_setups_seeds_and_deterministic_actions():
     trainer.pilot = torch.nn.Linear(1, 1)
     calls = []
 
-    def episode(scenario, seed, recording_path=None, deterministic=False):
-        calls.append((scenario, seed, deterministic, trainer.pilot.training))
-        return None, float(seed), None
+    def episodes(scenarios, seeds, deterministic=False):
+        calls.append((tuple(scenarios), tuple(seeds), deterministic, trainer.pilot.training))
+        return [(None, float(seed), None) for seed in seeds]
 
-    trainer._episode = episode
+    trainer._episodes = episodes
     first = trainer._evaluate()
     second = trainer._evaluate()
 
     np.testing.assert_array_equal(first, [23.0, 24.0, 25.0])
     np.testing.assert_array_equal(second, first)
     assert calls == [
-        (scenario, seed, True, False)
-        for _ in range(2)
-        for scenario, seed in zip(trainer.evaluation_scenarios, range(23, 26))
+        (("first", "second", "third"), (23, 24, 25), True, False),
+        (("first", "second", "third"), (23, 24, 25), True, False),
     ]
     assert trainer.pilot.training
 
@@ -66,11 +71,69 @@ def test_trainer_establishes_fixed_training_setups_and_episode_seeds(tmp_path):
     assert trainer.training_episode_seeds == tuple(range(23, 73))
 
     calls = []
-    trainer._episode = lambda scenario, seed: calls.append((scenario, seed)) or (None, 0, None)
+    trainer._episodes = lambda scenarios, seeds: calls.extend(zip(scenarios, seeds)) or []
     trainer._training_episodes()
     trainer._training_episodes()
     expected = list(zip(trainer.training_scenarios, trainer.training_episode_seeds))
     assert calls == expected * 2
+
+
+def test_episode_collection_parallelizes_simulators_and_batches_policy(tmp_path):
+    pytest.importorskip("torch")
+    pytest.importorskip("mlflow")
+    from bvr_behavior_prediction.rl.trainer import PPOTrainer
+
+    lock = threading.Lock()
+    concurrent = 0
+    peak_concurrent = 0
+
+    class Environment:
+        def reset(self, seed):
+            return np.full((1, 1), seed, dtype=np.float32)
+
+        def step(self, _name, _parameters):
+            nonlocal concurrent, peak_concurrent
+            with lock:
+                concurrent += 1
+                peak_concurrent = max(peak_concurrent, concurrent)
+            time.sleep(0.03)
+            with lock:
+                concurrent -= 1
+            return np.zeros((1, 1), dtype=np.float32), True, False, {}
+
+        def close(self):
+            pass
+
+    config = PilotTrainingConfig(
+        episode_duration_s=1,
+        scenarios_per_epoch=3,
+        evaluation_scenarios_per_epoch=3,
+        simulator_workers=3,
+        hidden_size=16,
+        history_duration_s=1,
+        sample_interval_s=1,
+        output_dir=tmp_path,
+    )
+    trainer = PPOTrainer(lambda *_: Environment(), 1, config, device="cpu")
+    batch_sizes = []
+
+    def act_batch(observations, deterministic=False):
+        batch_sizes.append(len(observations))
+        raw = np.zeros(len(trainer.pilot.parameter_names), dtype=np.float32)
+        return tuple(("maintain_heading", {}, 0.0, 0.0, raw.copy()) for _ in observations)
+
+    trainer.pilot.act_batch = act_batch
+    episodes = trainer._episodes([object()] * 3, (1, 2, 3))
+
+    assert len(episodes) == 3
+    assert batch_sizes == [3]
+    assert peak_concurrent == 3
+
+
+def test_cpp_simulator_releases_gil_while_advancing():
+    bindings = Path("bvr_sim_source/bvr_sim/src_cxx/pybind11_bindings.cxx").read_text()
+    assert '.def("step", &SimCore::step, py::call_guard<py::gil_scoped_release>())' in bindings
+    assert 'py::arg("steps"), py::call_guard<py::gil_scoped_release>())' in bindings
 
 
 def test_scenarios_are_reproducible_diverse_and_safe():
@@ -129,12 +192,17 @@ def test_environment_builds_10_hz_history_with_separate_energy_features():
 
         def step(self, blue, red):
             self.tick += 1
-            return np.array([self.tick], dtype=np.float32), 0.0, False, {
-                "blue_speed_mps": 200 + self.tick,
-                "blue_altitude_m": 6_000,
-                "red_speed_mps": 400,
-                "red_altitude_m": 12_000,
-            }
+            return (
+                np.array([self.tick], dtype=np.float32),
+                0.0,
+                False,
+                {
+                    "blue_speed_mps": 200 + self.tick,
+                    "blue_altitude_m": 6_000,
+                    "red_speed_mps": 400,
+                    "red_altitude_m": 12_000,
+                },
+            )
 
         def close(self):
             pass
