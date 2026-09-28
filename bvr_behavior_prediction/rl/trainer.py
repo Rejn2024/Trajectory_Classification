@@ -44,6 +44,8 @@ class PPOTrainer:
         self.optimizer = torch.optim.Adam(
             self.pilot.parameters(), lr=config.learning_rate, **adam_options
         )
+        self.use_mixed_precision = self.device.type == "cuda" and config.mixed_precision
+        self.grad_scaler = torch.cuda.amp.GradScaler(enabled=self.use_mixed_precision)
         if self.device.type == "cuda":
             # Use TensorFloat-32 matrix multiplies where supported. This changes
             # neither the network nor the number of PPO updates.
@@ -212,26 +214,55 @@ class PPOTrainer:
         losses = []
         for _ in range(self.config.update_epochs):
             for indices in torch.randperm(n, device=self.device).split(self.config.minibatch_size):
-                logp, entropy, values = self.pilot.evaluate(
-                    obs[indices], skills[indices], raw[indices]
-                )
-                ratio = (logp - old[indices]).exp()
-                policy = -torch.minimum(
-                    ratio * adv[indices],
-                    ratio.clamp(1 - self.config.clip_ratio, 1 + self.config.clip_ratio)
-                    * adv[indices],
-                ).mean()
-                loss = (
-                    policy
-                    + self.config.value_coefficient * (values - ret[indices]).pow(2).mean()
-                    - self.config.entropy_coefficient * entropy.mean()
-                )
                 self.optimizer.zero_grad(set_to_none=True)
-                loss.backward()
+                with torch.autocast(
+                    device_type=self.device.type,
+                    dtype=torch.float16,
+                    enabled=self.use_mixed_precision,
+                ):
+                    logp, entropy, values = self.pilot.evaluate(
+                        obs[indices], skills[indices], raw[indices]
+                    )
+                    ratio = (logp - old[indices]).exp()
+                    policy = -torch.minimum(
+                        ratio * adv[indices],
+                        ratio.clamp(1 - self.config.clip_ratio, 1 + self.config.clip_ratio)
+                        * adv[indices],
+                    ).mean()
+                    loss = (
+                        policy
+                        + self.config.value_coefficient * (values - ret[indices]).pow(2).mean()
+                        - self.config.entropy_coefficient * entropy.mean()
+                    )
+                self.grad_scaler.scale(loss).backward()
+                self.grad_scaler.unscale_(self.optimizer)
                 torch.nn.utils.clip_grad_norm_(self.pilot.parameters(), self.config.gradient_clip)
-                self.optimizer.step()
+                self.grad_scaler.step(self.optimizer)
+                self.grad_scaler.update()
                 losses.append(float(loss.item()))
         return float(np.mean(losses))
+
+    def _should_evaluate(self, epoch):
+        """Evaluate at useful boundaries without doubling every training epoch."""
+        return (
+            epoch == 1
+            or epoch == self.config.epochs
+            or epoch % self.config.evaluation_interval == 0
+        )
+
+    def _estimated_epoch_speedup(self, rollout_seconds, update_seconds, evaluation_seconds):
+        """Estimate steady-state speedup versus evaluating after every epoch.
+
+        This phase-time model deliberately excludes checkpoint time and makes no
+        claim about mixed-precision gains, which are hardware dependent.
+        """
+        baseline = rollout_seconds + update_seconds + evaluation_seconds
+        amortized = (
+            rollout_seconds
+            + update_seconds
+            + evaluation_seconds / self.config.evaluation_interval
+        )
+        return baseline / amortized if amortized else 1.0
 
     def train(self):
         mlflow.set_tracking_uri(self.config.mlflow_tracking_uri)
@@ -252,6 +283,8 @@ class PPOTrainer:
                     "[elapsed {elapsed} < ETA {remaining}, {rate_fmt}{postfix}]"
                 ),
             )
+            evaluation_scores = None
+            evaluation_seconds_sample = 0.0
             for epoch in range(1, self.config.epochs + 1):
                 epoch_started = perf_counter()
                 episodes = self._training_episodes()
@@ -262,9 +295,13 @@ class PPOTrainer:
                     [item[1] for item in episodes],
                 )
                 update_seconds = perf_counter() - update_started
-                evaluation_started = perf_counter()
-                evaluation_scores = self._evaluate()
-                evaluation_seconds = perf_counter() - evaluation_started
+                evaluation_performed = self._should_evaluate(epoch)
+                evaluation_seconds = 0.0
+                if evaluation_performed:
+                    evaluation_started = perf_counter()
+                    evaluation_scores = self._evaluate()
+                    evaluation_seconds = perf_counter() - evaluation_started
+                    evaluation_seconds_sample = evaluation_seconds
                 evaluation_mean = float(np.mean(evaluation_scores))
                 metrics = {
                     "epoch": epoch,
@@ -278,8 +315,12 @@ class PPOTrainer:
                     "rollout_seconds": rollout_seconds,
                     "update_seconds": update_seconds,
                     "evaluation_seconds": evaluation_seconds,
+                    "evaluation_performed": int(evaluation_performed),
+                    "estimated_epoch_speedup": self._estimated_epoch_speedup(
+                        rollout_seconds, update_seconds, evaluation_seconds_sample
+                    ),
                 }
-                if evaluation_mean > self.best_score:
+                if evaluation_performed and evaluation_mean > self.best_score:
                     self.best_score = evaluation_mean
                     torch.save(self.pilot.state_dict(), self.output / "best_model.pt")
                 if epoch % self.config.checkpoint_interval == 0:

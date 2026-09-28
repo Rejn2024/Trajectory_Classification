@@ -14,6 +14,7 @@ def test_config_enforces_episode_and_scenario_requirements():
     assert config.decisions_per_episode == 90
     assert config.scenarios_per_epoch == 50
     assert config.evaluation_scenarios_per_epoch == 50
+    assert config.evaluation_interval == 5
     assert 1 <= config.resolved_simulator_workers <= 8
     with pytest.raises(ValueError):
         PilotTrainingConfig(episode_duration_s=121)
@@ -23,6 +24,8 @@ def test_config_enforces_episode_and_scenario_requirements():
         PilotTrainingConfig(evaluation_scenarios_per_epoch=2)
     with pytest.raises(ValueError):
         PilotTrainingConfig(simulator_workers=-1)
+    with pytest.raises(ValueError):
+        PilotTrainingConfig(evaluation_interval=0)
 
 
 def test_evaluation_reuses_fixed_setups_seeds_and_deterministic_actions():
@@ -234,3 +237,39 @@ def test_environment_builds_10_hz_history_with_separate_energy_features():
     assert history.shape == (20, 5)
     np.testing.assert_array_equal(history[-10:, 0], np.arange(1, 11))
     assert info["elapsed_game_s"] == pytest.approx(1.0)
+
+
+def test_evaluation_cadence_keeps_first_periodic_and_final_epochs(tmp_path):
+    pytest.importorskip("torch")
+    pytest.importorskip("mlflow")
+    from bvr_behavior_prediction.rl.trainer import PPOTrainer
+
+    config = PilotTrainingConfig(
+        epochs=12,
+        evaluation_interval=5,
+        scenarios_per_epoch=3,
+        evaluation_scenarios_per_epoch=3,
+        hidden_size=16,
+        output_dir=tmp_path,
+    )
+    trainer = PPOTrainer(lambda *_: None, 1, config, device="cpu")
+
+    assert [epoch for epoch in range(1, 13) if trainer._should_evaluate(epoch)] == [1, 5, 10, 12]
+
+
+def test_estimated_epoch_speedup_uses_measured_phase_times(tmp_path):
+    pytest.importorskip("torch")
+    pytest.importorskip("mlflow")
+    from bvr_behavior_prediction.rl.trainer import PPOTrainer
+
+    config = PilotTrainingConfig(
+        evaluation_interval=5,
+        scenarios_per_epoch=3,
+        evaluation_scenarios_per_epoch=3,
+        hidden_size=16,
+        output_dir=tmp_path,
+    )
+    trainer = PPOTrainer(lambda *_: None, 1, config, device="cpu")
+
+    # A 10 s rollout, 2 s update and 10 s evaluation becomes 14 s amortized.
+    assert trainer._estimated_epoch_speedup(10.0, 2.0, 10.0) == pytest.approx(22.0 / 14.0)

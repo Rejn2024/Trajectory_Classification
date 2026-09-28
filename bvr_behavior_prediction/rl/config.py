@@ -27,6 +27,7 @@ class PilotTrainingConfig:
     episode_duration_s: float = 90.0
     scenarios_per_epoch: int = 50
     evaluation_scenarios_per_epoch: int = 50
+    evaluation_interval: int = 5
     simulator_workers: int = 0
     epochs: int = 100
     simulation_dt_s: float = 0.1
@@ -45,6 +46,7 @@ class PilotTrainingConfig:
     entropy_coefficient: float = 0.01
     value_coefficient: float = 0.5
     gradient_clip: float = 0.5
+    mixed_precision: bool = True
     checkpoint_interval: int = 10
     diagnostic_interval: int = 1
     output_dir: Path = Path("artifacts/rl_pilot")
@@ -61,6 +63,8 @@ class PilotTrainingConfig:
             raise ValueError("scenarios_per_epoch must be at least 3")
         if self.evaluation_scenarios_per_epoch < 3:
             raise ValueError("evaluation_scenarios_per_epoch must be at least 3")
+        if self.evaluation_interval < 1:
+            raise ValueError("evaluation_interval must be positive")
         if self.simulator_workers < 0:
             raise ValueError("simulator_workers must be non-negative")
         if self.epochs < 1 or self.simulation_dt_s <= 0:
