@@ -131,6 +131,9 @@ def test_episode_collection_parallelizes_simulators_and_batches_policy(tmp_path)
     assert len(episodes) == 3
     assert batch_sizes == [3]
     assert peak_concurrent == 3
+    assert trainer._last_collection_profile["simulator_work_seconds"] >= 0.08
+    assert trainer._last_collection_profile["simulator_wall_seconds"] > 0
+    assert trainer._last_collection_profile["policy_seconds"] >= 0
 
 
 def test_cpp_simulator_releases_gil_while_advancing():
@@ -273,3 +276,10 @@ def test_estimated_epoch_speedup_uses_measured_phase_times(tmp_path):
 
     # A 10 s rollout, 2 s update and 10 s evaluation becomes 14 s amortized.
     assert trainer._estimated_epoch_speedup(10.0, 2.0, 10.0) == pytest.approx(22.0 / 14.0)
+
+    # Of the 10 rollout seconds, 8 were concurrent simulator stepping representing
+    # 32 seconds of sequential work: baseline 34 + 2 + 10 versus optimized 10 + 2 + 2.
+    profile = {"simulator_wall_seconds": 8.0, "simulator_work_seconds": 32.0}
+    assert trainer._estimated_total_speedup(10.0, 2.0, 10.0, profile) == pytest.approx(
+        46.0 / 14.0
+    )

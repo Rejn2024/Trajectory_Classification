@@ -121,6 +121,10 @@ class PPOTrainer:
 
     def _episodes(self, scenarios, seeds, deterministic=False):
         """Run independent simulators concurrently and batch policy work on the GPU."""
+        collection_started = perf_counter()
+        policy_seconds = 0.0
+        simulator_wall_seconds = 0.0
+        simulator_work_seconds = 0.0
         environments = [self.env_factory(scenario, None) for scenario in scenarios]
         rollouts = [Rollout([], [], [], [], [], [], []) for _ in environments]
         totals = [0.0] * len(environments)
@@ -138,21 +142,33 @@ class PPOTrainer:
                 for _ in range(self.config.decisions_per_episode):
                     if not active:
                         break
+                    policy_started = perf_counter()
                     actions = self.pilot.act_batch(
                         np.stack([observations[index] for index in active]),
                         deterministic=deterministic,
                     )
-                    steps = list(
+                    policy_seconds += perf_counter() - policy_started
+
+                    def timed_step(item):
+                        started = perf_counter()
+                        result = item[0].step(item[1][0], item[1][1])
+                        return result, perf_counter() - started
+
+                    simulator_started = perf_counter()
+                    timed_steps = list(
                         executor.map(
-                            lambda item: item[0].step(item[1][0], item[1][1]),
+                            timed_step,
                             (
                                 (environments[index], action)
                                 for index, action in zip(active, actions)
                             ),
                         )
                     )
+                    simulator_wall_seconds += perf_counter() - simulator_started
+                    simulator_work_seconds += sum(item[1] for item in timed_steps)
                     next_active = []
-                    for index, action, step in zip(active, actions, steps):
+                    for index, action, timed_step_result in zip(active, actions, timed_steps):
+                        step, _ = timed_step_result
                         name, _, logp, value, raw = action
                         next_obs, terminated, truncated, info = step
                         reward, components = rewards[index](info)
@@ -173,6 +189,17 @@ class PPOTrainer:
         finally:
             for environment in environments:
                 environment.close()
+        self._last_collection_profile = {
+            "collection_seconds": perf_counter() - collection_started,
+            "policy_seconds": policy_seconds,
+            "simulator_wall_seconds": simulator_wall_seconds,
+            "simulator_work_seconds": simulator_work_seconds,
+            "simulator_parallel_speedup": (
+                simulator_work_seconds / simulator_wall_seconds
+                if simulator_wall_seconds
+                else 1.0
+            ),
+        }
         return list(zip(rollouts, totals, final_info))
 
     def _advantages(self, rollout):
@@ -211,9 +238,26 @@ class PPOTrainer:
         adv = (adv - adv.mean()) / (adv.std() + 1e-8)
         ret = torch.as_tensor(np.concatenate(returns), dtype=torch.float32, device=self.device)
         n = len(obs)
+        # Shuffle each tensor once per update epoch. Contiguous minibatch slices are
+        # views; the previous advanced indexing performed five GPU gathers for every
+        # minibatch. Keep losses on-device too, avoiding a device synchronization on
+        # every loss.item() call.
         losses = []
         for _ in range(self.config.update_epochs):
-            for indices in torch.randperm(n, device=self.device).split(self.config.minibatch_size):
+            order = torch.randperm(n, device=self.device)
+            shuffled = tuple(
+                tensor.index_select(0, order) for tensor in (obs, skills, raw, old, adv, ret)
+            )
+            (
+                shuffled_obs,
+                shuffled_skills,
+                shuffled_raw,
+                shuffled_old,
+                shuffled_adv,
+                shuffled_ret,
+            ) = shuffled
+            for left in range(0, n, self.config.minibatch_size):
+                right = left + self.config.minibatch_size
                 self.optimizer.zero_grad(set_to_none=True)
                 with torch.autocast(
                     device_type=self.device.type,
@@ -221,17 +265,20 @@ class PPOTrainer:
                     enabled=self.use_mixed_precision,
                 ):
                     logp, entropy, values = self.pilot.evaluate(
-                        obs[indices], skills[indices], raw[indices]
+                        shuffled_obs[left:right],
+                        shuffled_skills[left:right],
+                        shuffled_raw[left:right],
                     )
-                    ratio = (logp - old[indices]).exp()
+                    ratio = (logp - shuffled_old[left:right]).exp()
                     policy = -torch.minimum(
-                        ratio * adv[indices],
+                        ratio * shuffled_adv[left:right],
                         ratio.clamp(1 - self.config.clip_ratio, 1 + self.config.clip_ratio)
-                        * adv[indices],
+                        * shuffled_adv[left:right],
                     ).mean()
                     loss = (
                         policy
-                        + self.config.value_coefficient * (values - ret[indices]).pow(2).mean()
+                        + self.config.value_coefficient
+                        * (values - shuffled_ret[left:right]).pow(2).mean()
                         - self.config.entropy_coefficient * entropy.mean()
                     )
                 self.grad_scaler.scale(loss).backward()
@@ -239,8 +286,8 @@ class PPOTrainer:
                 torch.nn.utils.clip_grad_norm_(self.pilot.parameters(), self.config.gradient_clip)
                 self.grad_scaler.step(self.optimizer)
                 self.grad_scaler.update()
-                losses.append(float(loss.item()))
-        return float(np.mean(losses))
+                losses.append(loss.detach())
+        return torch.stack(losses).mean().item()
 
     def _should_evaluate(self, epoch):
         """Evaluate at useful boundaries without doubling every training epoch."""
@@ -263,6 +310,27 @@ class PPOTrainer:
             + evaluation_seconds / self.config.evaluation_interval
         )
         return baseline / amortized if amortized else 1.0
+
+    def _estimated_total_speedup(
+        self, rollout_seconds, update_seconds, evaluation_seconds, collection_profile=None
+    ):
+        """Estimate combined concurrency and evaluation-cadence acceleration.
+
+        The counterfactual keeps measured policy/reset/processing time unchanged and
+        replaces concurrent simulator wall time with the sum of worker step times.
+        It is therefore deliberately conservative and does not guess at AMP gains.
+        """
+        profile = collection_profile or getattr(self, "_last_collection_profile", {})
+        simulator_wall = profile.get("simulator_wall_seconds", 0.0)
+        simulator_work = profile.get("simulator_work_seconds", simulator_wall)
+        sequential_rollout = rollout_seconds + max(0.0, simulator_work - simulator_wall)
+        baseline = sequential_rollout + update_seconds + evaluation_seconds
+        optimized = (
+            rollout_seconds
+            + update_seconds
+            + evaluation_seconds / self.config.evaluation_interval
+        )
+        return baseline / optimized if optimized else 1.0
 
     def train(self):
         mlflow.set_tracking_uri(self.config.mlflow_tracking_uri)
@@ -289,6 +357,7 @@ class PPOTrainer:
                 epoch_started = perf_counter()
                 episodes = self._training_episodes()
                 rollout_seconds = perf_counter() - epoch_started
+                training_collection_profile = self._last_collection_profile.copy()
                 update_started = perf_counter()
                 loss, scores = (
                     self._update([item[0] for item in episodes]),
@@ -319,7 +388,14 @@ class PPOTrainer:
                     "estimated_epoch_speedup": self._estimated_epoch_speedup(
                         rollout_seconds, update_seconds, evaluation_seconds_sample
                     ),
+                    "estimated_total_speedup": self._estimated_total_speedup(
+                        rollout_seconds,
+                        update_seconds,
+                        evaluation_seconds_sample,
+                        training_collection_profile,
+                    ),
                 }
+                metrics.update(training_collection_profile)
                 if evaluation_performed and evaluation_mean > self.best_score:
                     self.best_score = evaluation_mean
                     torch.save(self.pilot.state_dict(), self.output / "best_model.pt")
