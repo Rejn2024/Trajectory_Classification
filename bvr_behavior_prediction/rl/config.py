@@ -25,6 +25,7 @@ class PilotTrainingConfig:
     planning_horizon_s: float = 1.0
     episode_duration_s: float = 90.0
     scenarios_per_epoch: int = 3
+    evaluation_scenarios_per_epoch: int = 50
     epochs: int = 100
     simulation_dt_s: float = 0.1
     seed: int = 7
@@ -56,6 +57,8 @@ class PilotTrainingConfig:
             raise ValueError("episode_duration_s must be in (0, 120]")
         if self.scenarios_per_epoch < 3:
             raise ValueError("scenarios_per_epoch must be at least 3")
+        if self.evaluation_scenarios_per_epoch < 3:
+            raise ValueError("evaluation_scenarios_per_epoch must be at least 3")
         if self.epochs < 1 or self.simulation_dt_s <= 0:
             raise ValueError("epochs and simulation_dt_s must be positive")
         if self.history_duration_s <= 0 or self.sample_interval_s <= 0:

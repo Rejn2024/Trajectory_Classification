@@ -7,11 +7,43 @@ from bvr_behavior_prediction.rl.scenarios import ScenarioSampler
 
 
 def test_config_enforces_episode_and_scenario_requirements():
-    assert PilotTrainingConfig().decisions_per_episode == 90
+    config = PilotTrainingConfig()
+    assert config.decisions_per_episode == 90
+    assert config.evaluation_scenarios_per_epoch == 50
     with pytest.raises(ValueError):
         PilotTrainingConfig(episode_duration_s=121)
     with pytest.raises(ValueError):
         PilotTrainingConfig(scenarios_per_epoch=2)
+    with pytest.raises(ValueError):
+        PilotTrainingConfig(evaluation_scenarios_per_epoch=2)
+
+
+def test_evaluation_reuses_fixed_setups_seeds_and_deterministic_actions():
+    torch = pytest.importorskip("torch")
+    from bvr_behavior_prediction.rl.trainer import PPOTrainer
+
+    trainer = PPOTrainer.__new__(PPOTrainer)
+    trainer.config = PilotTrainingConfig(seed=23)
+    trainer.evaluation_scenarios = ["first", "second", "third"]
+    trainer.pilot = torch.nn.Linear(1, 1)
+    calls = []
+
+    def episode(scenario, seed, recording_path=None, deterministic=False):
+        calls.append((scenario, seed, deterministic, trainer.pilot.training))
+        return None, float(seed), None
+
+    trainer._episode = episode
+    first = trainer._evaluate()
+    second = trainer._evaluate()
+
+    np.testing.assert_array_equal(first, [23.0, 24.0, 25.0])
+    np.testing.assert_array_equal(second, first)
+    assert calls == [
+        (scenario, seed, True, False)
+        for _ in range(2)
+        for scenario, seed in zip(trainer.evaluation_scenarios, range(23, 26))
+    ]
+    assert trainer.pilot.training
 
 
 def test_scenarios_are_reproducible_diverse_and_safe():

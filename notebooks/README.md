@@ -42,7 +42,10 @@ deterministic backend that implements the documented simulator contract, then pl
 and PPO loss and inspects an evaluation rollout. This makes the complete training,
 checkpointing, MLflow, and diagnostics path reproducible without a native simulator. Its
 transformer receives two seconds of 10 Hz history, including separate kinetic and potential
-energy approximations for both aircraft. Replace only the notebook's backend factory to
+energy approximations for both aircraft. After every epoch, the plotted pilot return is a
+deterministic evaluation over the same 50 seeded engagement set-ups; the separate training
+return remains available in the diagnostics as a noisy on-policy measurement. The best
+checkpoint is selected by the fixed-set evaluation mean. Replace only the notebook's backend factory to
 connect JSBSim/BVR Sim, ensuring its info mapping reports speed and altitude for both sides.
 Configure the example with
 `BVR_PILOT_EPOCHS`, `BVR_PILOT_EPISODE_SECONDS`, `BVR_PILOT_DEVICE`, and
