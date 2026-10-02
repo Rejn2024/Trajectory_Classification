@@ -164,7 +164,7 @@ def test_scenarios_are_reproducible_diverse_and_safe():
     assert first == second
     assert len({item.range_m for item in first}) == 3
     assert len({item.bearing_deg for item in first}) == 3
-    assert all(item.red_policy == "constant_course" for item in first)
+    assert all(item.red_policy == "simple_baseline" for item in first)
     assert all(item.blue_altitude_m > 2500 and item.red_altitude_m > 2500 for item in first)
 
 

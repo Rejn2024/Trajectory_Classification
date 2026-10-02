@@ -12,15 +12,20 @@ from bvr_sim.agents.skill_manager import SkillManager
 class BVRJSBSimBackend:
     """Adapt the Python BVR environment to :class:`BluePilotEnvironment`.
 
-    BVR Sim calls its learned side ``red`` internally.  This adapter deliberately
-    exposes that aircraft as ``blue`` to preserve the public blue-pilot contract
-    used by the training pipeline.  Both aircraft are F-16s using BVR Sim's
-    JSBSim FDM, and the opposing (internally blue) aircraft uses the simulator's
-    simple baseline policy.
+    The training pipeline's naming convention is always from the learned pilot's
+    perspective: the NN-controlled aircraft is ``blue`` and its opponent is
+    ``red``.  The current BVR Sim Python API can only attach its built-in opponent
+    to the simulator's blue coalition, so the simulator/ACMI colours are inverted:
+    A01 is the NN-controlled aircraft and appears **red** in Tacview; B01 uses the
+    ``simple`` baseline and appears **blue**.  Keep this translation at the backend
+    boundary so future backends can make the NN aircraft blue without changing the
+    public training vocabulary.
     """
 
     CONTROLLED_ID = "A01"
     OPPONENT_ID = "B01"
+    NN_ACMI_COLOR = "Red"
+    OPPONENT_ACMI_COLOR = "Blue"
     OBSERVATION_SIZE = 47  # compact 1-v-1 observation supplied by BVR Sim
 
     def __init__(self, scenario: dict, recording_path=None, env_factory=None, log_dir=None):
@@ -90,6 +95,10 @@ class BVRJSBSimBackend:
             "fired_with_lock": bool(fired and locked),
             "missile_avoided": bool(missile_avoided),
             "opponent_destroyed": not bool(opponent.is_alive),
+            "nn_aircraft_id": self.CONTROLLED_ID,
+            "nn_aircraft_acmi_color": self.NN_ACMI_COLOR,
+            "opponent_aircraft_id": self.OPPONENT_ID,
+            "opponent_aircraft_acmi_color": self.OPPONENT_ACMI_COLOR,
             "crashed": not controlled.is_alive and controlled.get_altitude() <= 500.0,
             "shot_down": not controlled.is_alive and controlled.get_altitude() > 500.0,
         }

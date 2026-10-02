@@ -65,6 +65,7 @@ class BluePilotEnvironment:
         self.speed_scale_mps = speed_scale_mps
         self.altitude_scale_m = altitude_scale_m
         self.backend = backend_factory(scenario.as_dict(), recording_path)
+        self.opponent_policy = getattr(scenario, "red_policy", "unspecified")
         self.history = deque(maxlen=self.history_steps)
         self._energy_measurements = {name: 0.0 for name in ENERGY_FEATURE_NAMES}
         self.elapsed = 0.0
@@ -130,7 +131,7 @@ class BluePilotEnvironment:
         info.update(
             {
                 "controlled_team": "blue",
-                "red_policy": "constant_course",
+                "red_policy": self.opponent_policy,
                 "elapsed_game_s": self.elapsed,
                 "simulator_reward": simulator_reward,
             }

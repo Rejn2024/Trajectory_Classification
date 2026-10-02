@@ -82,6 +82,10 @@ def test_backend_runs_bvr_flight_and_records_acmi(tmp_path):
     assert observation.shape == (47,)
     assert info["blue_altitude_m"] == 6000
     assert info["red_speed_mps"] == 275
+    assert info["nn_aircraft_id"] == "A01"
+    assert info["nn_aircraft_acmi_color"] == "Red"
+    assert info["opponent_aircraft_id"] == "B01"
+    assert info["opponent_aircraft_acmi_color"] == "Blue"
 
     observation, reward, terminated, info = backend.step(
         {"skill_name": "maintain_heading", "parameters": {}},

@@ -54,6 +54,9 @@ def test_rl_pilot_notebook_uses_real_pipeline_and_visualizes_after_training():
     assert "episode_seed = config.seed + index" in source
     assert 'f"scenario_{index:03d}_seed_{episode_seed}.txt.acmi"' in source
     assert "recording_path=acmi_path" in source
+    assert '"acmi_color_mapping"' in source
+    assert '"NN-controlled (training blue)"' in source
+    assert '"simple baseline (training red)"' in source
     assert "deterministic=True" in source
     assert 'FINAL_EVALUATION_DIR / "manifest.json"' in source
     assert training_index < replay_index < plot_index
