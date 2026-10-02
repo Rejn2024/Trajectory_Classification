@@ -16,7 +16,7 @@ class EngagementScenario:
     red_heading_deg: float
     blue_speed_mps: float = 250.0
     red_speed_mps: float = 250.0
-    red_policy: str = "constant_course"
+    red_policy: str = "simple_baseline"
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -57,8 +57,8 @@ class ScenarioSampler:
             red_altitude = float(
                 np.clip(blue_altitude + offset, self.min_altitude_m, self.max_altitude_m)
             )
-            # Both start level; red's constant course is always horizontal and thus
-            # cannot meet the ground or an unreasonable altitude.
+            # Both aircraft start level, so neither can meet the ground during the
+            # first planning horizon before its controller takes over.
             blue_heading = (bearing + self.rng.uniform(-12.0, 12.0)) % 360.0
             red_heading = (bearing + 180.0) % 360.0
             scenario = EngagementScenario(

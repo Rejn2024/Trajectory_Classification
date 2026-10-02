@@ -50,3 +50,21 @@ the fixed-set evaluation mean and reloaded before the final recorded flight. Ins
 `ml` and `video` extras, and use `BVR_PILOT_EPOCHS`, `BVR_PILOT_EPISODE_SECONDS`,
 `BVR_PILOT_SCENARIOS`, `BVR_PILOT_EVALUATION_SCENARIOS`, `BVR_PILOT_WORKERS`,
 `BVR_PILOT_DEVICE`, and `BVR_PILOT_OUTPUT` to configure the experiment.
+
+### RL pilot team names in Tacview
+
+The training API consistently calls the **NN-controlled aircraft blue** and its opponent
+red. The pinned Python BVR Sim backend currently has the opposite simulator-coalition
+assignment because its built-in `simple` opponent controls the simulator's blue side.
+Consequently, in evaluation ACMI files as currently generated:
+
+| Tacview appearance | Aircraft ID | Training role |
+| --- | --- | --- |
+| Red | `A01` | NN-controlled aircraft (called blue by the training API) |
+| Blue | `B01` | `simple` baseline opponent (called red by the training API) |
+
+This is a backend colour inversion, not two NN policies. New integrations should retain
+the public convention that the NN aircraft is blue and, where the simulator permits it,
+also assign that aircraft to the blue ACMI coalition. The evaluation manifest's terminal
+information includes the aircraft IDs and current ACMI colours so recorded files remain
+unambiguous until that simulator-side migration is made.

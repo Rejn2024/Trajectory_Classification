@@ -122,6 +122,7 @@ class BaseOpponent3D(ABC):
 
         return heading_rate
 
+
 # class DirectFlightOpponent3D(BaseOpponent3D):
 
 #     def __init__(self):
