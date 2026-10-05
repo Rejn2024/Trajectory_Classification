@@ -1,0 +1,13 @@
+# Published training results and flight corpora use LFS by default, including
+# large JSON/CSV logs and new binary formats. Local artifacts stay Git-ignored.
+shared/** filter=lfs diff=lfs merge=lfs -text
+
+# Keep small documentation, configuration, and provenance readable in Git.
+shared/**/*.md !filter !diff !merge text
+shared/**/*.yaml !filter !diff !merge text
+shared/**/*.yml !filter !diff !merge text
+shared/**/manifest.json !filter !diff !merge text
+shared/**/config.json !filter !diff !merge text
+shared/**/metrics.json !filter !diff !merge text
+shared/**/summary.json !filter !diff !merge text
+shared/**/label_map.json !filter !diff !merge text
