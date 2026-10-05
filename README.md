@@ -24,6 +24,14 @@ from bvr_sim.agents.skill_manager import SkillManager
 See `configs/` for the initial F-16 experiment and `examples/train_pipeline.py` for
 an end-to-end training skeleton.
 
+## Sharing training results and flight datasets
+
+Publish selected model checkpoints, training results, and flight corpora under
+`shared/` using Git LFS. Large files are tracked by `.gitattributes`; small manifests
+and configuration stay readable in Git. See the [sharing guide](shared/README.md)
+for setup on each developer's machine, publishing and downloading, dataset layout,
+and recording the exact trained agent behind a corpus.
+
 ## Reinforcement-learning 1-v-1 pilot
 
 `bvr_behavior_prediction.rl` contains a PPO training path for a **blue-controlled**
