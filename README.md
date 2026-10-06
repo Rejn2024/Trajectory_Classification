@@ -34,6 +34,13 @@ and recording the exact trained agent behind a corpus.
 
 ## Reinforcement-learning 1-v-1 pilot
 
+To train an arbitrary number of independent pilots with different reward functions,
+use [`notebooks/05_train_multiple_pilots.ipynb`](notebooks/05_train_multiple_pilots.ipynb).
+Each pilot gets its own model, seed, MLflow run, and checkpoint. Reward definitions
+are editable factories, and a common benchmark supports comparisons across objectives.
+See the [multi-pilot training guide](docs/multi_pilot_training.md) for configuration,
+custom rewards, and loading saved pilots.
+
 `bvr_behavior_prediction.rl` contains a PPO training path for a **blue-controlled**
 pilot against a level, constant-course red opponent. The hybrid policy chooses among
 all 33 `SkillManager` skills and predicts the bounded numeric parameters of the chosen
@@ -58,11 +65,12 @@ acceleration as `(R + U + E) / (R + U + E / evaluation_interval)`. For similarly
 training and evaluation batches where simulation dominates, the default approaches
 `2 / 1.2 = 1.67x`; the measured phase times and `estimated_epoch_speedup` are written to
 the per-epoch JSONL/MLflow diagnostics rather than attributing a hardware-independent
-number to mixed precision. The diagnostics also separate batched-policy time, concurrent
-simulator wall time, and summed simulator worker time. Their ratio reports the observed
-simulator parallel speedup, while `estimated_total_speedup` compares the optimized epoch
-with a conservative counterfactual that runs simulator steps sequentially and evaluates
-every epoch. PPO updates shuffle each training tensor once per update pass and then use
+number to mixed precision. The multi-pilot notebook uses persistent CPU processes for
+simulation, avoiding the Python interpreter lock in CPU-heavy flight control code.
+The diagnostics separate policy time, simulator wall time, and actual worker CPU time;
+`simulator_effective_cores` reports worker CPU seconds divided by simulator wall seconds.
+Summed worker elapsed times include waiting and must not be interpreted as speedup.
+PPO updates shuffle each training tensor once per update pass and then use
 zero-copy contiguous minibatch views; the mean loss is transferred to the CPU only once,
 eliminating five GPU gathers and one device synchronization per minibatch.
 

@@ -50,3 +50,11 @@ the fixed-set evaluation mean and reloaded before the final recorded flight. Ins
 `ml` and `video` extras, and use `BVR_PILOT_EPOCHS`, `BVR_PILOT_EPISODE_SECONDS`,
 `BVR_PILOT_SCENARIOS`, `BVR_PILOT_EVALUATION_SCENARIOS`, `BVR_PILOT_WORKERS`,
 `BVR_PILOT_DEVICE`, and `BVR_PILOT_OUTPUT` to configure the experiment.
+
+Train multiple independent policies with `05_train_multiple_pilots.ipynb`. Set
+`BVR_PILOT_COUNT` to any positive count, or edit its `PILOTS` roster. Every pilot has
+an independent seed, reward factory, model, and output directory. The notebook
+compares selected checkpoints with a common reward and lets you choose a pilot for
+ACMI replay. Existing batches are preserved. See the
+[multi-pilot guide](../docs/multi_pilot_training.md) for arbitrary custom reward
+formulas, a short smoke run, and loading checkpoints after restarting the kernel.
