@@ -6,13 +6,19 @@ dataset installations.
 """
 
 from .config import PilotTrainingConfig, RewardWeights
-from .reward import CombatReward
+from .multi_pilot import PilotSpec, load_trained_pilot, train_pilots
+from .reward import CombatReward, RewardDefinition, combat_reward_definition
 from .scenarios import EngagementScenario, ScenarioSampler
 
 __all__ = [
     "CombatReward",
     "EngagementScenario",
+    "PilotSpec",
     "PilotTrainingConfig",
+    "RewardDefinition",
     "RewardWeights",
     "ScenarioSampler",
+    "combat_reward_definition",
+    "load_trained_pilot",
+    "train_pilots",
 ]

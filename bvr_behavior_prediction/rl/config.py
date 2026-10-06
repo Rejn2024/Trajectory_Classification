@@ -1,7 +1,7 @@
 """Configuration for the short-horizon hybrid-action pilot."""
 
-from dataclasses import asdict, dataclass, field
 import os
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 
@@ -29,9 +29,11 @@ class PilotTrainingConfig:
     evaluation_scenarios_per_epoch: int = 50
     evaluation_interval: int = 5
     simulator_workers: int = 0
+    simulator_executor: str = "thread"
     epochs: int = 100
     simulation_dt_s: float = 0.1
     seed: int = 7
+    evaluation_seed: int | None = None
     hidden_size: int = 256
     history_duration_s: float = 2.0
     sample_interval_s: float = 0.1
@@ -55,6 +57,12 @@ class PilotTrainingConfig:
     reward: RewardWeights = field(default_factory=RewardWeights)
 
     def __post_init__(self):
+        for name in ("seed", "evaluation_seed"):
+            value = getattr(self, name)
+            if value is None and name == "evaluation_seed":
+                continue
+            if type(value) is not int or not 0 <= value < 2**32:
+                raise ValueError(f"{name} must be an integer in [0, 2**32)")
         if self.planning_horizon_s <= 0:
             raise ValueError("planning_horizon_s must be positive")
         if not 0 < self.episode_duration_s <= 120:
@@ -67,6 +75,8 @@ class PilotTrainingConfig:
             raise ValueError("evaluation_interval must be positive")
         if self.simulator_workers < 0:
             raise ValueError("simulator_workers must be non-negative")
+        if self.simulator_executor not in ("thread", "process"):
+            raise ValueError("simulator_executor must be 'thread' or 'process'")
         if self.epochs < 1 or self.simulation_dt_s <= 0:
             raise ValueError("epochs and simulation_dt_s must be positive")
         if self.history_duration_s <= 0 or self.sample_interval_s <= 0:
@@ -79,12 +89,16 @@ class PilotTrainingConfig:
             raise ValueError("hidden_size must be divisible by transformer_heads")
 
     @property
+    def resolved_evaluation_seed(self) -> int:
+        return self.seed if self.evaluation_seed is None else self.evaluation_seed
+
+    @property
     def decisions_per_episode(self) -> int:
         return int(self.episode_duration_s / self.planning_horizon_s)
 
     @property
     def history_steps(self) -> int:
-        return int(round(self.history_duration_s / self.sample_interval_s))
+        return round(self.history_duration_s / self.sample_interval_s)
 
     @property
     def resolved_simulator_workers(self) -> int:

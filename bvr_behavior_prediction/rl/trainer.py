@@ -1,8 +1,9 @@
 """Batched PPO training, diagnostics, MLflow tracking, and replay checkpoints."""
 
-from dataclasses import dataclass
-from concurrent.futures import ThreadPoolExecutor
 import json
+import os
+import random
+from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 
@@ -12,8 +13,9 @@ import torch
 from tqdm.auto import tqdm
 
 from .pilot import HybridSkillPilot
-from .reward import CombatReward
+from .reward import combat_reward_definition
 from .scenarios import ScenarioSampler
+from .simulation_workers import ProcessSimulatorPool, ThreadSimulatorPool
 
 
 @dataclass
@@ -30,8 +32,17 @@ class Rollout:
 class PPOTrainer:
     """Train once per scenario batch to minimize simulator/optimizer overhead."""
 
-    def __init__(self, env_factory, observation_size, config, device=None):
+    def __init__(self, env_factory, observation_size, config, device=None, reward_definition=None):
         self.env_factory, self.config = env_factory, config
+        self.observation_size = observation_size
+        self.reward_definition = reward_definition or combat_reward_definition(weights=config.reward)
+        self.mlflow_run_id = None
+        self._simulator_pool = None
+        self._training_active = False
+        # Reinitialize every pilot independently of the previous run's RNG state.
+        random.seed(config.seed)
+        np.random.seed(config.seed)
+        torch.manual_seed(config.seed)
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         self.pilot = HybridSkillPilot(
             observation_size,
@@ -61,7 +72,7 @@ class PPOTrainer:
         # Evaluation uses an independent sampler so training-batch sampling cannot
         # alter the benchmark.  Materialising the set once guarantees that every
         # epoch sees exactly the same initial geometries.
-        self.evaluation_scenarios = ScenarioSampler(config.seed).sample_batch(
+        self.evaluation_scenarios = ScenarioSampler(config.resolved_evaluation_seed).sample_batch(
             config.evaluation_scenarios_per_epoch
         )
         self.output = Path(config.output_dir)
@@ -71,9 +82,10 @@ class PPOTrainer:
 
     def _episode(self, scenario, seed, recording_path=None, deterministic=False):
         env = self.env_factory(scenario, recording_path)
-        reward_fn, rollout = CombatReward(self.config.reward), Rollout([], [], [], [], [], [], [])
-        obs, total, final_info = env.reset(seed), 0.0, {}
         try:
+            reward_fn = self.reward_definition.factory()
+            rollout = Rollout([], [], [], [], [], [], [])
+            obs, total, final_info = env.reset(seed), 0.0, {}
             for _ in range(self.config.decisions_per_episode):
                 name, params, logp, value, raw = self.pilot.act(obs, deterministic=deterministic)
                 next_obs, terminated, truncated, info = env.step(name, params)
@@ -98,106 +110,117 @@ class PPOTrainer:
 
     def _evaluate(self):
         """Evaluate deterministically on the fixed scenario and episode seeds."""
+        return np.asarray([item[1] for item in self.evaluate_episodes()], dtype=np.float64)
+
+    def evaluate_episodes(self, reward_definition=None):
+        """Return deterministic rollouts, optionally scored by a common benchmark."""
         was_training = self.pilot.training
         self.pilot.eval()
         try:
-            scores = [
-                item[1]
-                for item in self._episodes(
-                    self.evaluation_scenarios,
-                    tuple(
-                        self.config.seed + index for index in range(len(self.evaluation_scenarios))
-                    ),
-                    deterministic=True,
-                )
-            ]
+            options = {"deterministic": True}
+            if reward_definition is not None:
+                options["reward_definition"] = reward_definition
+            return self._episodes(
+                self.evaluation_scenarios,
+                tuple(
+                    self.config.resolved_evaluation_seed + index
+                    for index in range(len(self.evaluation_scenarios))
+                ),
+                **options,
+            )
         finally:
             self.pilot.train(was_training)
-        return np.asarray(scores, dtype=np.float64)
 
     def _training_episodes(self):
         """Collect one epoch from the fixed training geometries and reset seeds."""
         return self._episodes(self.training_scenarios, self.training_episode_seeds)
 
-    def _episodes(self, scenarios, seeds, deterministic=False):
+    def _episodes(self, scenarios, seeds, deterministic=False, reward_definition=None):
         """Run independent simulators concurrently and batch policy work on the GPU."""
         collection_started = perf_counter()
         policy_seconds = 0.0
         simulator_wall_seconds = 0.0
         simulator_work_seconds = 0.0
-        environments = [self.env_factory(scenario, None) for scenario in scenarios]
-        rollouts = [Rollout([], [], [], [], [], [], []) for _ in environments]
-        totals = [0.0] * len(environments)
-        final_info = [{} for _ in environments]
-        active = list(range(len(environments)))
+        simulator_cpu_seconds = 0.0
+        if len(scenarios) != len(seeds) or not scenarios:
+            raise ValueError("provide matching nonempty scenarios and seeds")
+        pool = self._simulator_pool
+        if pool is None:
+            pool_type = (
+                ProcessSimulatorPool if self.config.simulator_executor == "process"
+                else ThreadSimulatorPool
+            )
+            pool = pool_type(
+                self.env_factory, min(self.config.resolved_simulator_workers, len(scenarios))
+            )
+            if self._training_active:
+                self._simulator_pool = pool
+        failed = True
 
         try:
-            with ThreadPoolExecutor(
-                max_workers=min(self.config.resolved_simulator_workers, len(environments))
-            ) as executor:
-                observations = list(
-                    executor.map(lambda item: item[0].reset(item[1]), zip(environments, seeds))
+            observations = pool.reset(scenarios, seeds)
+            rollouts = [Rollout([], [], [], [], [], [], []) for _ in scenarios]
+            totals = [0.0] * len(scenarios)
+            final_info = [{} for _ in scenarios]
+            active = list(range(len(scenarios)))
+            definition = reward_definition or self.reward_definition
+            rewards = [definition.factory() for _ in scenarios]
+            for _ in range(self.config.decisions_per_episode):
+                if not active:
+                    break
+                policy_started = perf_counter()
+                actions = self.pilot.act_batch(
+                    np.stack([observations[index] for index in active]),
+                    deterministic=deterministic,
                 )
-                rewards = [CombatReward(self.config.reward) for _ in environments]
-                for _ in range(self.config.decisions_per_episode):
-                    if not active:
-                        break
-                    policy_started = perf_counter()
-                    actions = self.pilot.act_batch(
-                        np.stack([observations[index] for index in active]),
-                        deterministic=deterministic,
-                    )
-                    policy_seconds += perf_counter() - policy_started
-
-                    def timed_step(item):
-                        started = perf_counter()
-                        result = item[0].step(item[1][0], item[1][1])
-                        return result, perf_counter() - started
-
-                    simulator_started = perf_counter()
-                    timed_steps = list(
-                        executor.map(
-                            timed_step,
-                            (
-                                (environments[index], action)
-                                for index, action in zip(active, actions)
-                            ),
-                        )
-                    )
-                    simulator_wall_seconds += perf_counter() - simulator_started
-                    simulator_work_seconds += sum(item[1] for item in timed_steps)
-                    next_active = []
-                    for index, action, timed_step_result in zip(active, actions, timed_steps):
-                        step, _ = timed_step_result
-                        name, _, logp, value, raw = action
-                        next_obs, terminated, truncated, info = step
-                        reward, components = rewards[index](info)
-                        rollout = rollouts[index]
-                        rollout.observations.append(observations[index])
-                        rollout.skills.append(self.pilot._skill_indices[name])
-                        rollout.parameters.append(raw)
-                        rollout.log_probs.append(logp)
-                        rollout.values.append(value)
-                        rollout.rewards.append(reward)
-                        rollout.dones.append(terminated or truncated)
-                        totals[index] += reward
-                        observations[index] = next_obs
-                        final_info[index] = {**info, "reward_components": components}
-                        if not (terminated or truncated):
-                            next_active.append(index)
-                    active = next_active
+                policy_seconds += perf_counter() - policy_started
+                simulator_started = perf_counter()
+                timed_steps = pool.step([
+                    (index, action[0], action[1]) for index, action in zip(active, actions)
+                ])
+                simulator_wall_seconds += perf_counter() - simulator_started
+                simulator_work_seconds += sum(item[1] for item in timed_steps)
+                simulator_cpu_seconds += sum(item[2] for item in timed_steps)
+                next_active = []
+                for index, action, timed_step_result in zip(active, actions, timed_steps):
+                    step, _, _ = timed_step_result
+                    name, _, logp, value, raw = action
+                    next_obs, terminated, truncated, info = step
+                    reward, components = rewards[index](info)
+                    rollout = rollouts[index]
+                    rollout.observations.append(observations[index])
+                    rollout.skills.append(self.pilot._skill_indices[name])
+                    rollout.parameters.append(raw)
+                    rollout.log_probs.append(logp)
+                    rollout.values.append(value)
+                    rollout.rewards.append(reward)
+                    rollout.dones.append(terminated or truncated)
+                    totals[index] += reward
+                    observations[index] = next_obs
+                    final_info[index] = {**info, "reward_components": components}
+                    if not (terminated or truncated):
+                        next_active.append(index)
+                active = next_active
+            failed = False
         finally:
-            for environment in environments:
-                environment.close()
+            if failed or not self._training_active:
+                pool.close(force=failed)
+                if self._simulator_pool is pool:
+                    self._simulator_pool = None
+            else:
+                pool.release()
         self._last_collection_profile = {
             "collection_seconds": perf_counter() - collection_started,
             "policy_seconds": policy_seconds,
             "simulator_wall_seconds": simulator_wall_seconds,
             "simulator_work_seconds": simulator_work_seconds,
-            "simulator_parallel_speedup": (
-                simulator_work_seconds / simulator_wall_seconds
-                if simulator_wall_seconds
-                else 1.0
+            "simulator_cpu_seconds": simulator_cpu_seconds,
+            "simulator_effective_cores": (
+                simulator_cpu_seconds / simulator_wall_seconds if simulator_wall_seconds else 0.0
+            ),
+            "simulator_cpu_utilization_percent": (
+                100 * simulator_cpu_seconds / simulator_wall_seconds / (os.cpu_count() or 1)
+                if simulator_wall_seconds else 0.0
             ),
         }
         return list(zip(rollouts, totals, final_info))
@@ -311,37 +334,46 @@ class PPOTrainer:
         )
         return baseline / amortized if amortized else 1.0
 
-    def _estimated_total_speedup(
-        self, rollout_seconds, update_seconds, evaluation_seconds, collection_profile=None
-    ):
-        """Estimate combined concurrency and evaluation-cadence acceleration.
+    def train(self, run_name=None, tags=None):
+        self._training_active = True
+        try:
+            return self._train(run_name, tags)
+        finally:
+            self._training_active = False
+            self.close()
 
-        The counterfactual keeps measured policy/reset/processing time unchanged and
-        replaces concurrent simulator wall time with the sum of worker step times.
-        It is therefore deliberately conservative and does not guess at AMP gains.
-        """
-        profile = collection_profile or getattr(self, "_last_collection_profile", {})
-        simulator_wall = profile.get("simulator_wall_seconds", 0.0)
-        simulator_work = profile.get("simulator_work_seconds", simulator_wall)
-        sequential_rollout = rollout_seconds + max(0.0, simulator_work - simulator_wall)
-        baseline = sequential_rollout + update_seconds + evaluation_seconds
-        optimized = (
-            rollout_seconds
-            + update_seconds
-            + evaluation_seconds / self.config.evaluation_interval
-        )
-        return baseline / optimized if optimized else 1.0
+    def close(self):
+        pool, self._simulator_pool = self._simulator_pool, None
+        if pool is not None:
+            pool.close()
 
-    def train(self):
+    def _train(self, run_name=None, tags=None):
+        metadata = {
+            "training": self.config.as_dict(),
+            "observation_size": self.observation_size,
+            "reward": self.reward_definition.as_dict(),
+            "skill_names": list(self.pilot.skill_names),
+            "parameter_names": list(self.pilot.parameter_names),
+            "checkpoint_format": "policy_state_dict",
+            "torch_version": torch.__version__,
+        }
+        config_path = self.output / "config.json"
+        config_path.write_text(json.dumps(metadata, indent=2), encoding="utf8")
         mlflow.set_tracking_uri(self.config.mlflow_tracking_uri)
         mlflow.set_experiment(self.config.mlflow_experiment)
-        with mlflow.start_run():
+        with mlflow.start_run(run_name=run_name, tags=tags) as active_run:
+            self.mlflow_run_id = active_run.info.run_id
             run_parameters = self.config.as_dict()
-            reward_parameters = run_parameters.pop("reward")
+            run_parameters.pop("reward")
             run_parameters.update(
-                {f"reward.{key}": value for key, value in reward_parameters.items()}
+                {
+                    "reward.name": self.reward_definition.name,
+                    "reward.version": self.reward_definition.version,
+                    "reward.parameters": json.dumps(self.reward_definition.parameters),
+                }
             )
             mlflow.log_params(run_parameters)
+            mlflow.log_artifact(str(config_path))
             progress = tqdm(
                 total=self.config.epochs,
                 desc="Training",
@@ -387,12 +419,6 @@ class PPOTrainer:
                     "evaluation_performed": int(evaluation_performed),
                     "estimated_epoch_speedup": self._estimated_epoch_speedup(
                         rollout_seconds, update_seconds, evaluation_seconds_sample
-                    ),
-                    "estimated_total_speedup": self._estimated_total_speedup(
-                        rollout_seconds,
-                        update_seconds,
-                        evaluation_seconds_sample,
-                        training_collection_profile,
                     ),
                 }
                 metrics.update(training_collection_profile)
