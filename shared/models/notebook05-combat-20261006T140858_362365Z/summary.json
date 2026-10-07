@@ -1,0 +1,157 @@
+{
+  "format_version": 1,
+  "population": "notebook05-combat-20261006T140858_362365Z",
+  "benchmark_reward": {
+    "name": "common_combat",
+    "version": "2",
+    "parameters": {
+      "weights": {
+        "crashed": -100.0,
+        "shot_down": -150.0,
+        "ground_clearance": 0.02,
+        "target_lock_acquired": 2.0,
+        "fired_with_lock": 8.0,
+        "incoming_missile_avoided": 20.0,
+        "opponent_destroyed": 250.0,
+        "fired_without_lock": -4.0
+      },
+      "safe_altitude_m": 500.0
+    }
+  },
+  "evaluation_seed": 100082,
+  "evaluation_scenarios": 50,
+  "evaluation_role": "validation used for checkpoint selection; not an unseen test set",
+  "highest_common_validation_return": "pilot_005",
+  "pilots": [
+    {
+      "pilot_id": "pilot_001",
+      "epochs": 150,
+      "validation_evaluations": 31,
+      "selected_epoch": 75,
+      "checkpoint_sha256": "cdd0814b8575c18358f45cf74b59e287c486b096824fec74612718c1627740e7",
+      "checkpoint_bytes": 445173,
+      "metrics_bytes": 149916,
+      "benchmark_return": 133.5115999999997,
+      "survival_rate": 0.42,
+      "elimination_rate": 0.66,
+      "loader_and_finite_inference_passed": true
+    },
+    {
+      "pilot_id": "pilot_002",
+      "epochs": 150,
+      "validation_evaluations": 31,
+      "selected_epoch": 150,
+      "checkpoint_sha256": "0842703a1715194e48f63306b04130c4b10b477acb6c0192aca3b164e8b16ce7",
+      "checkpoint_bytes": 445173,
+      "metrics_bytes": 149998,
+      "benchmark_return": 78.37519999999972,
+      "survival_rate": 0.4,
+      "elimination_rate": 0.48,
+      "loader_and_finite_inference_passed": true
+    },
+    {
+      "pilot_id": "pilot_003",
+      "epochs": 150,
+      "validation_evaluations": 31,
+      "selected_epoch": 90,
+      "checkpoint_sha256": "ae0626befd0807010dc046d855a7644eb94e0884f9b156bf96837e22c85c808e",
+      "checkpoint_bytes": 445173,
+      "metrics_bytes": 149870,
+      "benchmark_return": 138.67239999999975,
+      "survival_rate": 0.58,
+      "elimination_rate": 0.54,
+      "loader_and_finite_inference_passed": true
+    },
+    {
+      "pilot_id": "pilot_004",
+      "epochs": 150,
+      "validation_evaluations": 31,
+      "selected_epoch": 25,
+      "checkpoint_sha256": "d489bf4b388002f04b1d4252ea1e5b63c1f85ffc5a7ba68105ecc6d443d0eb65",
+      "checkpoint_bytes": 445173,
+      "metrics_bytes": 150112,
+      "benchmark_return": 126.30519999999977,
+      "survival_rate": 0.46,
+      "elimination_rate": 0.58,
+      "loader_and_finite_inference_passed": true
+    },
+    {
+      "pilot_id": "pilot_005",
+      "epochs": 150,
+      "validation_evaluations": 31,
+      "selected_epoch": 140,
+      "checkpoint_sha256": "734914532c6b78ae4714d70be1128fce3f445d389300da15977a44820dbb62c1",
+      "checkpoint_bytes": 445173,
+      "metrics_bytes": 149796,
+      "benchmark_return": 169.4587999999998,
+      "survival_rate": 0.46,
+      "elimination_rate": 0.7,
+      "loader_and_finite_inference_passed": true
+    },
+    {
+      "pilot_id": "pilot_006",
+      "epochs": 150,
+      "validation_evaluations": 31,
+      "selected_epoch": 45,
+      "checkpoint_sha256": "9f1c28909260381763a459ffba348d5d7a3a26527b4c0b813105863800da0d69",
+      "checkpoint_bytes": 445173,
+      "metrics_bytes": 149982,
+      "benchmark_return": 101.88599999999988,
+      "survival_rate": 0.3,
+      "elimination_rate": 0.62,
+      "loader_and_finite_inference_passed": true
+    },
+    {
+      "pilot_id": "pilot_007",
+      "epochs": 150,
+      "validation_evaluations": 31,
+      "selected_epoch": 135,
+      "checkpoint_sha256": "c209a8a101246646f09ed81dedaf9c232891c1eb3b0ad52878d23c978f57e44d",
+      "checkpoint_bytes": 445173,
+      "metrics_bytes": 149950,
+      "benchmark_return": 159.42239999999956,
+      "survival_rate": 0.54,
+      "elimination_rate": 0.66,
+      "loader_and_finite_inference_passed": true
+    },
+    {
+      "pilot_id": "pilot_008",
+      "epochs": 150,
+      "validation_evaluations": 31,
+      "selected_epoch": 85,
+      "checkpoint_sha256": "dfb387da700babc7b1d8ada0d0d8e24953c35be585019ba40fcd7905b3c11878",
+      "checkpoint_bytes": 445173,
+      "metrics_bytes": 150016,
+      "benchmark_return": 143.3703999999997,
+      "survival_rate": 0.56,
+      "elimination_rate": 0.56,
+      "loader_and_finite_inference_passed": true
+    },
+    {
+      "pilot_id": "pilot_009",
+      "epochs": 150,
+      "validation_evaluations": 31,
+      "selected_epoch": 135,
+      "checkpoint_sha256": "71984e5d7bf70f2cbbc71fe2c82048c18f2f2b8172cc650a1feb57b1c84dc52e",
+      "checkpoint_bytes": 445173,
+      "metrics_bytes": 150010,
+      "benchmark_return": 163.26359999999966,
+      "survival_rate": 0.42,
+      "elimination_rate": 0.74,
+      "loader_and_finite_inference_passed": true
+    },
+    {
+      "pilot_id": "pilot_010",
+      "epochs": 150,
+      "validation_evaluations": 31,
+      "selected_epoch": 105,
+      "checkpoint_sha256": "07ec9ecb34835b5b87639824651dc3f79676168ca3c16fbebaeab1b19517800c",
+      "checkpoint_bytes": 445173,
+      "metrics_bytes": 149871,
+      "benchmark_return": 115.56239999999976,
+      "survival_rate": 0.4,
+      "elimination_rate": 0.6,
+      "loader_and_finite_inference_passed": true
+    }
+  ]
+}

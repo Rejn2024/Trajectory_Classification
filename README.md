@@ -32,6 +32,10 @@ and configuration stay readable in Git. See the [sharing guide](shared/README.md
 for setup on each developer's machine, publishing and downloading, dataset layout,
 and recording the exact trained agent behind a corpus.
 
+The first [published notebook 05 population](shared/models/notebook05-combat-20261006T140858_362365Z/README.md)
+contains 10 selected pilots from the 150-epoch, 75-scenario training run, with
+configurations, validation results, and complete epoch metrics (5.68 MiB in Git LFS).
+
 ## Reinforcement-learning 1-v-1 pilot
 
 Two notebooks train independent populations, each with its own models and checkpoints:

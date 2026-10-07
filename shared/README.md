@@ -10,6 +10,14 @@ YAML, and the small JSON files named `manifest.json`, `config.json`, `metrics.js
 `summary.json`, and `label_map.json`. Keep those exceptions small. Bulk JSON/CSV logs,
 model weights, Parquet, NumPy arrays, ACMI replays, and videos use LFS automatically.
 
+## Published populations
+
+- [Notebook 05 combat population, 2026-10-06](models/notebook05-combat-20261006T140858_362365Z/README.md):
+  10 selected PPO pilots, each trained for 150 epochs with 75 training scenarios.
+  Includes original configs/manifests and complete epoch metrics. Checkpoints and
+  logs total 5.68 MiB in LFS; the release README includes a selective download
+  command, loading example, validation results, and source-provenance limitations.
+
 ## Large-file transfer test
 
 `lfs-test/payload-128mib.bin` is a 128 MiB (134,217,728 byte) synthetic binary payload
@@ -193,7 +201,7 @@ training resumption; record which capability the published model provides.
 - Deleting a file from the current branch does not remove its historical LFS objects
   or reclaim the host's storage quota automatically.
 
-For GitHub, the documentation checked on 2026-10-05 lists **10 GiB storage and 10 GiB
+For GitHub, the documentation checked on 2026-10-07 lists **10 GiB storage and 10 GiB
 monthly download bandwidth** for Free/Pro, with a **2 GB per-file limit**. Team has
 different allowances. Storage includes historical versions; downloads by collaborators
 and CI count against the repository owner's allowance. For example, two fresh downloads

@@ -420,5 +420,13 @@ an evaluation-mode model. Publish its checkpoint, configuration, and manifest to
 under `shared/models/<pilot-version>/` using the [LFS workflow](../shared/README.md).
 Record both pilot ID and checkpoint hash in any flight corpus derived from that model.
 
+The [published notebook 05 combat population](../shared/models/notebook05-combat-20261006T140858_362365Z/README.md)
+contains all 10 selected checkpoints from the completed 150-epoch run with 75
+training scenarios. Its release README provides selective LFS download and loading
+commands. Configurations, manifests, complete epoch logs, and publication provenance
+are included; the total LFS payload is 5.68 MiB. These checkpoints support inference,
+not optimizer-state resumption. Their reported scores use validation scenarios, so
+use a new scenario set for a final assessment.
+
 References: [PyTorch reproducibility](https://docs.pytorch.org/docs/stable/notes/randomness.html)
 and [MLflow run tracking](https://mlflow.org/docs/latest/api_reference/python_api/mlflow.html#mlflow.start_run).

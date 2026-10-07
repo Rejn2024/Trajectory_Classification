@@ -1,0 +1,362 @@
+{
+  "format_version": 1,
+  "population": "notebook05-combat-20261006T140858_362365Z",
+  "publication_date": "2026-10-07",
+  "source_run": "artifacts/rl_pilot_notebook/combat/20261006T140858_362365Z",
+  "notebook": "notebooks/05_train_multiple_pilots.ipynb",
+  "source_snapshot_commit": "37cab41c9952efe7a5187c735f46662149285c2b",
+  "training_worktree_dirty": true,
+  "training_base_commit_inferred_from_branch_history": "df6338cb015f542a2e2a4f79a0c10b5db32fda14",
+  "training_revision_recorded_by_run": false,
+  "provenance_note": "Source was committed after training. The original run did not record a Git revision or source hashes. The source_snapshot_commit preserves the reviewed publication source; it is not independently verified as an exact training-time checkout.",
+  "simulator": {
+    "backend": "BVRJSBSimBackend / BVR Sim / JSBSim",
+    "opponent": "BVR Sim simple baseline policy",
+    "documented_upstream_commit": "db4f95657c081d120442022a339bed62d340c93b",
+    "publication_vendor_tree_git_oid": "6a8f71e62ad0201adf46b049b4933890e876d4e9",
+    "aircraft": "F16",
+    "simulation_dt_s": 0.1
+  },
+  "training": {
+    "pilots": 10,
+    "epochs_per_pilot": 150,
+    "training_scenarios_per_pilot": 75,
+    "training_seed_range_inclusive": [
+      7,
+      81
+    ],
+    "validation_scenarios_per_pilot": 50,
+    "validation_seed_range_inclusive": [
+      100082,
+      100131
+    ],
+    "scenarios_reused_each_epoch": true,
+    "matched_training_seeds_across_pilots": true,
+    "reward_family": "CombatReward version 2",
+    "actual_reward_definition": "The top-level reward in each config.json and manifest.json; training.reward is a legacy base setting overridden by this definition.",
+    "reward_population": "Original weights for pilot_001; five Halton coordinates independently vary loss, destruction, evasion, locked weapon use, and unlocked fire costs. Absolute event coefficient budget is normalized to 534; ground clearance stays 0.02.",
+    "max_episode_seconds": 120,
+    "decision_interval_seconds": 1,
+    "ppo_update_passes_per_epoch": 50,
+    "minibatch_transitions": 64,
+    "simulator_workers": 22,
+    "simulator_executor": "process",
+    "cuda_graph_updates": true,
+    "recorded_torch_version": "2.14.1+cu130"
+  },
+  "checkpoint_format": "policy_state_dict",
+  "supports_inference": true,
+  "supports_optimizer_resume": false,
+  "observation": {
+    "history_steps": 20,
+    "features_per_step": 51,
+    "definition": "bvr_behavior_prediction/rl/environment.py at source_snapshot_commit"
+  },
+  "action_catalogue": "Exact skill_names and parameter_names are preserved in each config.json; the loader verifies their order.",
+  "selection": "Best per-pilot deterministic validation return under its own objective; all selected checkpoints also evaluated with the shared original combat benchmark.",
+  "metadata_paths": "Original config.json and manifest.json are preserved. Absolute output/MLflow paths describe the training machine and are not required by load_trained_pilot.",
+  "publication_checks": {
+    "targeted_tests_passed": 87,
+    "notebook_04_unchanged": true,
+    "all_epoch_metrics_and_model_parameters_finite": true,
+    "all_checkpoint_checksums_verified": true,
+    "all_models_loaded_from_publication_path_on_cpu": true,
+    "validation_environment": {
+      "torch": "2.14.1+cu130",
+      "numpy": "2.5.3",
+      "jsbsim": "1.3.1"
+    }
+  },
+  "lfs": {
+    "new_objects": 20,
+    "model_bytes": 4451730,
+    "training_metrics_bytes": 1499521,
+    "total_object_bytes": 5951251,
+    "largest_object_bytes": 445173,
+    "conservative_per_file_cap_bytes": 2000000000,
+    "account_remaining_quota_verified": false,
+    "notes": "New immutable batch; no intermediate checkpoint history, simulator logs, replay/video corpus, or MLflow database included. Storage and download usage count against the repository owner; future versions add full LFS objects."
+  },
+  "files": [
+    {
+      "path": "pilot_001/best_model.pt",
+      "storage": "git-lfs",
+      "published_source_bytes": 445173,
+      "sha256": "cdd0814b8575c18358f45cf74b59e287c486b096824fec74612718c1627740e7",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_001/config.json",
+      "storage": "git",
+      "published_source_bytes": 3228,
+      "sha256": "6b1651c54253d958f5c04dcc7945c2377cd60173d295f6c3d69465af6849646c",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_001/manifest.json",
+      "storage": "git",
+      "published_source_bytes": 1833,
+      "sha256": "1d3c83b04af9eaa84c85682f038f67c1453da0b3d730b2cbed031ca0fe5b8e06",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_001/training_metrics.jsonl",
+      "storage": "git-lfs",
+      "published_source_bytes": 149916,
+      "sha256": "0510d40701bcc4d880de20292d2b2ccc222f6bd1f5f9e51ecd53306bda51037e",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_002/best_model.pt",
+      "storage": "git-lfs",
+      "published_source_bytes": 445173,
+      "sha256": "0842703a1715194e48f63306b04130c4b10b477acb6c0192aca3b164e8b16ce7",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_002/config.json",
+      "storage": "git",
+      "published_source_bytes": 3321,
+      "sha256": "27b1766bea0388952af7f38f2907297720539b4849a9700b4af90a128f1afc88",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_002/manifest.json",
+      "storage": "git",
+      "published_source_bytes": 1923,
+      "sha256": "97deb2ea720bd2c1f3ab9f312f5face057958a12837b27c1a1e5a650b8608f55",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_002/training_metrics.jsonl",
+      "storage": "git-lfs",
+      "published_source_bytes": 149998,
+      "sha256": "250817f3e9c49a4b6a453cd9944254eb2c88745b1da0c7dfcb2244a75e9849a8",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_003/best_model.pt",
+      "storage": "git-lfs",
+      "published_source_bytes": 445173,
+      "sha256": "ae0626befd0807010dc046d855a7644eb94e0884f9b156bf96837e22c85c808e",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_003/config.json",
+      "storage": "git",
+      "published_source_bytes": 3318,
+      "sha256": "f033176847748377e58721f96968b49834b797a89bb5b9ce22a469194871e095",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_003/manifest.json",
+      "storage": "git",
+      "published_source_bytes": 1921,
+      "sha256": "6a61eab5bdc467618ed55d490ac9ac410adc37a8270a653b24137045f15604ee",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_003/training_metrics.jsonl",
+      "storage": "git-lfs",
+      "published_source_bytes": 149870,
+      "sha256": "0d520a3901f70e83de2b6366f030922a45a6356244af590ed79802e7e299792f",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_004/best_model.pt",
+      "storage": "git-lfs",
+      "published_source_bytes": 445173,
+      "sha256": "d489bf4b388002f04b1d4252ea1e5b63c1f85ffc5a7ba68105ecc6d443d0eb65",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_004/config.json",
+      "storage": "git",
+      "published_source_bytes": 3324,
+      "sha256": "13e7276fe161234f267a1a00ff222a5f4940c3a8c761b3923f24f65f787b640b",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_004/manifest.json",
+      "storage": "git",
+      "published_source_bytes": 1928,
+      "sha256": "a84117bd194b5c03927888c95e3bd5d0ffbb1ce2ba101c3dc74a6247d9232f01",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_004/training_metrics.jsonl",
+      "storage": "git-lfs",
+      "published_source_bytes": 150112,
+      "sha256": "f9f6579e3764777d2437221ca51a297dfbf262bfd630aaed6655ec2dad5b9afc",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_005/best_model.pt",
+      "storage": "git-lfs",
+      "published_source_bytes": 445173,
+      "sha256": "734914532c6b78ae4714d70be1128fce3f445d389300da15977a44820dbb62c1",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_005/config.json",
+      "storage": "git",
+      "published_source_bytes": 3321,
+      "sha256": "35d1e89832af010582f2ac61c0311683c9b6d13866e99e8dc3736d636020e8ec",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_005/manifest.json",
+      "storage": "git",
+      "published_source_bytes": 1921,
+      "sha256": "29b2b36f36eaff85d91a604b80db46c0ef0d89d9caad2cf9f55e386da6658e61",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_005/training_metrics.jsonl",
+      "storage": "git-lfs",
+      "published_source_bytes": 149796,
+      "sha256": "56848a322169a367c98dfc66c181337c9e09d4e863a9c573d0423750597992da",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_006/best_model.pt",
+      "storage": "git-lfs",
+      "published_source_bytes": 445173,
+      "sha256": "9f1c28909260381763a459ffba348d5d7a3a26527b4c0b813105863800da0d69",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_006/config.json",
+      "storage": "git",
+      "published_source_bytes": 3322,
+      "sha256": "d6eaf52c829e6fbd069c67f21568a2608cd008a5415f1532ae80010736abaeed",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_006/manifest.json",
+      "storage": "git",
+      "published_source_bytes": 1927,
+      "sha256": "b373da145eecbd14ff0ef74e6dec15da11099b29bb21f012ca08c7e3477e4abe",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_006/training_metrics.jsonl",
+      "storage": "git-lfs",
+      "published_source_bytes": 149982,
+      "sha256": "4da72a068e66fd1db95784d279453d241c92cf4f610e97a7a32468da3a67db48",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_007/best_model.pt",
+      "storage": "git-lfs",
+      "published_source_bytes": 445173,
+      "sha256": "c209a8a101246646f09ed81dedaf9c232891c1eb3b0ad52878d23c978f57e44d",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_007/config.json",
+      "storage": "git",
+      "published_source_bytes": 3322,
+      "sha256": "c72f2be7397f215bcc6604128fe434a99b5e01998bb2c7c8d4d61d6752ea21bb",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_007/manifest.json",
+      "storage": "git",
+      "published_source_bytes": 1928,
+      "sha256": "f4d4233cd5cbbd1f0405093a76eab8f89168e93fc941883eb92a24a50ab68ec9",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_007/training_metrics.jsonl",
+      "storage": "git-lfs",
+      "published_source_bytes": 149950,
+      "sha256": "465da58ca5b446eb59324fff969cc48038669e41ecdba22569a31b33d0d1d505",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_008/best_model.pt",
+      "storage": "git-lfs",
+      "published_source_bytes": 445173,
+      "sha256": "dfb387da700babc7b1d8ada0d0d8e24953c35be585019ba40fcd7905b3c11878",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_008/config.json",
+      "storage": "git",
+      "published_source_bytes": 3323,
+      "sha256": "e290f525c313abb90838eded99021949d275b589a43036ca63483da626cfd3dc",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_008/manifest.json",
+      "storage": "git",
+      "published_source_bytes": 1925,
+      "sha256": "7d7e3e3d0da5a29492c6f104bfdb641bbffbaba4a8716a588cf14d608e0955f9",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_008/training_metrics.jsonl",
+      "storage": "git-lfs",
+      "published_source_bytes": 150016,
+      "sha256": "9d02ee205b525d55284cdf75ec1fff93c1ea917dcc639cf581d58da25a1005f2",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_009/best_model.pt",
+      "storage": "git-lfs",
+      "published_source_bytes": 445173,
+      "sha256": "71984e5d7bf70f2cbbc71fe2c82048c18f2f2b8172cc650a1feb57b1c84dc52e",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_009/config.json",
+      "storage": "git",
+      "published_source_bytes": 3319,
+      "sha256": "1dddeacfb5ca27a01625d1b7cae91f0c0233159187ba91501297bf88b1981815",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_009/manifest.json",
+      "storage": "git",
+      "published_source_bytes": 1926,
+      "sha256": "2fa4b5bcfa92d34b4f9e5b7a4af347f5f218462f8130e664a6aa33a7f929cd71",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_009/training_metrics.jsonl",
+      "storage": "git-lfs",
+      "published_source_bytes": 150010,
+      "sha256": "ab6b936680796d796aab534b6c19f3179fe7abb7b75c90f18430f30114d14d39",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_010/best_model.pt",
+      "storage": "git-lfs",
+      "published_source_bytes": 445173,
+      "sha256": "07ec9ecb34835b5b87639824651dc3f79676168ca3c16fbebaeab1b19517800c",
+      "hash_encoding": "raw bytes"
+    },
+    {
+      "path": "pilot_010/config.json",
+      "storage": "git",
+      "published_source_bytes": 3323,
+      "sha256": "0ec5ae3df312211592b8cde32e77e22773f08b3ed3a2206dbc23168851e0a79d",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_010/manifest.json",
+      "storage": "git",
+      "published_source_bytes": 1925,
+      "sha256": "8a2f86ac2a47558a2c7cee7f26448551dec4c72a474271f72f6270df90e43c04",
+      "hash_encoding": "canonical JSON: UTF-8, sorted keys, compact separators, ensure_ascii=false"
+    },
+    {
+      "path": "pilot_010/training_metrics.jsonl",
+      "storage": "git-lfs",
+      "published_source_bytes": 149871,
+      "sha256": "2eed530306e7ecafb75f739f34b9e1f9832bb3d6fd614cba3f0f73982ee43be9",
+      "hash_encoding": "raw bytes"
+    }
+  ]
+}

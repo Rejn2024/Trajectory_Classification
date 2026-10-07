@@ -1,0 +1,62 @@
+{
+  "pilot_id": "pilot_010",
+  "seed": 7,
+  "reward_name": "combat_objective_010",
+  "reward": {
+    "name": "combat_objective_010",
+    "version": "2",
+    "parameters": {
+      "weights": {
+        "crashed": -129.3735151927642,
+        "shot_down": -194.06027278914627,
+        "ground_clearance": 0.02,
+        "target_lock_acquired": 1.8135131455951712,
+        "fired_with_lock": 7.254052582380685,
+        "incoming_missile_avoided": 38.014302099632786,
+        "opponent_destroyed": 156.10800017432538,
+        "fired_without_lock": -7.376344016155546
+      },
+      "safe_altitude_m": 500.0
+    }
+  },
+  "output_dir": "pilot_010",
+  "checkpoint": "pilot_010/best_model.pt",
+  "checkpoint_sha256": "07ec9ecb34835b5b87639824651dc3f79676168ca3c16fbebaeab1b19517800c",
+  "selection_return": 66.69668740126352,
+  "benchmark_return": 115.56239999999976,
+  "benchmark_return_std": 174.59918907669615,
+  "survival_rate": 0.4,
+  "opponent_destroyed_rate": 0.6,
+  "elimination_rate": 0.6,
+  "mean_missiles_avoided": 1.96,
+  "mean_threatened_seconds": 56.46799999999965,
+  "benchmark_component_means": {
+    "crashed": 0.0,
+    "fired_with_lock": 13.12,
+    "fired_without_lock": 0.0,
+    "ground_clearance": 1.3224000000000007,
+    "missile_avoided": 39.2,
+    "opponent_destroyed": 150.0,
+    "shot_down": -90.0,
+    "target_locked": 1.92
+  },
+  "evaluation_seed": 100082,
+  "benchmark_reward": {
+    "name": "common_combat",
+    "version": "2",
+    "parameters": {
+      "weights": {
+        "crashed": -100.0,
+        "shot_down": -150.0,
+        "ground_clearance": 0.02,
+        "target_lock_acquired": 2.0,
+        "fired_with_lock": 8.0,
+        "incoming_missile_avoided": 20.0,
+        "opponent_destroyed": 250.0,
+        "fired_without_lock": -4.0
+      },
+      "safe_altitude_m": 500.0
+    }
+  },
+  "mlflow_run_id": "43d5ab34db094dbc8e44afd1fd450951"
+}
