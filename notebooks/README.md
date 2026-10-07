@@ -51,10 +51,23 @@ the fixed-set evaluation mean and reloaded before the final recorded flight. Ins
 `BVR_PILOT_SCENARIOS`, `BVR_PILOT_EVALUATION_SCENARIOS`, `BVR_PILOT_WORKERS`,
 `BVR_PILOT_DEVICE`, and `BVR_PILOT_OUTPUT` to configure the experiment.
 
-Train multiple independent policies with `05_train_multiple_pilots.ipynb`. Set
-`BVR_PILOT_COUNT` to any positive count, or edit its `PILOTS` roster. Every pilot has
-an independent seed, reward factory, model, and output directory. The notebook
-compares selected checkpoints with a common reward and lets you choose a pilot for
-ACMI replay. Existing batches are preserved. See the
+Choose a population workflow:
+
+- [05: original combat rewards](05_train_multiple_pilots.ipynb) trains 10 pilots for
+  **150 epochs each** by default. It restores notebook 04's event-based formula with
+  varied relative coefficients; pilot 001 uses the exact original weights. Subsequent
+  pilots vary losses, destruction, evasion, locks/launches, and unlocked firing costs.
+- [06: hybrid rewards](06_train_multiple_pilots.ipynb) preserves the previous notebook
+  05 experiment: relative evade/pursue/eliminate preferences and capped shared combat
+  guidance, with defaults of 10 pilots and 80 epochs each.
+
+Set `BVR_PILOT_COUNT` to any positive count and `BVR_PILOT_EPOCHS` to override the epoch
+budget. Each pilot has its own reward, model, checkpoint, and MLflow run. Both notebooks
+retain persistent processes, the 80% worker budget, CUDA graphs, and matched seeds
+(`BVR_PILOT_SEED_STRIDE` selects different seeds). Their default outputs are separated
+under `artifacts/rl_pilot_notebook/combat/` and `artifacts/rl_pilot_notebook/hybrid/`.
+Both compare checkpoints within the population and record ACMI replays. Their benchmark
+formulas differ, so cross-population comparisons require a common evaluation reward.
+Notebook 04 is unchanged. Existing batches are preserved. See the
 [multi-pilot guide](../docs/multi_pilot_training.md) for arbitrary custom reward
 formulas, a short smoke run, and loading checkpoints after restarting the kernel.

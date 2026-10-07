@@ -34,15 +34,24 @@ and recording the exact trained agent behind a corpus.
 
 ## Reinforcement-learning 1-v-1 pilot
 
-To train an arbitrary number of independent pilots with different reward functions,
-use [`notebooks/05_train_multiple_pilots.ipynb`](notebooks/05_train_multiple_pilots.ipynb).
-Each pilot gets its own model, seed, MLflow run, and checkpoint. Reward definitions
-are editable factories, and a common benchmark supports comparisons across objectives.
+Two notebooks train independent populations, each with its own models and checkpoints:
+
+- [`05_train_multiple_pilots.ipynb`](notebooks/05_train_multiple_pilots.ipynb) uses the
+  original combat-event reward with varied relative coefficients. Defaults: 10 pilots,
+  **150 epochs per pilot**, with the original notebook 04 weights as pilot 001.
+- [`06_train_multiple_pilots.ipynb`](notebooks/06_train_multiple_pilots.ipynb) preserves
+  the hybrid evade/pursue/eliminate experiment and shared lock/launch/support guidance.
+  Defaults: 10 pilots, 80 epochs per pilot.
+
+Both support arbitrary population sizes and editable reward factories, matched seeds,
+persistent simulator processes, an 80% CPU worker budget, and CUDA-graph PPO updates.
+They use separate output folders and MLflow experiments. Each has a common benchmark
+within its population; benchmark formulas differ between notebooks.
 See the [multi-pilot training guide](docs/multi_pilot_training.md) for configuration,
 custom rewards, and loading saved pilots.
 
 `bvr_behavior_prediction.rl` contains a PPO training path for a **blue-controlled**
-pilot against a level, constant-course red opponent. The hybrid policy chooses among
+pilot against the simulator's simple baseline opponent. The hybrid policy chooses among
 all 33 `SkillManager` skills and predicts the bounded numeric parameters of the chosen
 skill. A transformer processes a rolling two-second, 10 Hz history containing the normal
 flight observations plus separate normalized kinetic- and potential-energy estimates for
