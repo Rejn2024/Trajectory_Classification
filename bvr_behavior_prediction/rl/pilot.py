@@ -2,10 +2,9 @@
 
 import numpy as np
 import torch
+from bvr_sim.agents.skill_manager import SkillManager
 from torch import nn
 from torch.distributions import Categorical, Normal
-
-from bvr_sim.agents.skill_manager import SkillManager
 
 
 class HybridSkillPilot(nn.Module):
@@ -61,7 +60,7 @@ class HybridSkillPilot(nn.Module):
         self.parameter_log_std = nn.Parameter(torch.full((len(self.parameter_names),), -0.5))
         self.value_head = nn.Linear(hidden_size, 1)
 
-    def distributions(self, observations):
+    def distributions(self, observations, *, validate_args=True):
         if observations.ndim == 2:
             observations = observations.unsqueeze(1)
         if observations.ndim != 3:
@@ -72,9 +71,12 @@ class HybridSkillPilot(nn.Module):
         tokens = tokens + self.position_embedding[:, -tokens.shape[1] :]
         # The newest token attends to the complete chronological energy/flight history.
         hidden = self.encoder_norm(self.encoder(tokens)[:, -1])
-        skill = Categorical(logits=self.skill_head(hidden))
+        skill = Categorical(logits=self.skill_head(hidden), validate_args=validate_args)
         mean = self.parameter_mean(hidden)
-        params = Normal(mean, self.parameter_log_std.clamp(-5, 2).exp().expand_as(mean))
+        params = Normal(
+            mean, self.parameter_log_std.clamp(-5, 2).exp().expand_as(mean),
+            validate_args=validate_args,
+        )
         return skill, params, self.value_head(hidden).squeeze(-1)
 
     def act(self, observation, deterministic=False):
@@ -125,8 +127,8 @@ class HybridSkillPilot(nn.Module):
                 result[name] = schema["default"]
         return result
 
-    def evaluate(self, observations, skill_indices, raw_parameters):
-        skill, params, values = self.distributions(observations)
+    def evaluate(self, observations, skill_indices, raw_parameters, *, validate_args=True):
+        skill, params, values = self.distributions(observations, validate_args=validate_args)
         log_prob = skill.log_prob(skill_indices) + params.log_prob(raw_parameters).sum(-1)
         entropy = skill.entropy() + params.entropy().sum(-1)
         return log_prob, entropy, values

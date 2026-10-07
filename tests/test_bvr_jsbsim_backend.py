@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -9,6 +10,7 @@ class _Aircraft:
     def __init__(self, altitude, speed):
         self.position = np.array([0.0, 0.0, altitude])
         self.speed = speed
+        self.velocity = np.array([speed, 0.0, 0.0])
         self.is_alive = True
         self.enemies_lock = []
         self.under_missiles = []
@@ -106,3 +108,108 @@ def test_backend_declares_expected_compact_observation_and_energy_fields():
         '"red_altitude_m"',
     ):
         assert field in source
+
+
+def _backend(tmp_path):
+    return BVRJSBSimBackend(
+        {"range_m": 30_000, "blue_altitude_m": 6000, "red_altitude_m": 7000},
+        env_factory=_Environment, log_dir=tmp_path,
+    )
+
+
+def _step(backend):
+    return backend.step({"skill_name": "maintain_heading", "parameters": {}}, {})[-1]
+
+
+def test_evasion_tracks_individual_live_missiles_despite_persistent_history(tmp_path):
+    backend = _backend(tmp_path)
+    blue = backend.env.agents[backend.CONTROLLED_ID]
+    backend.reset(7)
+    first = SimpleNamespace(uid="first", is_alive=True, is_success=False, target=blue)
+    second = SimpleNamespace(uid="second", is_alive=True, is_success=False, target=blue)
+    blue.under_missiles.extend([first, second])
+    assert _step(backend)["incoming_missiles"] == 2
+    first.is_alive = False
+    info = _step(backend)
+    assert info["incoming_missiles"] == 1
+    assert info["missiles_avoided_total"] == 1
+    assert info["reward_event_counts"]["missile_avoided"] == 1
+    assert not _step(backend)["missile_avoided"]
+    second.is_alive = False
+    assert _step(backend)["missiles_avoided_total"] == 2
+    assert len(blue.under_missiles) == 2
+    backend.reset(8)
+    assert _step(backend)["missiles_avoided_total"] == 0
+    backend.close()
+
+
+def test_missile_hit_and_aircraft_loss_are_not_evasions(tmp_path):
+    backend = _backend(tmp_path)
+    blue = backend.env.agents[backend.CONTROLLED_ID]
+    backend.reset(7)
+    missile = SimpleNamespace(uid="hit", is_alive=True, is_success=False, target=blue)
+    blue.under_missiles.append(missile)
+    _step(backend)
+    missile.is_alive = False
+    missile.is_success = True
+    blue.is_alive = False
+    info = _step(backend)
+    assert not info["missile_avoided"]
+    assert info["missiles_avoided_total"] == 0
+    # Other missiles dying because their target died also must not earn evasion.
+    blue.under_missiles.append(SimpleNamespace(
+        uid="target_down", is_alive=False, is_success=False, target=blue,
+    ))
+    assert _step(backend)["missiles_avoided_total"] == 0
+    backend.close()
+
+
+def test_elimination_requires_a_successful_friendly_missile(tmp_path):
+    backend = _backend(tmp_path)
+    blue, red = backend.env.agents["A01"], backend.env.agents["B01"]
+    backend.reset(7)
+    red.is_alive = False
+    info = _step(backend)
+    assert info["opponent_destroyed"]
+    assert not info["opponent_eliminated"]
+    blue.launched_missiles.append(SimpleNamespace(is_success=True, target=red))
+    assert _step(backend)["opponent_eliminated"]
+    backend.close()
+
+
+def test_geometry_measures_actual_flight_path_and_keeps_initial_reference(tmp_path):
+    backend = _backend(tmp_path)
+    blue, red = backend.env.agents["A01"], backend.env.agents["B01"]
+    red.position = blue.position + np.array([30_000.0, 0, 0])
+    _, initial = backend.reset(7)
+    assert initial["target_alignment"] == 1.0
+    red.position = blue.position + np.array([0, 20_000.0, 0])
+    info = _step(backend)
+    assert info["target_range_m"] == 20_000
+    assert info["target_alignment"] == 0
+    assert info["initial_target_range_m"] == 30_000
+    assert info["initial_target_alignment"] == 1.0
+    assert info["red_policy"] == "simple"
+    backend.close()
+
+
+def test_support_requires_a_live_locked_target_and_missile_without_active_seeker(tmp_path):
+    backend = _backend(tmp_path)
+    blue, red = backend.env.agents["A01"], backend.env.agents["B01"]
+    backend.reset(7)
+    blue.enemies_lock = [red]
+    missile = SimpleNamespace(is_alive=True, is_success=False, radar_on=False, target=red)
+    blue.launched_missiles.append(missile)
+    assert _step(backend)["supporting_missile"]
+    blue.enemies_lock = []
+    assert not _step(backend)["supporting_missile"]
+    blue.enemies_lock = [red]
+    missile.radar_on = True
+    assert not _step(backend)["supporting_missile"]
+    missile.radar_on = False
+    missile.is_alive = False
+    assert not _step(backend)["supporting_missile"]
+    missile.is_alive = True
+    red.is_alive = False
+    assert not _step(backend)["supporting_missile"]
+    backend.close()

@@ -49,6 +49,7 @@ class PilotTrainingConfig:
     value_coefficient: float = 0.5
     gradient_clip: float = 0.5
     mixed_precision: bool = True
+    cuda_graph_updates: bool = False
     checkpoint_interval: int = 10
     diagnostic_interval: int = 1
     output_dir: Path = Path("artifacts/rl_pilot")

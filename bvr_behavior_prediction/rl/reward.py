@@ -11,8 +11,8 @@ from .config import RewardWeights
 class CombatReward:
     """Compute rewards from simulator ``info`` without repeatedly paying events.
 
-    Boolean event keys may remain true in later frames; edge detection makes target
-    lock, launch, missile evasion and kill rewards one-shot. Ground clearance is a
+    Substep event counts preserve short-lived and consecutive events. Boolean-only
+    backends use edge detection for one-shot events. Ground clearance is a
     small survival reward and is paid only while safely airborne.
     """
 
@@ -46,14 +46,12 @@ class CombatReward:
             "crashed": self.weights.crashed,
             "shot_down": self.weights.shot_down,
         }
+        counts = info.get("reward_event_counts", {})
         for event, value in mapping.items():
-            components[event] = (
-                value if info.get(event, False) and not self.previous.get(event, False) else 0.0
-            )
-        components["fired_without_lock"] = (
-            self.weights.fired_without_lock
-            if info.get("fired", False) and not info.get("target_locked", False)
-            else 0.0
+            count = counts.get(event, info.get(event, False) and not self.previous.get(event, False))
+            components[event] = value * count
+        components["fired_without_lock"] = self.weights.fired_without_lock * counts.get(
+            "fired_without_lock", info.get("fired", False) and not info.get("target_locked", False)
         )
         self.previous = {field: bool(info.get(field, False)) for field in self.EVENT_FIELDS}
         return sum(components.values()), components
@@ -94,4 +92,5 @@ def combat_reward_definition(name="combat", weights=None, safe_altitude_m=500.0)
         name=name,
         factory=partial(CombatReward, weights=weights, safe_altitude_m=safe_altitude_m),
         parameters={"weights": asdict(weights), "safe_altitude_m": safe_altitude_m},
+        version="2",
     )

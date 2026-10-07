@@ -1,6 +1,7 @@
 """Batched PPO training, diagnostics, MLflow tracking, and replay checkpoints."""
 
 import json
+import math
 import os
 import random
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ import numpy as np
 import torch
 from tqdm.auto import tqdm
 
+from .cuda_update import CUDABatchBackward
 from .pilot import HybridSkillPilot
 from .reward import combat_reward_definition
 from .scenarios import ScenarioSampler
@@ -39,6 +41,7 @@ class PPOTrainer:
         self.mlflow_run_id = None
         self._simulator_pool = None
         self._training_active = False
+        self._last_update_profile = {}
         # Reinitialize every pilot independently of the previous run's RNG state.
         random.seed(config.seed)
         np.random.seed(config.seed)
@@ -85,11 +88,14 @@ class PPOTrainer:
         try:
             reward_fn = self.reward_definition.factory()
             rollout = Rollout([], [], [], [], [], [], [])
+            component_totals = {}
             obs, total, final_info = env.reset(seed), 0.0, {}
             for _ in range(self.config.decisions_per_episode):
                 name, params, logp, value, raw = self.pilot.act(obs, deterministic=deterministic)
                 next_obs, terminated, truncated, info = env.step(name, params)
                 reward, components = reward_fn(info)
+                for key, component_value in components.items():
+                    component_totals[key] = component_totals.get(key, 0.0) + float(component_value)
                 rollout.observations.append(obs)
                 rollout.skills.append(self.pilot._skill_indices[name])
                 rollout.parameters.append(raw)
@@ -100,7 +106,8 @@ class PPOTrainer:
                 total, obs, final_info = (
                     total + reward,
                     next_obs,
-                    {**info, "reward_components": components},
+                    {**info, "reward_components": components,
+                     "reward_component_totals": dict(component_totals)},
                 )
                 if terminated or truncated:
                     break
@@ -161,6 +168,7 @@ class PPOTrainer:
             observations = pool.reset(scenarios, seeds)
             rollouts = [Rollout([], [], [], [], [], [], []) for _ in scenarios]
             totals = [0.0] * len(scenarios)
+            component_totals = [{} for _ in scenarios]
             final_info = [{} for _ in scenarios]
             active = list(range(len(scenarios)))
             definition = reward_definition or self.reward_definition
@@ -187,6 +195,10 @@ class PPOTrainer:
                     name, _, logp, value, raw = action
                     next_obs, terminated, truncated, info = step
                     reward, components = rewards[index](info)
+                    for key, component_value in components.items():
+                        component_totals[index][key] = (
+                            component_totals[index].get(key, 0.0) + float(component_value)
+                        )
                     rollout = rollouts[index]
                     rollout.observations.append(observations[index])
                     rollout.skills.append(self.pilot._skill_indices[name])
@@ -197,7 +209,10 @@ class PPOTrainer:
                     rollout.dones.append(terminated or truncated)
                     totals[index] += reward
                     observations[index] = next_obs
-                    final_info[index] = {**info, "reward_components": components}
+                    final_info[index] = {
+                        **info, "reward_components": components,
+                        "reward_component_totals": dict(component_totals[index]),
+                    }
                     if not (terminated or truncated):
                         next_active.append(index)
                 active = next_active
@@ -237,6 +252,31 @@ class PPOTrainer:
         advantages.reverse()
         return np.asarray(advantages, np.float32), np.asarray(advantages) + rollout.values
 
+    def _backward_minibatch(self, batch, *, capture=False):
+        observations, skills, raw, old, advantages, returns = batch
+        with torch.autocast(
+            device_type=self.device.type,
+            dtype=torch.float16,
+            enabled=self.use_mixed_precision,
+        ):
+            # Distribution argument checks read GPU booleans on the CPU and cannot
+            # run inside a CUDA graph. Collection/eager evaluation keep validation;
+            # graph inputs are checked once per update and final loss must be finite.
+            logp, entropy, values = self.pilot.evaluate(
+                observations, skills, raw, validate_args=not capture,
+            )
+            ratio = (logp - old).exp()
+            policy = -torch.minimum(
+                ratio * advantages,
+                ratio.clamp(1 - self.config.clip_ratio, 1 + self.config.clip_ratio) * advantages,
+            ).mean()
+            loss = (
+                policy + self.config.value_coefficient * (values - returns).pow(2).mean()
+                - self.config.entropy_coefficient * entropy.mean()
+            )
+        self.grad_scaler.scale(loss).backward()
+        return loss
+
     def _update(self, rollouts):
         advantages, returns = zip(*(self._advantages(r) for r in rollouts))
         obs = torch.as_tensor(
@@ -261,6 +301,22 @@ class PPOTrainer:
         adv = (adv - adv.mean()) / (adv.std() + 1e-8)
         ret = torch.as_tensor(np.concatenate(returns), dtype=torch.float32, device=self.device)
         n = len(obs)
+        batch_tensors = (obs, skills, raw, old, adv, ret)
+        graph_backward = None
+        capture_seconds = 0.0
+        if (self.config.cuda_graph_updates and self.device.type == "cuda"
+                and n >= self.config.minibatch_size):
+            valid = torch.stack([torch.isfinite(tensor).all() for tensor in batch_tensors]).all()
+            valid = valid & ((skills >= 0) & (skills < len(self.pilot.skill_names))).all()
+            if not valid.item():
+                raise ValueError("PPO rollout contains non-finite data or invalid skill indices")
+            capture_started = perf_counter()
+            graph_backward = CUDABatchBackward(
+                lambda batch: self._backward_minibatch(batch, capture=True),
+                self.pilot.parameters(),
+                tuple(tensor[:self.config.minibatch_size] for tensor in batch_tensors),
+            )
+            capture_seconds = perf_counter() - capture_started
         # Shuffle each tensor once per update epoch. Contiguous minibatch slices are
         # views; the previous advanced indexing performed five GPU gathers for every
         # minibatch. Keep losses on-device too, avoiding a device synchronization on
@@ -269,48 +325,31 @@ class PPOTrainer:
         for _ in range(self.config.update_epochs):
             order = torch.randperm(n, device=self.device)
             shuffled = tuple(
-                tensor.index_select(0, order) for tensor in (obs, skills, raw, old, adv, ret)
+                tensor.index_select(0, order) for tensor in batch_tensors
             )
-            (
-                shuffled_obs,
-                shuffled_skills,
-                shuffled_raw,
-                shuffled_old,
-                shuffled_adv,
-                shuffled_ret,
-            ) = shuffled
             for left in range(0, n, self.config.minibatch_size):
                 right = left + self.config.minibatch_size
-                self.optimizer.zero_grad(set_to_none=True)
-                with torch.autocast(
-                    device_type=self.device.type,
-                    dtype=torch.float16,
-                    enabled=self.use_mixed_precision,
-                ):
-                    logp, entropy, values = self.pilot.evaluate(
-                        shuffled_obs[left:right],
-                        shuffled_skills[left:right],
-                        shuffled_raw[left:right],
-                    )
-                    ratio = (logp - shuffled_old[left:right]).exp()
-                    policy = -torch.minimum(
-                        ratio * shuffled_adv[left:right],
-                        ratio.clamp(1 - self.config.clip_ratio, 1 + self.config.clip_ratio)
-                        * shuffled_adv[left:right],
-                    ).mean()
-                    loss = (
-                        policy
-                        + self.config.value_coefficient
-                        * (values - shuffled_ret[left:right]).pow(2).mean()
-                        - self.config.entropy_coefficient * entropy.mean()
-                    )
-                self.grad_scaler.scale(loss).backward()
+                batch = tuple(tensor[left:right] for tensor in shuffled)
+                if graph_backward is not None and len(batch[0]) == self.config.minibatch_size:
+                    loss = graph_backward(batch)
+                else:
+                    self.optimizer.zero_grad(set_to_none=True)
+                    loss = self._backward_minibatch(batch)
                 self.grad_scaler.unscale_(self.optimizer)
                 torch.nn.utils.clip_grad_norm_(self.pilot.parameters(), self.config.gradient_clip)
                 self.grad_scaler.step(self.optimizer)
                 self.grad_scaler.update()
                 losses.append(loss.detach())
-        return torch.stack(losses).mean().item()
+        mean_loss = torch.stack(losses).mean().item()
+        if not math.isfinite(mean_loss):
+            raise FloatingPointError("PPO update produced a non-finite loss")
+        self._last_update_profile = {
+            "rollout_transitions": n,
+            "update_minibatches": len(losses),
+            "cuda_graph_updates": int(graph_backward is not None),
+            "cuda_graph_capture_seconds": capture_seconds,
+        }
+        return mean_loss
 
     def _should_evaluate(self, epoch):
         """Evaluate at useful boundaries without doubling every training epoch."""
@@ -387,10 +426,12 @@ class PPOTrainer:
             evaluation_seconds_sample = 0.0
             for epoch in range(1, self.config.epochs + 1):
                 epoch_started = perf_counter()
+                progress.set_postfix(phase="collecting flights")
                 episodes = self._training_episodes()
                 rollout_seconds = perf_counter() - epoch_started
                 training_collection_profile = self._last_collection_profile.copy()
                 update_started = perf_counter()
+                progress.set_postfix(phase="PPO update")
                 loss, scores = (
                     self._update([item[0] for item in episodes]),
                     [item[1] for item in episodes],
@@ -399,6 +440,7 @@ class PPOTrainer:
                 evaluation_performed = self._should_evaluate(epoch)
                 evaluation_seconds = 0.0
                 if evaluation_performed:
+                    progress.set_postfix(phase="validation flights")
                     evaluation_started = perf_counter()
                     evaluation_scores = self._evaluate()
                     evaluation_seconds = perf_counter() - evaluation_started
@@ -422,10 +464,17 @@ class PPOTrainer:
                     ),
                 }
                 metrics.update(training_collection_profile)
+                metrics.update(self._last_update_profile)
+                metrics["update_transitions_per_second"] = (
+                    sum(len(item[0].rewards) for item in episodes) * self.config.update_epochs
+                    / update_seconds if update_seconds else 0.0
+                )
+                checkpoint_started = perf_counter()
                 if evaluation_performed and evaluation_mean > self.best_score:
                     self.best_score = evaluation_mean
                     torch.save(self.pilot.state_dict(), self.output / "best_model.pt")
                 if epoch % self.config.checkpoint_interval == 0:
+                    progress.set_postfix(phase="saving demonstration")
                     demo_dir = self.output / "demonstrations" / f"epoch_{epoch:04d}"
                     demo_dir.mkdir(parents=True, exist_ok=True)
                     # Fixed seed and first canonical geometry make progress comparable.
@@ -451,6 +500,7 @@ class PPOTrainer:
                     mlflow.log_artifacts(
                         str(demo_dir), artifact_path=f"demonstrations/epoch_{epoch:04d}"
                     )
+                metrics["checkpoint_seconds"] = perf_counter() - checkpoint_started
                 metrics["epoch_seconds"] = perf_counter() - epoch_started
                 with self.diagnostics_path.open("a", encoding="utf8") as stream:
                     stream.write(json.dumps(metrics) + "\n")

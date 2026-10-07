@@ -5,7 +5,6 @@ from collections.abc import Callable, Mapping
 
 import numpy as np
 
-
 ENERGY_FEATURE_NAMES = (
     "blue_kinetic_energy",
     "blue_potential_energy",
@@ -30,6 +29,11 @@ class BluePilotEnvironment:
     specific kinetic and potential energy, kept separate so the policy can
     reason about an energy trade rather than a single total-energy scalar.
     """
+
+    REWARD_EVENTS = (
+        "target_locked", "fired_with_lock", "fired_without_lock", "missile_avoided",
+        "opponent_destroyed", "opponent_eliminated", "crashed", "shot_down",
+    )
 
     def __init__(
         self,
@@ -60,14 +64,18 @@ class BluePilotEnvironment:
         self.horizon = planning_horizon_s
         self.limit = episode_duration_s
         self.sample_interval_s = sample_interval_s
-        self.substeps = int(round(substeps))
-        self.history_steps = int(round(history_steps))
+        self.substeps = round(substeps)
+        self.history_steps = round(history_steps)
         self.speed_scale_mps = speed_scale_mps
         self.altitude_scale_m = altitude_scale_m
         self.backend = backend_factory(scenario.as_dict(), recording_path)
         self.history = deque(maxlen=self.history_steps)
         self._energy_measurements = {name: 0.0 for name in ENERGY_FEATURE_NAMES}
         self.elapsed = 0.0
+        self._previous_events = {}
+        self._threatened_time_s = 0.0
+        self._missile_support_time_s = 0.0
+        self._incoming_missiles = 0
 
     def _energy_features(self, info: Mapping | None):
         info = info or {}
@@ -107,6 +115,10 @@ class BluePilotEnvironment:
             observation, info = result
         else:
             observation, info = result, {}
+        self._previous_events = {}
+        self._threatened_time_s = 0.0
+        self._missile_support_time_s = 0.0
+        self._incoming_missiles = int(info.get("incoming_missiles", 0))
         frame = self._frame(observation, info)
         # Left padding represents the best estimate before episode start.
         self.history.extend(frame.copy() for _ in range(self.history_steps))
@@ -116,11 +128,30 @@ class BluePilotEnvironment:
         blue_action = {"skill_name": skill_name, "parameters": parameters}
         red_action = {"skill_name": "maintain_heading", "parameters": {}}
         simulator_reward, terminated, info = 0.0, False, {}
+        event_counts = dict.fromkeys(self.REWARD_EVENTS, 0)
+        pulse_events = {"fired": False, "fired_with_lock": False, "missile_avoided": False}
         for _ in range(self.substeps):
             observation, reward, terminated, step_info = self.backend.step(
                 blue_action, red_action
             )
             simulator_reward += reward
+            reported = step_info.get("reward_event_counts", {})
+            for event in self.REWARD_EVENTS:
+                value = bool(step_info.get(event, False))
+                if event == "fired_without_lock" and event not in step_info:
+                    value = bool(step_info.get("fired", False) and not step_info.get("target_locked"))
+                event_counts[event] += int(reported.get(
+                    event, value and not self._previous_events.get(event, False)
+                ))
+                self._previous_events[event] = value
+            for event in pulse_events:
+                pulse_events[event] |= bool(step_info.get(event, False))
+            incoming = int(step_info.get("incoming_missiles", 0))
+            if self._incoming_missiles or incoming:
+                self._threatened_time_s += self.sample_interval_s
+            self._incoming_missiles = incoming
+            if step_info.get("supporting_missile", False):
+                self._missile_support_time_s += self.sample_interval_s
             info.update(step_info)
             self.history.append(self._frame(observation, step_info))
             self.elapsed += self.sample_interval_s
@@ -130,9 +161,13 @@ class BluePilotEnvironment:
         info.update(
             {
                 "controlled_team": "blue",
-                "red_policy": "constant_course",
+                "red_policy": info.get("red_policy", "constant_course"),
                 "elapsed_game_s": self.elapsed,
                 "simulator_reward": simulator_reward,
+                "reward_event_counts": event_counts,
+                "threatened_time_s": self._threatened_time_s,
+                "missile_support_time_s": self._missile_support_time_s,
+                **pulse_events,
             }
         )
         return self._stacked_history(), bool(terminated), bool(truncated), info

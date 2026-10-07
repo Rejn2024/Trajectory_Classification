@@ -140,6 +140,15 @@ def train_pilots(
                     return None
                 return float(np.mean([bool(info[key]) for info in infos]))
 
+            def info_mean(key, episodes=episodes):
+                if not all(key in episode[2] for episode in episodes):
+                    return None
+                return float(np.mean([episode[2][key] for episode in episodes]))
+
+            component_names = sorted({
+                key for episode in episodes for key in episode[2]["reward_component_totals"]
+            })
+
             result = {
                 "pilot_id": pilot.pilot_id,
                 "seed": pilot.seed,
@@ -153,6 +162,14 @@ def train_pilots(
                 "benchmark_return_std": float(scores.std()),
                 "survival_rate": outcome_rate("blue_alive"),
                 "opponent_destroyed_rate": outcome_rate("opponent_destroyed"),
+                "elimination_rate": outcome_rate("opponent_eliminated"),
+                "mean_missiles_avoided": info_mean("missiles_avoided_total"),
+                "mean_threatened_seconds": info_mean("threatened_time_s"),
+                "benchmark_component_means": {
+                    key: float(np.mean([
+                        episode[2]["reward_component_totals"].get(key, 0.0) for episode in episodes
+                    ])) for key in component_names
+                },
                 "evaluation_seed": evaluation_seed,
                 "benchmark_reward": benchmark_reward.as_dict(),
                 "mlflow_run_id": trainer.mlflow_run_id,
@@ -165,6 +182,9 @@ def train_pilots(
                     "benchmark_return_std",
                     "survival_rate",
                     "opponent_destroyed_rate",
+                    "elimination_rate",
+                    "mean_missiles_avoided",
+                    "mean_threatened_seconds",
                 ):
                     if result[key] is not None:
                         mlflow.log_metric(key, result[key])
