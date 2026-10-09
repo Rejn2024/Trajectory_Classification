@@ -1,0 +1,19 @@
+{
+  "format_version": 1,
+  "default_experiment": "selected_skill_parameters",
+  "experiments": {
+    "lower_learning_rate": {
+      "label": "Lower learning rate",
+      "job": "artifacts/rl_pilot_experiments/20261008T130810_285510Z_lr3e-05",
+      "baseline": "artifacts/rl_pilot_notebook/combat/20261007T212241_526315Z",
+      "training": "artifacts/rl_pilot_experiments/20261008T130810_285510Z_lr3e-05/training"
+    },
+    "selected_skill_parameters": {
+      "label": "Selected-skill parameters",
+      "job": "artifacts/rl_pilot_experiments/20261009T153646_051001Z_selected_skill_parameters_recovery",
+      "baseline": "artifacts/rl_pilot_experiments/20261008T130810_285510Z_lr3e-05/training",
+      "training": "artifacts/rl_pilot_experiments/20261009T153646_051001Z_selected_skill_parameters_recovery/training",
+      "previous_job": "artifacts/rl_pilot_experiments/20261009T092543_792046Z_selected_skill_parameters"
+    }
+  }
+}
