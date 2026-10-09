@@ -49,6 +49,7 @@ class TinyEnvironment:
                 "blue_altitude_m": 6000.0,
                 "target_locked": True,
                 "opponent_destroyed": False,
+                "opponent_eliminated": False,
             },
         )
 
@@ -175,6 +176,56 @@ def test_failed_batch_keeps_completed_checkpoint_and_status(config):
     assert load_trained_pilot(config.output_dir / "first") is not None
 
 
+def test_recovery_reuses_completed_pilots_and_restarts_only_unfinished(config):
+    config = replace(config, test_scenarios_per_pilot=3)
+    pilots = [PilotSpec("first", 7), PilotSpec("second", 107)]
+
+    def fail_second(settings):
+        if settings.output_dir.name == "second":
+            raise RuntimeError("worker failed")
+        return lambda scenario, path: TinyEnvironment(path)
+
+    with pytest.raises(RuntimeError, match="worker failed"):
+        train_pilots(pilots, config, fail_second, 1, "cpu")
+    failed_dir = config.output_dir / "second"
+    failed_dir.mkdir()
+    (failed_dir / "partial.txt").write_text("preserve the incomplete attempt")
+    original = {p.relative_to(config.output_dir): p.read_bytes()
+                for p in config.output_dir.rglob("*") if p.is_file()}
+    recovery_config = replace(config, output_dir=config.output_dir.parent / "recovery")
+    trained = []
+
+    def builder(settings):
+        trained.append(settings.output_dir.name)
+        return lambda scenario, path: TinyEnvironment(path)
+
+    results = train_pilots(pilots, recovery_config, builder, 1, "cpu",
+                           reuse_completed_from=config.output_dir)
+    assert trained == ["second"]
+    assert len(results) == 2
+    assert all((config.output_dir / name).read_bytes() == value for name, value in original.items())
+    for path in (config.output_dir / "first").rglob("*"):
+        if path.is_file():
+            assert path.read_bytes() == (recovery_config.output_dir / path.relative_to(config.output_dir)).read_bytes()
+    assert not (recovery_config.output_dir / "second/partial.txt").exists()
+    manifest = json.loads((recovery_config.output_dir / "pilots.json").read_text())
+    assert all(p["status"] == "completed" for p in manifest["pilots"])
+    assert manifest["pilots"][0]["reused_from"] == str(config.output_dir / "first")
+    assert load_trained_pilot(recovery_config.output_dir / "first") is not None
+
+    bad_config = replace(recovery_config, output_dir=config.output_dir.parent / "bad", learning_rate=0.001)
+    with pytest.raises(ValueError, match="training settings differ"):
+        train_pilots(pilots, bad_config, builder, 1, "cpu", reuse_completed_from=config.output_dir)
+    assert not bad_config.output_dir.exists()
+    checkpoint = config.output_dir / "first/best_model.pt"
+    with checkpoint.open("ab") as stream:
+        stream.write(b"tampered")
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        train_pilots(pilots, replace(bad_config, learning_rate=config.learning_rate), builder, 1,
+                     "cpu", reuse_completed_from=config.output_dir)
+    assert not bad_config.output_dir.exists()
+
+
 @pytest.mark.parametrize("pilots", [[], [PilotSpec("same", 1), PilotSpec("Same", 2)]])
 def test_invalid_roster_does_not_create_output(config, pilots):
     with pytest.raises(ValueError):
@@ -185,6 +236,46 @@ def test_invalid_roster_does_not_create_output(config, pilots):
 def test_validation_seed_overlap_is_rejected_before_training(config):
     with pytest.raises(ValueError, match="overlap"):
         train_pilots([PilotSpec("example", 100_000)], config, lambda *_: None, 1, "cpu")
+    assert not config.output_dir.exists()
+
+
+def test_fresh_test_is_shared_disjoint_and_cannot_select_checkpoints(config):
+    config = replace(config, epochs=2, resample_training_scenarios=True,
+                     test_scenarios_per_pilot=3)
+    pilots = [PilotSpec("first", 7, definition(1)), PilotSpec("second", 7, definition(2))]
+    results = train_pilots(pilots, config, lambda _: lambda scenario, path: TinyEnvironment(path),
+                          1, "cpu", population_metadata={"reward_seed": 42})
+    records = [json.loads((config.output_dir / p.pilot_id / "test_episodes.json").read_text())
+               for p in pilots]
+    for result, data in zip(results, records):
+        assert result["test"]["clean_win_rate"] == 0
+        assert result["test"]["survival_rate"] == 1
+        assert result["test"]["outcome_score"] == 0
+        assert result["population_metadata"] == {"reward_seed": 42}
+        assert result["checkpoint_sha256"] == data["checkpoint_sha256"]
+        seeds = {row["seed"] for row in data["episodes"]}
+        assert not seeds.intersection(range(7, 13))
+        assert not seeds.intersection(range(config.evaluation_seed, config.evaluation_seed + 3))
+    assert results[0]["selection_return"] == 3
+    assert results[1]["selection_return"] == 6
+    assert [(r["seed"], r["scenario"]) for r in records[0]["episodes"]] == [
+        (r["seed"], r["scenario"]) for r in records[1]["episodes"]
+    ]
+
+
+@pytest.mark.parametrize("test_seed", [8, 100_001])
+def test_test_seed_overlap_is_rejected_before_writing(config, test_seed):
+    config = replace(config, resample_training_scenarios=True, epochs=2,
+                     test_scenarios_per_pilot=3, test_seed=test_seed)
+    with pytest.raises(ValueError, match="overlap"):
+        train_pilots([PilotSpec("pilot", 7)], config, lambda *_: None, 1, "cpu")
+    assert not config.output_dir.exists()
+
+
+def test_validation_overlap_in_later_training_epoch_is_rejected(config):
+    config = replace(config, evaluation_seed=11, resample_training_scenarios=True, epochs=2)
+    with pytest.raises(ValueError, match="overlap"):
+        train_pilots([PilotSpec("pilot", 7)], config, lambda *_: None, 1, "cpu")
     assert not config.output_dir.exists()
 
 

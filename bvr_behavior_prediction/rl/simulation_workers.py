@@ -6,6 +6,14 @@ from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter, process_time, thread_time
 
 
+class SimulatorWorkerError(RuntimeError):
+    """A lost worker/pipe; the parent may replay the entire uncommitted batch."""
+
+
+class SimulatorWorkerTimeout(SimulatorWorkerError, TimeoutError):
+    """A worker exceeded its response deadline."""
+
+
 def _close_environments(environments):
     pending = list(environments.values())
     environments.clear()
@@ -145,15 +153,24 @@ class ProcessSimulatorPool:
     def _receive(self, worker):
         process, connection = worker
         deadline = perf_counter() + self.timeout
-        while not connection.poll(0.1):
-            if not process.is_alive():
-                raise RuntimeError(f"Simulator worker {process.pid} exited unexpectedly")
-            if perf_counter() > deadline:
-                raise TimeoutError(f"Simulator worker {process.pid} did not respond")
         try:
+            while not connection.poll(0.1):
+                if not process.is_alive():
+                    raise SimulatorWorkerError(
+                        f"Simulator worker {process.pid} exited unexpectedly "
+                        f"(exit code {process.exitcode})"
+                    )
+                if perf_counter() > deadline:
+                    raise SimulatorWorkerTimeout(f"Simulator worker {process.pid} did not respond")
             succeeded, value = connection.recv()
+        except SimulatorWorkerError:
+            raise
         except (EOFError, OSError) as error:
-            raise RuntimeError(f"Simulator worker {process.pid} disconnected") from error
+            # A pipe can close just before the process exit code becomes available.
+            process.join(timeout=0.1)
+            raise SimulatorWorkerError(
+                f"Simulator worker {process.pid} disconnected (exit code {process.exitcode})"
+            ) from error
         if not succeeded:
             raise RuntimeError(f"Simulator worker {process.pid} failed:\n{value}")
         return value
@@ -163,7 +180,15 @@ class ProcessSimulatorPool:
             raise RuntimeError("Simulator pool is closed")
         try:
             for worker, group in groups:
-                worker[1].send((operation, group))
+                try:
+                    worker[1].send((operation, group))
+                except (EOFError, OSError) as error:
+                    process = worker[0]
+                    process.join(timeout=0.1)
+                    raise SimulatorWorkerError(
+                        f"Simulator worker {process.pid} disconnected during {operation} "
+                        f"(exit code {process.exitcode})"
+                    ) from error
             return [self._receive(worker) for worker, _ in groups]
         except BaseException:
             self.close(force=True)

@@ -1,5 +1,6 @@
 """Configuration for the short-horizon hybrid-action pilot."""
 
+import math
 import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -34,6 +35,9 @@ class PilotTrainingConfig:
     simulation_dt_s: float = 0.1
     seed: int = 7
     evaluation_seed: int | None = None
+    resample_training_scenarios: bool = False
+    test_scenarios_per_pilot: int = 0
+    test_seed: int | None = None
     hidden_size: int = 256
     history_duration_s: float = 2.0
     sample_interval_s: float = 0.1
@@ -50,6 +54,10 @@ class PilotTrainingConfig:
     gradient_clip: float = 0.5
     mixed_precision: bool = True
     cuda_graph_updates: bool = False
+    selected_skill_parameters: bool = False
+    training_reward_scale: float = 1.0
+    target_kl: float | None = None
+    log_ppo_diagnostics: bool = False
     checkpoint_interval: int = 10
     diagnostic_interval: int = 1
     output_dir: Path = Path("artifacts/rl_pilot")
@@ -58,9 +66,11 @@ class PilotTrainingConfig:
     reward: RewardWeights = field(default_factory=RewardWeights)
 
     def __post_init__(self):
-        for name in ("seed", "evaluation_seed"):
+        if type(self.selected_skill_parameters) is not bool:
+            raise ValueError("selected_skill_parameters must be a boolean")
+        for name in ("seed", "evaluation_seed", "test_seed"):
             value = getattr(self, name)
-            if value is None and name == "evaluation_seed":
+            if value is None and name != "seed":
                 continue
             if type(value) is not int or not 0 <= value < 2**32:
                 raise ValueError(f"{name} must be an integer in [0, 2**32)")
@@ -72,6 +82,18 @@ class PilotTrainingConfig:
             raise ValueError("scenarios_per_epoch must be at least 3")
         if self.evaluation_scenarios_per_epoch < 3:
             raise ValueError("evaluation_scenarios_per_epoch must be at least 3")
+        if type(self.test_scenarios_per_pilot) is not int or (
+            self.test_scenarios_per_pilot != 0 and self.test_scenarios_per_pilot < 3
+        ):
+            raise ValueError("test_scenarios_per_pilot must be zero or at least 3")
+        if not math.isfinite(self.training_reward_scale) or self.training_reward_scale <= 0:
+            raise ValueError("training_reward_scale must be finite and positive")
+        if self.target_kl is not None and (
+            not math.isfinite(self.target_kl) or self.target_kl <= 0
+        ):
+            raise ValueError("target_kl must be None or finite and positive")
+        if self.update_epochs < 1 or self.minibatch_size < 1:
+            raise ValueError("update_epochs and minibatch_size must be positive")
         if self.evaluation_interval < 1:
             raise ValueError("evaluation_interval must be positive")
         if self.simulator_workers < 0:
@@ -88,6 +110,10 @@ class PilotTrainingConfig:
             raise ValueError("transformer heads and layers must be positive")
         if self.hidden_size % self.transformer_heads:
             raise ValueError("hidden_size must be divisible by transformer_heads")
+
+    @property
+    def training_seed_count(self) -> int:
+        return self.scenarios_per_epoch * (self.epochs if self.resample_training_scenarios else 1)
 
     @property
     def resolved_evaluation_seed(self) -> int:

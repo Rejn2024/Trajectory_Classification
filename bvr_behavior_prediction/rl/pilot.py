@@ -24,6 +24,7 @@ class HybridSkillPilot(nn.Module):
         history_steps: int = 20,
         transformer_heads: int = 4,
         transformer_layers: int = 2,
+        selected_skill_parameters: bool = False,
     ):
         super().__init__()
         self.manager = manager or SkillManager()
@@ -37,6 +38,18 @@ class HybridSkillPilot(nn.Module):
         for properties in self._skill_contracts:
             numeric.update(key for key, schema in properties.items() if schema["type"] == "number")
         self.parameter_names = tuple(sorted(numeric))
+        self.selected_skill_parameters = selected_skill_parameters
+        # Derived from the existing contracts, with no new learned weights or
+        # checkpoint keys. Old checkpoints and action decoding stay compatible.
+        self.register_buffer(
+            "_skill_parameter_mask",
+            torch.tensor([
+                [float(name in properties and properties[name]["type"] == "number")
+                 for name in self.parameter_names]
+                for properties in self._skill_contracts
+            ], dtype=torch.float32),
+            persistent=False,
+        )
         if transformer_heads < 1 or transformer_layers < 1:
             raise ValueError("transformer heads and layers must be positive")
         if hidden_size % transformer_heads:
@@ -93,7 +106,7 @@ class HybridSkillPilot(nn.Module):
             skill_dist, param_dist, value = self.distributions(obs)
             skill_index = skill_dist.probs.argmax(-1) if deterministic else skill_dist.sample()
             raw = param_dist.mean if deterministic else param_dist.sample()
-            log_prob = skill_dist.log_prob(skill_index) + param_dist.log_prob(raw).sum(-1)
+            log_prob = self._action_log_prob(skill_dist, param_dist, skill_index, raw)
         indices = skill_index.cpu().tolist()
         raw_cpu = raw.cpu().numpy()
         log_prob_cpu = log_prob.cpu().tolist()
@@ -129,6 +142,20 @@ class HybridSkillPilot(nn.Module):
 
     def evaluate(self, observations, skill_indices, raw_parameters, *, validate_args=True):
         skill, params, values = self.distributions(observations, validate_args=validate_args)
-        log_prob = skill.log_prob(skill_indices) + params.log_prob(raw_parameters).sum(-1)
-        entropy = skill.entropy() + params.entropy().sum(-1)
+        log_prob = self._action_log_prob(skill, params, skill_indices, raw_parameters)
+        parameter_entropy = params.entropy()
+        if self.selected_skill_parameters:
+            # Entropy of the raw hybrid action: H(skill) + E_skill[H(parameters)].
+            # The expectation must retain gradients through skill probabilities;
+            # using just the sampled skill would omit this part of the objective.
+            per_skill_entropy = parameter_entropy @ self._skill_parameter_mask.T
+            entropy = skill.entropy() + (skill.probs * per_skill_entropy).sum(-1)
+        else:
+            entropy = skill.entropy() + parameter_entropy.sum(-1)
         return log_prob, entropy, values
+
+    def _action_log_prob(self, skill, params, skill_indices, raw_parameters):
+        parameter_log_prob = params.log_prob(raw_parameters)
+        if self.selected_skill_parameters:
+            parameter_log_prob = parameter_log_prob * self._skill_parameter_mask[skill_indices]
+        return skill.log_prob(skill_indices) + parameter_log_prob.sum(-1)

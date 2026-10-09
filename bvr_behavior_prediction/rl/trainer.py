@@ -4,7 +4,9 @@ import json
 import math
 import os
 import random
+import warnings
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
 
@@ -17,7 +19,7 @@ from .cuda_update import CUDABatchBackward
 from .pilot import HybridSkillPilot
 from .reward import combat_reward_definition
 from .scenarios import ScenarioSampler
-from .simulation_workers import ProcessSimulatorPool, ThreadSimulatorPool
+from .simulation_workers import ProcessSimulatorPool, SimulatorWorkerError, ThreadSimulatorPool
 
 
 @dataclass
@@ -53,6 +55,7 @@ class PPOTrainer:
             history_steps=config.history_steps,
             transformer_heads=config.transformer_heads,
             transformer_layers=config.transformer_layers,
+            selected_skill_parameters=config.selected_skill_parameters,
         ).to(self.device)
         adam_options = {"fused": True} if self.device.type == "cuda" else {}
         self.optimizer = torch.optim.Adam(
@@ -65,13 +68,13 @@ class PPOTrainer:
             # neither the network nor the number of PPO updates.
             torch.set_float32_matmul_precision("high")
         self.sampler = ScenarioSampler(config.seed)
-        # Establish the randomized training geometries and simulator seeds once.
-        # Reusing both on every epoch prevents changing initial conditions from
-        # obscuring the effect of successive policy updates.
+        # Keep the original fixed-set behaviour by default. Opt-in resampling
+        # replaces this first batch at each epoch using a reproducible seed schedule.
         self.training_scenarios = self.sampler.sample_batch(config.scenarios_per_epoch)
         self.training_episode_seeds = tuple(
             config.seed + index for index in range(config.scenarios_per_epoch)
         )
+        self._training_batch_index = 0
         # Evaluation uses an independent sampler so training-batch sampling cannot
         # alter the benchmark.  Materialising the set once guarantees that every
         # epoch sees exactly the same initial geometries.
@@ -139,10 +142,77 @@ class PPOTrainer:
             self.pilot.train(was_training)
 
     def _training_episodes(self):
-        """Collect one epoch from the fixed training geometries and reset seeds."""
+        """Optionally refresh training conditions, reproducibly across matched pilots."""
+        if self.config.resample_training_scenarios:
+            if self._training_batch_index >= self.config.epochs:
+                raise ValueError("training scenario schedule exceeds configured epochs")
+            seed = self.config.seed + self._training_batch_index * self.config.scenarios_per_epoch
+            self.training_scenarios = ScenarioSampler(seed).sample_batch(
+                self.config.scenarios_per_epoch
+            )
+            self.training_episode_seeds = tuple(range(seed, seed + self.config.scenarios_per_epoch))
+            self._training_batch_index += 1
         return self._episodes(self.training_scenarios, self.training_episode_seeds)
 
+    def evaluate_scenarios(self, scenarios, seeds, reward_definition=None):
+        """Evaluate an explicit test suite without changing validation or selection."""
+        was_training = self.pilot.training
+        self.pilot.eval()
+        try:
+            return self._episodes(
+                scenarios, seeds, deterministic=True, reward_definition=reward_definition
+            )
+        finally:
+            self.pilot.train(was_training)
+
     def _episodes(self, scenarios, seeds, deterministic=False, reward_definition=None):
+        """Replay a lost process batch before any PPO update, at most twice.
+
+        Discard ALL partial trajectories and restore the parent's RNGs. Reusing
+        the same scenarios/seeds and policy avoids skipping difficult flights or
+        mixing samples from different policy versions. Python simulator errors
+        and user interrupts propagate immediately; only transport failures retry.
+        """
+        if self.config.simulator_executor != "process":
+            return self._episodes_once(scenarios, seeds, deterministic, reward_definition)
+        rng = (random.getstate(), np.random.get_state(), torch.get_rng_state(),
+               torch.cuda.get_rng_state_all() if self.device.type == "cuda" else None)
+        retry_seconds = 0.0
+        for attempt in range(3):
+            started = perf_counter()
+            try:
+                episodes = self._episodes_once(scenarios, seeds, deterministic, reward_definition)
+            except SimulatorWorkerError as error:
+                pool, self._simulator_pool = self._simulator_pool, None
+                if pool is not None:
+                    pool.close(force=True)
+                random.setstate(rng[0])
+                np.random.set_state(rng[1])
+                torch.set_rng_state(rng[2])
+                if rng[3] is not None:
+                    torch.cuda.set_rng_state_all(rng[3])
+                retry_seconds += perf_counter() - started
+                event = {
+                    "utc": datetime.now(timezone.utc).isoformat(),
+                    "error": str(error), "attempt": attempt + 1,
+                    "action": "retry_batch" if attempt < 2 else "abort",
+                    "scenario_seeds": list(seeds), "deterministic": deterministic,
+                }
+                with (self.output / "simulator_recovery.jsonl").open("a", encoding="utf8") as stream:
+                    stream.write(json.dumps(event) + "\n")
+                if attempt == 2:
+                    raise
+                warnings.warn(
+                    f"{error}; replaying the entire flight batch (retry {attempt + 1}/2).",
+                    RuntimeWarning, stacklevel=2,
+                )
+            else:
+                self._last_collection_profile.update(
+                    simulator_batch_retries=attempt, simulator_retry_seconds=retry_seconds,
+                )
+                return episodes
+
+    def _episodes_once(self, scenarios, seeds, deterministic=False, reward_definition=None):
         """Run independent simulators concurrently and batch policy work on the GPU."""
         collection_started = perf_counter()
         policy_seconds = 0.0
@@ -245,7 +315,10 @@ class PPOTrainer:
         for reward, value, done in reversed(
             list(zip(rollout.rewards, rollout.values, rollout.dones))
         ):
-            delta = reward + self.config.discount * next_value * (not done) - value
+            # Critic values and GAE targets share these learning units. Logged
+            # episode returns and reward components remain in original points.
+            delta = (reward * self.config.training_reward_scale
+                     + self.config.discount * next_value * (not done) - value)
             gae = delta + self.config.discount * self.config.gae_lambda * (not done) * gae
             advantages.append(gae)
             next_value = value
@@ -276,6 +349,48 @@ class PPOTrainer:
             )
         self.grad_scaler.scale(loss).backward()
         return loss
+
+    @torch.no_grad()
+    def _update_diagnostics(self, tensors):
+        """Measure the whole rollout after a PPO pass, including parameter actions.
+
+        Chunked inference bounds memory; one host transfer per pass avoids a
+        synchronization for every training minibatch and keeps CUDA graphs usable.
+        """
+        observations, skills, raw, old, advantages, returns = tensors
+        log_probs, entropies, values = [], [], []
+        for left in range(0, len(old), 1024):
+            part = slice(left, left + 1024)
+            logp, entropy, value = self.pilot.evaluate(
+                observations[part], skills[part], raw[part], validate_args=False
+            )
+            log_probs.append(logp.float())
+            entropies.append(entropy.float())
+            values.append(value.float())
+        log_ratio = torch.cat(log_probs) - old
+        ratio = log_ratio.exp()
+        values = torch.cat(values)
+        clip = self.config.clip_ratio
+        variance = returns.var(unbiased=False)
+        metrics = {
+            "approx_kl": ((ratio - 1) - log_ratio).mean(),
+            "clip_fraction": ((ratio - 1).abs() > clip).float().mean(),
+            "policy_loss": -torch.minimum(
+                ratio * advantages, ratio.clamp(1 - clip, 1 + clip) * advantages
+            ).mean(),
+            "value_loss": (values - returns).square().mean(),
+            "entropy": torch.cat(entropies).mean(),
+            "explained_variance": torch.where(
+                variance > 1e-8,
+                1 - (returns - values).var(unbiased=False) / variance.clamp_min(1e-8),
+                torch.zeros_like(variance),
+            ),
+            "explained_variance_defined": (variance > 1e-8).float(),
+        }
+        numbers = torch.stack(list(metrics.values())).cpu().tolist()
+        if not all(math.isfinite(value) for value in numbers):
+            raise FloatingPointError("PPO diagnostics contain non-finite values")
+        return dict(zip(metrics, numbers))
 
     def _update(self, rollouts):
         advantages, returns = zip(*(self._advantages(r) for r in rollouts))
@@ -322,7 +437,9 @@ class PPOTrainer:
         # minibatch. Keep losses on-device too, avoiding a device synchronization on
         # every loss.item() call.
         losses = []
-        for _ in range(self.config.update_epochs):
+        diagnostics = {}
+        stopped_early = False
+        for update_pass in range(1, self.config.update_epochs + 1):
             order = torch.randperm(n, device=self.device)
             shuffled = tuple(
                 tensor.index_select(0, order) for tensor in batch_tensors
@@ -340,6 +457,14 @@ class PPOTrainer:
                 self.grad_scaler.step(self.optimizer)
                 self.grad_scaler.update()
                 losses.append(loss.detach())
+            if self.config.target_kl is not None or (
+                self.config.log_ppo_diagnostics and update_pass == self.config.update_epochs
+            ):
+                diagnostics = self._update_diagnostics(batch_tensors)
+                if (self.config.target_kl is not None
+                        and diagnostics["approx_kl"] > 1.5 * self.config.target_kl):
+                    stopped_early = True
+                    break
         mean_loss = torch.stack(losses).mean().item()
         if not math.isfinite(mean_loss):
             raise FloatingPointError("PPO update produced a non-finite loss")
@@ -348,6 +473,9 @@ class PPOTrainer:
             "update_minibatches": len(losses),
             "cuda_graph_updates": int(graph_backward is not None),
             "cuda_graph_capture_seconds": capture_seconds,
+            "update_passes_completed": update_pass,
+            "kl_early_stopped": int(stopped_early),
+            **diagnostics,
         }
         return mean_loss
 
@@ -465,8 +593,11 @@ class PPOTrainer:
                 }
                 metrics.update(training_collection_profile)
                 metrics.update(self._last_update_profile)
+                metrics["training_seed_first"] = self.training_episode_seeds[0]
+                metrics["training_seed_last"] = self.training_episode_seeds[-1]
                 metrics["update_transitions_per_second"] = (
-                    sum(len(item[0].rewards) for item in episodes) * self.config.update_epochs
+                    sum(len(item[0].rewards) for item in episodes)
+                    * self._last_update_profile["update_passes_completed"]
                     / update_seconds if update_seconds else 0.0
                 )
                 checkpoint_started = perf_counter()
