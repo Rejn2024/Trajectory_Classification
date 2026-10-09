@@ -122,6 +122,7 @@ class BVRJSBSimBackend:
             "incoming_missiles": len(threats),
             "incoming_missiles_seen": len(self._tracked_threats),
             "missiles_avoided_total": self._missiles_avoided_total,
+            "missiles_launched_total": len(controlled.launched_missiles),
             "opponent_eliminated": bool(eliminated),
             "opponent_destroyed": not bool(opponent.is_alive),
             "crashed": not controlled.is_alive and controlled.get_altitude() <= 500.0,

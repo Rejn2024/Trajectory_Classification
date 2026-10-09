@@ -5,7 +5,43 @@ import pytest
 
 from bvr_behavior_prediction.rl.config import RewardWeights
 from bvr_behavior_prediction.rl.reward import CombatReward, combat_reward_definition
-from bvr_behavior_prediction.rl.reward_population import combat_population_weights
+from bvr_behavior_prediction.rl.reward_population import (
+    DEFAULT_COMBAT_REWARD_RANGES, combat_population_weights, random_combat_population_weights,
+)
+
+
+def test_uniform_ranges_are_actual_coefficients_reproducible_and_extendable():
+    population = random_combat_population_weights(10, seed=42)
+    assert population == random_combat_population_weights(13, seed=42)[:10]
+    assert population != random_combat_population_weights(10, seed=43)
+    assert len({tuple(asdict(w).values()) for w in population}) == 10
+    for weights in population:
+        for name, value in asdict(weights).items():
+            low, high = DEFAULT_COMBAT_REWARD_RANGES[name]
+            assert low <= value <= high
+        assert weights.opponent_destroyed == 250
+        assert weights.ground_clearance == 0.02
+        assert weights.opponent_destroyed + weights.shot_down < 0
+        assert weights.opponent_destroyed + weights.crashed < 0
+    # The new sampler does not preserve the previous fixed-budget constraint.
+    assert len({sum(abs(v) for v in asdict(w).values()) for w in population}) == 10
+
+
+def test_uniform_sampler_honours_custom_ranges_without_changing_global_rng():
+    ranges = {key: (value, value) for key, value in asdict(RewardWeights()).items()}
+    np.random.seed(123)
+    expected = np.random.random()
+    np.random.seed(123)
+    assert random_combat_population_weights(3, 17, ranges) == [RewardWeights()] * 3
+    assert np.random.random() == expected
+    for bad in ({}, {**ranges, "shot_down": (-100, 1)},
+                {**ranges, "opponent_destroyed": (3, 2)},
+                {**ranges, "incoming_missile_avoided": (0, float("nan"))}):
+        with pytest.raises(ValueError):
+            random_combat_population_weights(3, 17, bad)
+    for seed in (-1, 2**32, True):
+        with pytest.raises(ValueError, match="seed"):
+            random_combat_population_weights(3, seed)
 
 
 @pytest.mark.parametrize("count", [1, 2, 10, 17, 100])

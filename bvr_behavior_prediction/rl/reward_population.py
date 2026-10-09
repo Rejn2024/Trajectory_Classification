@@ -1,8 +1,53 @@
 """Varied weights for the original event-based combat reward."""
 
 from dataclasses import asdict
+import math
+
+import numpy as np
 
 from .config import RewardWeights
+
+
+# Hypotheses for the next experiment, not empirically calibrated optima. Keeping
+# destruction fixed supplies a common training unit; loss penalties make the
+# terminal outcome contribution of a mutual destruction negative for every pilot.
+DEFAULT_COMBAT_REWARD_RANGES = {
+    "crashed": (-450.0, -300.0),
+    "shot_down": (-450.0, -300.0),
+    "ground_clearance": (0.02, 0.02),
+    "target_lock_acquired": (0.0, 2.0),
+    "fired_with_lock": (0.0, 2.0),
+    "incoming_missile_avoided": (0.0, 15.0),
+    "opponent_destroyed": (250.0, 250.0),
+    "fired_without_lock": (-12.0, -4.0),
+}
+
+
+def random_combat_population_weights(count: int, seed: int, ranges=None):
+    """Sample actual coefficients uniformly, with a separate reproducible RNG.
+
+    No Halton sequence, multiplication of the old weights, or post-normalization.
+    Every pilot is sampled. Degenerate intervals hold a coefficient fixed. Sampling
+    one pilot at a time preserves existing entries when the population is extended.
+    """
+    if type(count) is not int or count < 1:
+        raise ValueError("count must be a positive integer")
+    if type(seed) is not int or not 0 <= seed < 2**32:
+        raise ValueError("reward seed must be an integer in [0, 2**32)")
+    ranges = dict(DEFAULT_COMBAT_REWARD_RANGES if ranges is None else ranges)
+    original = asdict(RewardWeights())
+    if set(ranges) != set(original):
+        raise ValueError("ranges must specify exactly the RewardWeights fields")
+    for name, bounds in ranges.items():
+        if len(bounds) != 2 or not all(math.isfinite(v) for v in bounds):
+            raise ValueError(f"{name} requires two finite bounds")
+        low, high = bounds
+        if low > high or (original[name] < 0 and high > 0) or (original[name] > 0 and low < 0):
+            raise ValueError(f"{name} bounds must be ordered and preserve the reward sign")
+    rng = np.random.default_rng(seed)
+    return [RewardWeights(**{
+        name: float(rng.uniform(*ranges[name])) for name in original
+    }) for _ in range(count)]
 
 
 def _radical_inverse(index, base):
