@@ -29,6 +29,7 @@ def test_notebook_executes_configurable_roster_and_replays_selected_pilot(
         "BVR_PILOT_EPISODE_SECONDS": "1",
         "BVR_PILOT_SCENARIOS": "3",
         "BVR_PILOT_EVALUATION_SCENARIOS": "3",
+        "BVR_PILOT_TEST_SCENARIOS": "3",
         "BVR_PILOT_UPDATE_EPOCHS": "1",
         "BVR_PILOT_WORKERS": "1",
         "BVR_PILOT_EXECUTOR": "thread",
@@ -63,6 +64,7 @@ def test_notebook_executes_configurable_roster_and_replays_selected_pilot(
                 "initial_target_range_m": 30_000.0,
                 "initial_target_alignment": 1.0,
                 "missiles_avoided_total": 0,
+                "missiles_launched_total": 0,
                 "incoming_missiles": 0,
             }
             instances.append(self)
@@ -129,6 +131,8 @@ def test_notebook_executes_configurable_roster_and_replays_selected_pilot(
         assert all(isinstance(pilot.reward.factory(), CombatReward) for pilot in pilots)
         assert all(result["benchmark_reward"]["name"] == "common_combat"
                    for result in namespace["results"])
+        assert all(result["test"]["clean_win_rate"] == 0 for result in namespace["results"])
+        assert all(result["test"]["survival_rate"] == 1 for result in namespace["results"])
         for result, pilot in zip(namespace["results"], pilots):
             weights = pilot.reward.parameters["weights"]
             assert result["selection_return"] == pytest.approx(
@@ -182,6 +186,11 @@ def test_population_defaults_keep_acceleration_and_separate_outputs(
     assert config.simulator_executor == "process"
     assert config.simulator_workers == max(1, ((os.cpu_count() or 1) * 80) // 100)
     assert config.cuda_graph_updates
-    assert config.scenarios_per_epoch == config.evaluation_scenarios_per_epoch == 50
-    assert config.update_epochs == 50
-    assert config.minibatch_size == 64
+    assert config.evaluation_scenarios_per_epoch == 50
+    assert config.scenarios_per_epoch == (75 if number == "05" else 50)
+    assert config.update_epochs == (10 if number == "05" else 50)
+    assert config.minibatch_size == (256 if number == "05" else 64)
+    assert config.resample_training_scenarios == (number == "05")
+    assert config.test_scenarios_per_pilot == (100 if number == "05" else 0)
+    assert config.training_reward_scale == (0.01 if number == "05" else 1.0)
+    assert config.target_kl == (0.02 if number == "05" else None)

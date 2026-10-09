@@ -1,4 +1,9 @@
-# Dataset-generation notebooks
+# Notebooks
+
+For current pilot experiments, use the [experiment index](../docs/pilot_experiments.md).
+`05_compare_population_runs.ipynb` is a read-only report: select a named experiment
+in its first code cell and **Run All** to refresh progress, tables and plots. Saved
+historical reports live in `results/`. Training notebooks start new runs.
 
 Start with `01_generate_smoke_dataset.ipynb`. It is intentionally executable without
 BVR Sim: a small deterministic dynamics stub exercises the repository's real scenario
@@ -55,8 +60,9 @@ Choose a population workflow:
 
 - [05: original combat rewards](05_train_multiple_pilots.ipynb) trains 10 pilots for
   **150 epochs each** by default. It restores notebook 04's event-based formula with
-  varied relative coefficients; pilot 001 uses the exact original weights. Subsequent
-  pilots vary losses, destruction, evasion, locks/launches, and unlocked firing costs.
+  coefficients sampled from explicit random ranges and fresh training scenarios each
+  epoch. All pilots share separate validation and test cases. No pilot is automatically
+  assigned the original weights. The default learning rate is now `0.00003`.
 - [06: hybrid rewards](06_train_multiple_pilots.ipynb) preserves the previous notebook
   05 experiment: relative evade/pursue/eliminate preferences and capped shared combat
   guidance, with defaults of 10 pilots and 80 epochs each.

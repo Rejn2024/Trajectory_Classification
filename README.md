@@ -38,11 +38,16 @@ configurations, validation results, and complete epoch metrics (5.68 MiB in Git 
 
 ## Reinforcement-learning 1-v-1 pilot
 
+Start with the [pilot experiment index](docs/pilot_experiments.md) to find the preserved
+populations, the current controlled experiment, reports and the local artifact archive.
+
 Two notebooks train independent populations, each with its own models and checkpoints:
 
 - [`05_train_multiple_pilots.ipynb`](notebooks/05_train_multiple_pilots.ipynb) uses the
-  original combat-event reward with varied relative coefficients. Defaults: 10 pilots,
-  **150 epochs per pilot**, with the original notebook 04 weights as pilot 001.
+  original combat-event formula with coefficients sampled uniformly from editable
+  ranges. Defaults: 10 pilots, **150 epochs per pilot**, fresh training scenarios,
+  and a shared final test prioritising elimination while surviving. The
+  [previous run's figures](notebooks/results/20261006_notebook05.ipynb) are preserved.
 - [`06_train_multiple_pilots.ipynb`](notebooks/06_train_multiple_pilots.ipynb) preserves
   the hybrid evade/pursue/eliminate experiment and shared lock/launch/support guidance.
   Defaults: 10 pilots, 80 epochs per pilot.
@@ -53,6 +58,13 @@ They use separate output folders and MLflow experiments. Each has a common bench
 within its population; benchmark formulas differ between notebooks.
 See the [multi-pilot training guide](docs/multi_pilot_training.md) for configuration,
 custom rewards, and loading saved pilots.
+
+Use [`05_compare_population_runs.ipynb`](notebooks/05_compare_population_runs.ipynb)
+to compare a named PPO experiment with its recorded baseline using notebook 05's
+tables and plots. **Run All reads saved results only**; it can refresh partial learning
+curves during training and the complete evaluations afterward without starting training.
+See the [experiment workflow](docs/multi_pilot_training.md#matched-ppo-experiments)
+for launching a new experiment and choosing its report directory.
 
 `bvr_behavior_prediction.rl` contains a PPO training path for a **blue-controlled**
 pilot against the simulator's simple baseline opponent. The hybrid policy chooses among

@@ -4,7 +4,7 @@ Choose one of two independent population experiments:
 
 | Notebook | Reward | Default population / epochs per pilot | Output subfolder / MLflow experiment |
 | --- | --- | --- | --- |
-| [05](../notebooks/05_train_multiple_pilots.ipynb) | Original combat events with varied coefficients | 10 / **150** | `combat/` / `jsbsim-combat-population` |
+| [05](../notebooks/05_train_multiple_pilots.ipynb) | Combat events with uniformly sampled coefficients and a shared final test | 10 / **150** | `combat/` / `jsbsim-combat-population` |
 | [06](../notebooks/06_train_multiple_pilots.ipynb) | Hybrid evade/pursue/eliminate and shared combat guidance | 10 / 80 | `hybrid/` / `jsbsim-hybrid-population` |
 
 Both output subfolders live under `artifacts/rl_pilot_notebook/`, with a new timestamp
@@ -36,9 +36,10 @@ cores or enforcing an exact CPU percentage. Set `BVR_PILOT_WORKERS` and
 proportional speedups; compare the recorded rollout and epoch times.
 Training more pilots increases total work; it does not divide a fixed epoch budget.
 These are separate 1-v-1 training runs, each against BVR Sim's existing `simple`
-opponent with JSBSim flight dynamics. The same 50 training scenarios are reused every
-epoch by default; 50 separate validation scenarios run on the first, every fifth,
-and last epoch. More epochs add optimization, not new scenarios.
+opponent with JSBSim flight dynamics. Notebook 05 refreshes 75 training scenarios
+each epoch; notebook 06 reuses 50 fixed scenarios. Both use 50 separate fixed
+validation scenarios on the first, every fifth, and last epoch. Notebook 05 also
+evaluates selected checkpoints on 100 shared fresh test scenarios.
 
 ## Notebook 05: original combat-event population
 
@@ -49,33 +50,57 @@ decisions earn a small positive reward. There is no new pursuit, exposure-time, 
 missile-support term. Original event repetition rules are retained, alongside the
 shared fixes that preserve substep events and count resolved missiles individually.
 
-`combat_population_weights(n)` begins with the exact original `RewardWeights()`:
-crash -100, shot down -150, safe airborne +0.02, lock +2, locked launch +8, evasion +20,
-opponent destruction +250, unlocked launch -4. Subsequent pilots vary five groups:
+`random_combat_population_weights(n, seed, ranges)` draws each pilot's actual
+coefficients uniformly within editable bounds. It uses a separate local NumPy RNG;
+`BVR_PILOT_REWARD_SEED` defaults to 42. Identical seeds and ranges reproduce the roster,
+and increasing its size preserves earlier entries. There is no coefficient-budget
+normalization and no automatically inserted original-weight pilot.
 
-1. Crash and shot-down penalties together.
-2. Opponent-destruction reward.
-3. Avoided-missile reward.
-4. Lock and locked-launch rewards together.
-5. Unlocked-launch penalty.
+| Coefficient | Default range |
+| --- | --- |
+| Opponent destruction | +250 fixed |
+| Crash / shot down | Each independently -450 to -300 |
+| Avoided missile | 0 to +15 |
+| Lock / locked launch | Each independently 0 to +2 |
+| Unlocked launch | -12 to -4 |
+| Safe airborne decision | +0.02 fixed |
 
-Independent coordinates in a deterministic Halton sequence select log-spaced
-multipliers between 0.5 and 2. Each event coefficient is then scaled by the same
-normalization factor to retain the original absolute coefficient sum of **534**.
-The ground-clearance coefficient remains +0.02. Relative preferences therefore vary
-without a monotonic increase in all rewards. Final normalized coefficients can fall
-outside 0.5–2 times the original. Extending the roster preserves earlier entries.
-Normalization does not equalize episode returns: event frequencies still depend on
-the pilot, and different coefficients do not guarantee distinct behaviour.
+These bounds are hypotheses for the next experiment, not calibrated optima. A shared
+destruction reward supplies a common unit while other preferences vary. The terminal
+contribution of destruction plus an aircraft loss is negative for every default pilot;
+other shaping bonuses can still offset it. Lower launch bonuses reduce, but do not
+remove, incentives to fire repeatedly. Independent random samples can cluster, and
+different coefficients need not produce distinct behaviour. Displayed/saved coefficients
+are the actual values; each manifest also records sampling seed and ranges.
 
-The notebook displays every coefficient before training and saves each recipe in
-the pilot manifests. Override individual entries with `replace(RewardWeights(), ...)`
-or define an explicit roster. Each checkpoint is selected using that pilot's own
-reward, then scored using `common_combat` with the original weights for comparison.
-Opponent destruction retains its original any-cause meaning; `elimination_rate`
-separately reports confirmed missile kills. The default budget is **150 epochs per
-pilot**, adjustable with `BVR_PILOT_EPOCHS`; use fresh test scenarios to assess whether
-the larger budget improves generalization.
+`combat_population_weights` remains available to reproduce the earlier Halton roster.
+The [historical notebook snapshot](../notebooks/results/20261006_notebook05.ipynb)
+retains the published tables and embedded figures. Those results do not evaluate the
+new recipe. Notebook 04's original reward weights and defaults are unchanged.
+
+The new defaults use 150 epochs of 75 fresh scenarios, 10 PPO passes at most, and
+256 transitions per minibatch. Training seeds advance by the scenario count each epoch;
+matched pilots see the same schedule. Validation and test have disjoint seed ranges.
+Rewards are multiplied by 0.01 only inside GAE/critic learning; reported returns remain
+in original reward points. This reduces critic target magnitude relative to the actor
+loss while preserving reward preferences. It does change optimization and must be
+evaluated empirically. The existing critic and network architecture are retained.
+
+After each PPO pass the whole rollout's approximate KL is measured. Exceeding 1.5 times
+`target_kl=0.02` stops further passes on that rollout. This is not a hard divergence
+bound or proof of improvement. Diagnostics log policy loss, value loss, entropy, clipping
+fraction, approximate KL, explained variance, completed passes and actual throughput.
+The loss components describe the model after the final pass; the legacy `loss` is the
+mean combined loss across training minibatches. Explained variance is reported as 0
+with `explained_variance_defined=0` for constant targets. CUDA graphs remain supported.
+KL stopping follows the approach documented in
+[Spinning Up PPO](https://spinningup.openai.com/en/latest/algorithms/ppo.html).
+
+Controls include `BVR_PILOT_RESAMPLE`, `BVR_PILOT_REWARD_SCALE`, `BVR_PILOT_TARGET_KL`,
+`BVR_PILOT_UPDATE_EPOCHS`, `BVR_PILOT_MINIBATCH`, `BVR_PILOT_TEST_SCENARIOS`, and
+`BVR_PILOT_TEST_SEED`. The config defaults keep resampling, scaling and KL stopping
+disabled for existing standalone/04/06 workflows. Checkpoint selection still uses
+each pilot's own fixed validation objective to retain differences in preference.
 
 ## Notebook 06: tactical objectives and style diversity
 
@@ -232,15 +257,17 @@ updates use the GPU. An 80% worker budget does not guarantee 80% sustained CPU l
 The progress bar labels collection, PPO updates, validation, and demonstration saving.
 Notebooks 05 and 06 enable `cuda_graph_updates` for CUDA: full minibatches replay a captured
 forward/backward pass, avoiding repeated Python and GPU launch overhead. The optimizer,
-gradient clipping, and AMP scaler still execute once per minibatch. The 50 PPO passes,
-batch size of 64, architecture, rewards, scenarios, and evaluation cadence are unchanged.
+gradient clipping, and AMP scaler still execute once per minibatch. Notebook 06 keeps
+50 PPO passes and minibatches of 64; notebook 05 now uses up to 10 passes with KL
+stopping and minibatches of 256. Graph capture itself does not change the objective.
 Warmup computes gradients without applying extra optimizer steps. A single graph is
 captured per update; the final partial minibatch and CPU training use the eager path.
 Notebook 04 and standalone configurations retain the eager path by default.
 Set `BVR_PILOT_CUDA_GRAPHS=0` before setup to compare eager execution or disable capture.
 This follows PyTorch's [CUDA graph guidance for AMP](https://docs.pytorch.org/docs/stable/notes/cuda.html#usage-with-torch-cuda-amp).
 
-On a fixed batch of 3,764 real flight transitions, 50 passes (2,950 minibatches) took
+In the earlier performance experiment, on a fixed batch of 3,764 real flight
+transitions, 50 passes (2,950 minibatches) took
 20.02 seconds eagerly versus 2.76 seconds with capture, averaged over two runs each.
 Final model tensors were identical in that comparison. These are update timings,
 not a guarantee of whole-run speedup; flight simulation and validation still take time.
@@ -250,7 +277,7 @@ checkpoints were bit-for-bit identical. PPO averaged 37.4 versus 5.1 seconds per
 simulation and validation were essentially unchanged. This short benchmark validates
 execution speed and equivalence, not final pilot quality or a full-roster duration.
 The local reproducible benchmark and its cached batch are under
-`artifacts/training_performance_20261006/`, with the runner at `artifacts/profile_training.py`.
+`artifacts/archive/20261009/diagnostics/training_performance_20261006/`, with the historical runner at `artifacts/archive/20261009/helpers/profile_training.py`.
 
 `training_metrics.jsonl` records `rollout_seconds`, `update_seconds`, and
 `evaluation_seconds` separately, plus `checkpoint_seconds`, `rollout_transitions`,
@@ -272,6 +299,7 @@ $env:BVR_PILOT_EPOCHS = "1"
 $env:BVR_PILOT_EPISODE_SECONDS = "1"
 $env:BVR_PILOT_SCENARIOS = "3"
 $env:BVR_PILOT_EVALUATION_SCENARIOS = "3"
+$env:BVR_PILOT_TEST_SCENARIOS = "3"
 $env:BVR_PILOT_UPDATE_EPOCHS = "1"
 $env:BVR_PILOT_WORKERS = "1"
 ```
@@ -382,10 +410,121 @@ not confidence intervals. You can pass a different common
 `evaluation_seed` is shared across pilots. The pipeline rejects overlap with training
 episode seed ranges. If unspecified, it chooses a separate range above the training
 seeds. These scenarios also select checkpoints, so they are validation data, not a
-final held-out test set. Use another scenario/seed range for final assessment.
+final held-out test set. Notebook 05 now uses another scenario/seed range automatically
+for final assessment; notebook 06 retains the validation-only default.
 Pilots may share a training seed for a controlled reward comparison. Seeds initialize
 Python, NumPy, and PyTorch, but identical results across hardware/library versions or
 simulator threading configurations are not guaranteed.
+
+Notebook 05's primary comparison is `test.clean_win_rate`: survival **and** confirmed
+missile elimination on the same 100 fresh cases. Its 95% Wilson interval measures
+binomial uncertainty across scenarios, not training-seed variability. Report survival,
+eliminations and mutual destruction alongside it. The shared secondary outcome score
+is +100 for a surviving elimination, 0 for survival without a confirmed elimination,
+-50 when both aircraft die, and -100 for own loss with the opponent alive. These four
+categories partition the flights. An opponent crash does not count as a clean win.
+The score is an explicit user preference, not a universal ranking; clean win rate is
+displayed first. The old common combat return remains a secondary diagnostic.
+
+Behaviour measurements include missile expenditure, avoided missiles, threat exposure,
+flight duration and fractions of skill decisions. They use simulator events and actions,
+not training-reward totals. Neither high avoidance counts nor skill frequency alone
+demonstrates superior skill. Per-case test records support matched scenario comparisons.
+Tests do not alter checkpoints. Repeatedly tuning against their results makes them
+another validation set; reserve fresh cases for subsequent final assessments. Repeat
+training with multiple seeds before attributing differences to rewards alone, as
+recommended by [Stable Baselines3's evaluation guidance](https://stable-baselines3.readthedocs.io/en/master/guide/rl_tips.html).
+
+## Matched PPO experiments
+
+`scripts/run_pilot_experiment.py` prepares a separate experiment from a completed
+notebook 05 population using the combat v2 reward definition. It preserves the
+recorded reward coefficients, seeds, network and training settings, changes one
+selected intervention, and trains each pilot from scratch. Output and MLflow destinations
+are separate from the baseline. Notebook 05 now defaults to the successful `0.00003` learning rate. Notebook 04 retains its original defaults.
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_pilot_experiment.py --prepare <completed-batch> --learning-rate 0.00003
+.\.venv\Scripts\python.exe -u <job>/source/scripts/run_pilot_experiment.py --run-job <job>
+```
+
+The prepare command prints the new job directory under `artifacts/rl_pilot_experiments`.
+Run its frozen script so subsequent repository edits cannot change the experiment.
+`experiment.json` records settings and file hashes; `status.json` records the job
+state, while `training/pilots.json` and each pilot's `training_metrics.jsonl` show
+progress. A started job cannot be launched twice or resumed with optimizer state.
+
+### Recover a failed simulator job
+
+Process workers now retry a disconnected or timed-out batch up to twice. The collector
+restarts the workers, discards every partial trajectory, and restores Python, NumPy,
+PyTorch CPU and CUDA random states before replaying the same scenarios and seeds.
+No PPO update happens on the discarded batch. Python errors and manual interrupts
+still stop immediately. Recovery events, including worker exit codes when available,
+are saved in each pilot's `simulator_recovery.jsonl`; epoch metrics include retry
+counts and time. A persistent failure stops after the third failed attempt.
+
+To recover an older failed job, prepare a new frozen snapshot and launch it:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_pilot_experiment.py --recover <failed-job>
+.\.venv\Scripts\python.exe -u <new-job>/source/scripts/run_pilot_experiment.py --run-job <new-job>
+```
+
+The recovery preserves the original directory and copies completed pilots byte for
+byte into the new population, after checking settings, rewards, seeds, completed
+epochs and checkpoint hashes. Unfinished pilots restart from their original seeds.
+`best_model.pt` contains selected policy weights, not the optimiser/RNG state needed
+to resume an interrupted epoch. Recovery therefore does not warm-start from that
+checkpoint. The planned confirmation suite is retained. Set the report registry's
+job/training paths to the new job to follow its progress. Recovery preparation is
+restricted to failed jobs; never launch a second job against an active population.
+
+### Paired evaluation
+
+After training, `comparison.html` and `comparison.json` compare the populations on
+the original test cases and on 100 predeclared fresh confirmation cases. Previously
+inspected test results are treated as development evidence. Both populations face
+the same confirmation scenarios, without training or checkpoint selection on them.
+The primary measure is mean clean-win rate across all matching reward profiles;
+survival, mutual destruction and per-pilot changes are also reported. The paired
+bootstrap interval measures scenario uncertainty, not variation between training
+seeds. The baseline is retained regardless of the outcome and its hashes are checked
+again when the job completes.
+
+### View the same tables and plots as notebook 05
+
+Open [`05_compare_population_runs.ipynb`](../notebooks/05_compare_population_runs.ipynb)
+in VS Code, select **Trajectory pilots (.venv)** (or the repository's
+`.venv/Scripts/python.exe` interpreter), and click **Run All**. The notebook reads the named experiments in `configs/pilot_experiments.json`. Its
+default is the current selected-skill experiment. Set `EXPERIMENT = "lower_learning_rate"`
+in the first code cell to inspect the completed learning-rate comparison, or override
+`EXPERIMENT_JOB` with a prepared job directory. Each job records both populations.
+
+The report is read-only and does not load models, launch training, or run simulations.
+It reproduces notebook 05's selection/test tables, behaviour and skill tables, common
+validation reward components, return/loss curves, clean-win intervals and behaviour
+scatter. Curves overlay matching pilots from both runs. Unfinished pilots show their
+progress; missing evaluations are not recorded as zero. Rerun **Run All** to refresh,
+then save the notebook to retain its outputs and embedded figures. Fresh confirmation
+tables and plots appear after those evaluations have been saved by the runner.
+
+The existing experiment is already running independently of the report notebook.
+To intentionally start an additional experiment from the repository root in a VS Code
+PowerShell terminal, this example captures the newly prepared job path automatically:
+
+```powershell
+$baselineBatch = 'artifacts/rl_pilot_notebook/combat/20261007T212241_526315Z'
+$experimentPlan = .\.venv\Scripts\python.exe scripts/run_pilot_experiment.py --prepare $baselineBatch --learning-rate 0.00003 | ConvertFrom-Json
+$experimentScript = Join-Path $experimentPlan.source 'scripts/run_pilot_experiment.py'
+.\.venv\Scripts\python.exe -u $experimentScript --run-job $experimentPlan.job
+```
+
+This launches a fresh full training job, so wait for the current experiment to finish
+before using it unless concurrent GPU/simulator workloads are intentional. Keep this
+terminal running and the computer awake until it finishes. Then point the comparison
+notebook's `EXPERIMENT_JOB` at `$experimentPlan.job` and **Run All**. Do not use **Run All** in the training
+notebook merely to display saved results; its training cell starts a new population.
 
 ## Saved files and reuse
 
@@ -397,6 +536,7 @@ simulator threading configurations are not guaranteed.
     config.json
     manifest.json
     training_metrics.jsonl
+    test_episodes.json     # notebook 05: paired post-selection test outcomes and skills
     demonstrations/
     final_evaluation/       # generated for the selected pilot by the replay cell
 ```
@@ -430,3 +570,43 @@ use a new scenario set for a final assessment.
 
 References: [PyTorch reproducibility](https://docs.pytorch.org/docs/stable/notes/randomness.html)
 and [MLflow run tracking](https://mlflow.org/docs/latest/api_reference/python_api/mlflow.html#mlflow.start_run).
+
+## Selected-skill parameter objective
+
+The opt-in `PilotTrainingConfig.selected_skill_parameters=True` mode keeps the
+network dimensions, weights layout, skill catalogue and simulator-bound action decoding
+unchanged. A non-persistent mask is derived from each skill's numeric parameter schema.
+Collection and PPO evaluation use the selected skill's log probability plus only its
+active Gaussian parameter log densities. PPO ratios, clipping and KL therefore exclude
+unused dimensions. The entropy term is skill entropy plus the probability-weighted
+parameter entropy for every possible skill, preserving gradients through skill selection.
+These are raw Gaussian entropies, as in the original objective, before the existing
+bounded parameter transformation. There is no averaging by parameter count.
+
+The flag defaults to false and is saved in each pilot's configuration. The loader
+restores it, and old configurations without the flag use the original calculation.
+No checkpoint keys or learned layers were added. The selected-skill experiment retains
+the lower learning rate, original reward coefficients, seeds, 150 epochs, 75 scenarios
+per epoch, 50 validation cases, 100 original test cases and 22 simulator workers.
+Both populations receive 100 new confirmation cases with seed 620000; earlier
+confirmation cases are rejected if reused by a descendant experiment.
+
+```powershell
+$baselineBatch = 'artifacts/rl_pilot_experiments/20261008T130810_285510Z_lr3e-05/training'
+$experimentPlan = .\.venv\Scripts\python.exe scripts/run_pilot_experiment.py --prepare $baselineBatch --intervention selected_skill_parameters --confirmation-seed 620000 | ConvertFrom-Json
+$experimentScript = Join-Path $experimentPlan.source 'scripts/run_pilot_experiment.py'
+.\.venv\Scripts\python.exe -u $experimentScript --run-job $experimentPlan.job
+```
+
+The current job is already running; these commands are for an intentional fresh run.
+Training starts from the same random initialization, rather than fine-tuning the baseline
+checkpoints. Only the probability/entropy mode changes, apart from output destinations.
+Because the objective now counts fewer parameter dimensions, policy loss, entropy and
+KL values are not directly comparable with the unmasked run. Lower combined loss is
+not the success criterion. Compare clean wins, survival and mutual destruction on
+paired cases, and repeat training seeds before making a general performance claim.
+
+The [experiment index](pilot_experiments.md) links all preserved populations and reports.
+Temporary checks and scripts were moved into `artifacts/archive/20261009/`; completed
+run paths were preserved so source inventories, checkpoint hashes and recorded paths
+stay valid. The archive manifest records the original location of every moved item.

@@ -4,7 +4,7 @@ Ten independently trained PPO pilots from the completed run
 `20261006T140858_362365Z`: 150 epochs each, 75 fixed training scenarios and
 50 separate fixed validation scenarios, against BVR Sim's simple baseline opponent
 using JSBSim aircraft dynamics. This is the original combat reward population from
-[notebook 05](../../../notebooks/05_train_multiple_pilots.ipynb), with independently
+[historical notebook 05](../../../notebooks/results/20261006_notebook05.ipynb), with independently
 varied relative event weights. Notebook 06's hybrid rewards were not used here.
 
 Each pilot directory contains its selected `best_model.pt`, the original `config.json`
@@ -70,8 +70,10 @@ therefore not independently verified as an exact training-time checkout.
 The original per-pilot configs/manifests are preserved. Their absolute output and
 MLflow paths refer to the training machine; the loader does not use those paths.
 The top-level `reward` is the actual objective, overriding the legacy base values
-under `training.reward`. For another run, use a new output directory. Notebook 05's
-default is 50 training scenarios; this published run used `BVR_PILOT_SCENARIOS=75`.
+under `training.reward`. For another run, use a new output directory. At publication,
+notebook 05 defaulted to 50 fixed training scenarios; this run used `BVR_PILOT_SCENARIOS=75`.
+The active notebook now uses a revised recipe with random reward ranges, refreshed
+training scenarios and a separate final test. This population predates those changes.
 All pilots used seed 7, 22 process workers, CUDA graph updates, 50 PPO passes per epoch,
 and 64 transitions per minibatch. Full network and training settings are in each config.
 

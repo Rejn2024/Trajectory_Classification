@@ -30,3 +30,6 @@ bvr_sim_source/bvr_sim/install/
 
 # Generated notebook videos and trajectories
 artifacts/
+
+# Jupyter's automatic working copies; deliberate result snapshots stay tracked.
+notebooks/.ipynb_checkpoints/
