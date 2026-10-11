@@ -22,6 +22,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
+from matplotlib.path import Path as PlotPath
 
 ROOT = Path(__file__).resolve().parents[1]
 DEST = ROOT / "docs/presentations"
@@ -358,6 +360,126 @@ def render(dest, data):
             cell.set_edgecolor("#35485e")
             cell.get_text().set_color(TEAL if row == 0 else FG)
 
+    def pipeline_box(x, y, width, height, title, body, colour=TEAL, fontsize=13):
+        box = FancyBboxPatch((x, y), width, height, boxstyle="round,pad=0.007,rounding_size=0.009",
+                             transform=f.transFigure, facecolor="#192d44", edgecolor=colour,
+                             linewidth=1.1, zorder=1)
+        f.add_artist(box)
+        f.text(x + .012, y + height - .017, title, size=15, weight="bold", color=colour, va="top")
+        if body:
+            f.text(x + .012, y + height - .056, body, size=fontsize, va="top", linespacing=1.35)
+
+    def pipeline_arrow(points, colour=TEAL, dashed=False):
+        route = PlotPath(points, [PlotPath.MOVETO, *([PlotPath.LINETO] * (len(points) - 1))])
+        f.add_artist(FancyArrowPatch(path=route, transform=f.transFigure, arrowstyle="-|>",
+                                    mutation_scale=14, linewidth=1.5, color=colour,
+                                    linestyle="--" if dashed else "-", zorder=2))
+
+    f = page("Where RL, BVR Sim and JSBSim fit",
+             "The learned policy chooses behaviour; the simulator and flight model determine what happens")
+    pipeline_box(.065, .54, .255, .18, "OUR ACTOR + CRITIC",
+                 "Transformer reads flight history\nActor selects skill + parameters\nCritic estimates future reward", fontsize=15)
+    pipeline_box(.375, .54, .255, .18, "TACTICAL SKILLS",
+                 "33 fixed tactical skills\nSelected skill produces guidance\nHeading / altitude / speed / fire", fontsize=15)
+    pipeline_box(.685, .28, .25, .44, "BVR SIM",
+                 "Aircraft and scripted opponent\nSensors, missiles and combat events\nControllers translate guidance\nto aircraft control inputs", colour=BLUE, fontsize=13.5)
+    physics = FancyBboxPatch((.697, .299), .226, .17,
+                             boxstyle="round,pad=0.005,rounding_size=0.006",
+                             transform=f.transFigure, facecolor="#233e59", edgecolor=BLUE, zorder=1)
+    f.add_artist(physics)
+    f.text(.71, .445, "JSBSIM", size=17, color=BLUE, weight="bold", va="top")
+    f.text(.71, .401, "Aircraft flight dynamics\nControls → forces and moments\nUpdated position, speed, attitude", size=12.5, va="top", linespacing=1.35)
+    pipeline_box(.375, .28, .255, .20, "ENVIRONMENT ADAPTER",
+                 "Builds the observation history\nCollects events across substeps\nReturns state and event records", fontsize=14.5)
+    pipeline_box(.065, .28, .255, .20, "REWARD + PPO",
+                 "Pilot weights score combat events\nExperience trains actor and critic\nSeparate model for each pilot", fontsize=14.5)
+    pipeline_arrow([(.327, .62), (.367, .62)])
+    pipeline_arrow([(.637, .62), (.677, .62)])
+    pipeline_arrow([(.677, .375), (.637, .375)], colour=BLUE)
+    pipeline_arrow([(.367, .375), (.327, .375)])
+    pipeline_arrow([(.1875, .488), (.1875, .532)])
+    pipeline_arrow([(.5025, .488), (.5025, .507), (.27, .507), (.27, .532)], colour=BLUE)
+    f.text(.395, .51, "Next observation", size=10.5, color=BLUE, ha="center", va="bottom")
+    f.text(.065, .20, "Current setup: F-16 versus F-16, 1-v-1 • scripted simple or tactical opponent • ten independent pilots",
+           size=14, color=TEAL)
+    f.text(.065, .135, "CPU workers advance independent duels. GPU batches policy inference and PPO updates.", size=15)
+    f.text(.065, .082, "Scenario setup initializes the encounter. JSBSim supplies aircraft physics; BVR Sim supplies the combat environment.",
+           size=12, color=MUTED)
+    finish(f, "This is the architecture used by the repository's custom PPO pipeline, rather than the separate skrl training example bundled with BVR Sim. The policy chooses a tactical skill and its numeric parameters. SkillManager converts that choice into heading, altitude, speed and fire guidance, which BVR Sim routes through its aircraft controllers. JSBSim computes aircraft flight dynamics inside the environment. BVR Sim also maintains the opponent, sensors, missiles and engagement events. The adapter exposes flight observations and accumulated events to our training code, which builds history and applies each pilot's own reward definition. The critic supplies learning predictions; aircraft control comes from the actor's actions and fixed skill/controller implementations. Each worker advances its own simulation; pilots do not learn against one another in these experiments.")
+
+    f = page("RL pipeline: decisions, simulation and learning",
+             "Ten independent pilots • individual reward profiles and checkpoints • shared scenario schedules")
+    f.text(.065, .755, "Seeded duels: initial geometry, speed and altitude • 75 fresh scenarios / epoch • 150 epochs / pilot",
+           size=12, color=MUTED)
+    pipeline_box(.065, .535, .245, .17, "1  Observation history",
+                 "20 frames × 51 features\nPosition, motion, threats + energy\nTwo seconds of state at 10 Hz")
+    pipeline_box(.365, .535, .245, .17, "2  Actor + critic (GPU)",
+                 "Transformer processes history\nActor: skill + numeric parameters\nCritic: expected future return\nOne decision about every second")
+    pipeline_box(.685, .535, .25, .17, "3  Skills → guidance",
+                 "Choose from 33 fixed skills\nHeading / altitude / speed / fire\nGuidance passed to controllers")
+    pipeline_box(.685, .27, .25, .20, "4  BVR Sim (CPU)",
+                 "Scripted opponent, missiles, events\nControllers execute flight guidance", colour=BLUE)
+    physics = FancyBboxPatch((.697, .283), .226, .055,
+                             boxstyle="round,pad=0.005,rounding_size=0.006",
+                             transform=f.transFigure, facecolor="#233e59", edgecolor=BLUE, zorder=1)
+    f.add_artist(physics)
+    f.text(.81, .311, "JSBSim: aircraft flight physics", size=12.5, ha="center", va="center", color=BLUE)
+    pipeline_box(.365, .27, .245, .20, "5  Reward + experience",
+                 "Combat events × pilot coefficients\nStore observations, actions, rewards,\nvalue estimates and probabilities\nCollect 75 flights before updating")
+    pipeline_box(.065, .27, .245, .20, "6  PPO update (GPU)",
+                 "Scaled rewards + critic → advantages\nClipped policy loss + value loss\n256 transitions per minibatch\nUpdate actor and critic; repeat", fontsize=12.5)
+
+    pipeline_arrow([(.317, .62), (.357, .62)])
+    pipeline_arrow([(.617, .62), (.677, .62)])
+    pipeline_arrow([(.81, .527), (.81, .478)])
+    pipeline_arrow([(.677, .37), (.617, .37)])
+    pipeline_arrow([(.357, .37), (.317, .37)])
+    pipeline_arrow([(.943, .41), (.96, .41), (.96, .73), (.1875, .73), (.1875, .713)], colour=BLUE)
+    f.text(.57, .733, "Next observation from the simulation", size=10.5, color=BLUE, ha="center", va="bottom")
+    pipeline_arrow([(.1875, .478), (.1875, .504), (.4875, .504), (.4875, .527)])
+    f.text(.32, .507, "Updated actor + critic", size=10.5, color=TEAL, ha="center", va="bottom")
+
+    pipeline_box(.065, .12, .245, .10, "Validation → checkpoint",
+                 "50 fixed cases, periodically\nSave best own validation return", colour="#ffcf88", fontsize=11.5)
+    pipeline_box(.365, .12, .245, .10, "Compare selected pilots",
+                 "Matched development scenarios\nElimination • survival • clean win", colour="#ffcf88", fontsize=11.5)
+    pipeline_box(.685, .12, .25, .10, "Tactical continuation",
+                 "Load selected actor + critic\nSame rewards; tactical opponent", colour="#ffcf88", fontsize=11.5)
+    pipeline_arrow([(.1875, .262), (.1875, .228)], colour="#ffcf88", dashed=True)
+    pipeline_arrow([(.317, .17), (.357, .17)], colour="#ffcf88", dashed=True)
+    pipeline_arrow([(.617, .17), (.677, .17)], colour="#ffcf88", dashed=True)
+    f.text(.065, .075, "CPU workers parallelise flights within each pilot. Final testing uses untouched cases after development choices are frozen.",
+           size=11, color=MUTED)
+    finish(f, "The diagram describes this repository's custom PPO pipeline. Each pilot has its own fixed reward coefficients, actor/critic parameters, optimizer and checkpoint; pilots train independently and sequentially. Seeded scenarios specify the initial duel geometry, speeds and altitudes. The environment adapter builds a two-second observation history and accumulates combat events across 0.1-second simulator steps. The actor selects a skill and parameters roughly once per second. SkillManager converts that decision to guidance; BVR Sim manages the scripted opponent, missiles and engagement events, while aircraft controllers and JSBSim advance flight dynamics. The critic estimates discounted future own reward; it does not command the aircraft. Per-pilot event rewards, observations, actions, old action log probabilities, values and termination flags form the rollout. After 75 flights, scaled rewards and critic estimates produce GAE advantages and return targets. PPO updates the actor and critic using 256-transition minibatches, an entropy term and up to ten update passes with KL stopping. This collection/update cycle repeats for 150 epochs. Batched neural work runs on the GPU; persistent CPU workers run independent simulators. Validation uses 50 fixed, separate cases at epoch 1, every fifth epoch and the final epoch; the highest own validation return selects the checkpoint. Development cases compare those selected pilots using elimination, survival, clean wins and mutual destruction; they do not select checkpoints. Tactical continuation loads each selected actor and critic, starts a fresh Adam optimizer and adds 150 epochs against the tactical scripted opponent with the same reward profile. Future final testing is reserved for unused scenarios after development choices are fixed. Historical confirmation results in the later slides remain archived evidence.")
+
+    f = page("Training, checkpoint selection and comparison",
+             "Training changes weights • validation selects checkpoints • development compares experiments")
+    pipeline_box(.065, .51, .255, .20, "COLLECT 75 DUELS",
+                 "Fresh seeded cases each epoch\nParallel CPU flights; GPU inference\nStore all decision transitions", fontsize=14.5)
+    pipeline_box(.375, .51, .255, .20, "PPO LEARNING STEP",
+                 "Reward + value → GAE advantages\nClipped policy loss + value loss\nMinibatches: 256 transitions\nUp to 10 passes; KL early stopping", fontsize=13)
+    pipeline_box(.685, .51, .25, .20, "REPEAT FOR 150 EPOCHS",
+                 "11,250 training duels per pilot\n10 pilots trained independently\nMatched scenario schedules", fontsize=14)
+    pipeline_arrow([(.327, .61), (.367, .61)])
+    pipeline_arrow([(.637, .61), (.677, .61)])
+    pipeline_arrow([(.81, .718), (.81, .741), (.1925, .741), (.1925, .718)])
+    f.text(.5025, .745, "Next epoch: fresh cases and the updated policy", size=11, color=TEAL, ha="center", va="bottom")
+    pipeline_box(.065, .23, .255, .19, "VALIDATION",
+                 "50 fixed, separate scenarios\nEvaluate without weight updates\nBest own reward selects the epoch", colour="#ffcf88", fontsize=14)
+    pipeline_box(.375, .23, .255, .19, "SELECTED CHECKPOINT",
+                 "Save actor + critic weights\nOne model per reward profile\nBest epoch may precede the last", colour="#ffcf88", fontsize=14)
+    pipeline_box(.685, .23, .25, .19, "SHARED DEVELOPMENT",
+                 "100 fixed simple cases per pilot\nElimination, survival, clean win\nAlso report mutual destruction", colour="#ffcf88", fontsize=13)
+    pipeline_arrow([(.81, .502), (.81, .46), (.1925, .46), (.1925, .428)], colour="#ffcf88", dashed=True)
+    f.text(.5025, .465, "Validation at epoch 1, every fifth epoch and the final epoch", size=11, color="#ffcf88", ha="center", va="bottom")
+    pipeline_arrow([(.327, .325), (.367, .325)], colour="#ffcf88", dashed=True)
+    pipeline_arrow([(.637, .325), (.677, .325)], colour="#ffcf88", dashed=True)
+    f.text(.065, .16, "Tactical stage: preserve selected parents → load actor + critic → fresh Adam → 150 further epochs against tactical.",
+           size=13.5, color=TEAL)
+    f.text(.065, .105, "Validation and development cases have no training updates. Final testing waits until experimental choices are frozen.",
+           size=12, color=MUTED)
+    finish(f, "A scenario is one seeded duel. One decision transition contains the observation, selected skill and parameters, reward, value estimate, action log probability and termination information. An epoch collects 75 duels, then optimizes using minibatches of 256 decision transitions; these are different units. Training rewards are scaled by 0.01 for GAE and critic targets, while reported returns stay in original units. GAE combines rewards and value predictions into advantages; PPO uses clipped policy updates, value fitting, entropy regularization and a KL stopping rule. Validation runs periodically without gradient updates. Checkpoints maximize each pilot's own validation reward, so differing reward profiles retain separate selection criteria. Shared development cases compare selected checkpoints using common combat outcomes and do not choose the checkpoint. Those inspected cases can still influence later experimental choices, so they are not untouched tests. The simple-opponent study uses seed 7 for training, 111257 for 50 validation cases and 211307 for 100 development cases. Tactical adaptation uses separate scenario schedules and loads each parent's actor and critic with a fresh Adam optimizer; the initial parent is also a validation candidate. The tactical stage adds 150 epochs and has its own matched before/after assessments. Future final testing uses unused cases shared across the final candidates.")
+
     f = page("Simple-opponent results", "Shared development benchmark • 10 pilots × 100 matched cases • seed 211307")
     rows = [[p["label"], *[f"{100*p[key]:.1f}%" for key in
              ("elimination_rate", "survival_rate", "clean_win_rate", "mutual_destruction_rate")]]
@@ -537,6 +659,8 @@ document.addEventListener('keydown',e=>{if(['ArrowRight','PageDown',' '].include
     preview = ROOT / "artifacts/checks/presentation_20261011"
     preview.mkdir(parents=True, exist_ok=True)
     sheet.save(preview / "contact_sheet.jpg")
+    (preview / "slide_01.png").write_bytes(thumbs[0])
+    (preview / "slide_02.png").write_bytes(thumbs[1])
     (preview / "slide_03.png").write_bytes(thumbs[2])
     (preview / "slide_06.png").write_bytes(thumbs[5])
     (preview / "slide_08.png").write_bytes(thumbs[7])

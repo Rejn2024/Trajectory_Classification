@@ -7,9 +7,12 @@ GitHub shows its source rather than hosting the slideshow. Both files are standa
 no Jupyter, Python, network connection, GPU, model weights or Git LFS are required.
 In HTML, use arrow keys; **N** toggles supplementary notes and **F** enters fullscreen.
 
-The deck contains **13 slides**, beginning with the simple-opponent results table.
-Slides 1–10 cover the methodology and principal results;
-slides 11–13 cover observed behaviour, limitations and supporting evidence. The report
+The deck contains **16 slides**. Three opening slides establish the pipeline before
+the results: the roles of RL, BVR Sim and JSBSim; the observation, decision, simulation,
+reward and PPO update loop; and training, validation, checkpoint selection and common
+evaluation. The simple-opponent results table follows on slide 4. Slides 1–13 cover
+the methodology and principal results; slides 14–16 cover observed behaviour,
+limitations and supporting evidence. The report
 is generated from existing files without additional training, simulations or evaluation flights.
 
 ## Executive summary
