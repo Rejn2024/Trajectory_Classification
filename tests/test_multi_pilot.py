@@ -1,6 +1,7 @@
 import json
 from dataclasses import replace
 from functools import partial
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -12,6 +13,65 @@ from bvr_behavior_prediction.rl.config import PilotTrainingConfig
 from bvr_behavior_prediction.rl.multi_pilot import PilotSpec, load_trained_pilot, train_pilots
 from bvr_behavior_prediction.rl.reward import RewardDefinition
 from bvr_behavior_prediction.rl.trainer import PPOTrainer
+
+
+@pytest.mark.parametrize("winerror", [5, 32, 33])
+def test_manifest_replacement_retries_transient_windows_lock(tmp_path, monkeypatch, winerror):
+    from bvr_behavior_prediction.rl import multi_pilot
+
+    path = tmp_path / "pilots.json"
+    path.write_text('{"status": "completed"}', encoding="utf8")
+    original = path.read_bytes()
+    replace_path = Path.replace
+    delays = []
+    attempts = []
+
+    def replace_after_lock(temporary, target):
+        attempts.append(temporary)
+        assert target.read_bytes() == original
+        if len(attempts) <= 2:
+            error = PermissionError("temporarily locked by reader")
+            error.winerror = winerror
+            raise error
+        return replace_path(temporary, target)
+
+    monkeypatch.setattr(Path, "replace", replace_after_lock)
+    monkeypatch.setattr(multi_pilot.time, "sleep", delays.append)
+    multi_pilot._write_json(path, {"status": "training", "pilot": "next"})
+    assert json.loads(path.read_text()) == {"status": "training", "pilot": "next"}
+    assert len(attempts) == 3
+    assert delays == [0.05, 0.1]
+    assert not path.with_suffix(".json.tmp").exists()
+
+
+@pytest.mark.parametrize("winerror, expected_attempts", [(5, 10), (None, 1)])
+def test_manifest_replacement_failure_is_bounded_and_preserves_previous_file(
+    tmp_path, monkeypatch, winerror, expected_attempts
+):
+    from bvr_behavior_prediction.rl import multi_pilot
+
+    path = tmp_path / "pilots.json"
+    path.write_text('{"status": "completed"}', encoding="utf8")
+    original = path.read_bytes()
+    attempts = []
+    delays = []
+    error = PermissionError("persistent access failure")
+    if winerror is not None:
+        error.winerror = winerror
+
+    def deny_replace(temporary, target):
+        attempts.append(temporary)
+        raise error
+
+    monkeypatch.setattr(Path, "replace", deny_replace)
+    monkeypatch.setattr(multi_pilot.time, "sleep", delays.append)
+    with pytest.raises(PermissionError, match="persistent access failure"):
+        multi_pilot._write_json(path, {"status": "training"})
+    assert len(attempts) == expected_attempts
+    assert len(delays) == expected_attempts - 1
+    assert sum(delays) <= 6
+    assert path.read_bytes() == original
+    assert json.loads(path.with_suffix(".json.tmp").read_text()) == {"status": "training"}
 
 
 class CountingReward:
@@ -87,6 +147,60 @@ def definition(scale):
     return RewardDefinition(
         f"counter_{scale}", partial(CountingReward, scale), {"scale": scale}, version="2"
     )
+
+
+def test_fine_tuning_loads_actor_and_critic_and_keeps_initial_validation_candidate(config):
+    from bvr_behavior_prediction.rl.multi_pilot import initialize_pilot_from_checkpoint
+
+    factory = lambda run_config: lambda scenario, path=None: TinyEnvironment(path)
+    pilot = PilotSpec("first", 7, definition(1))
+    parent = train_pilots([pilot], config, factory, 1, device="cpu")
+    source = config.output_dir / "first"
+    original = {p.name: p.read_bytes() for p in source.iterdir() if p.is_file()}
+    adapted = replace(config, seed=1007, output_dir=config.output_dir.parent / "adapted")
+    trainer = PPOTrainer(factory(adapted), 1, adapted, "cpu", pilot.reward)
+    try:
+        initialization = initialize_pilot_from_checkpoint(trainer, source)
+        saved = torch.load(source / "best_model.pt", weights_only=True)
+        for name, value in saved.items():
+            torch.testing.assert_close(trainer.pilot.state_dict()[name], value, rtol=0, atol=0)
+        assert not trainer.optimizer.state
+        assert initialization["checkpoint_sha256"] == parent[0]["checkpoint_sha256"]
+        assert trainer.best_score == 3
+        trainer.train()
+        # The fixture's reward is constant: no updated policy beats epoch zero.
+        assert (adapted.output_dir / "best_model.pt").read_bytes() == original["best_model.pt"]
+        assert (adapted.output_dir / "initial_model.pt").read_bytes() == original["best_model.pt"]
+        assert trainer.optimizer.state  # PPO actually ran with the fresh optimizer.
+        with pytest.raises(ValueError, match="fresh trainer"):
+            initialize_pilot_from_checkpoint(trainer, source)
+    finally:
+        trainer.close()
+    assert all((source / name).read_bytes() == value for name, value in original.items())
+
+
+@pytest.mark.parametrize("mismatch", ["reward", "architecture", "checksum"])
+def test_fine_tuning_rejects_incompatible_checkpoint_before_training(config, mismatch):
+    from bvr_behavior_prediction.rl.multi_pilot import initialize_pilot_from_checkpoint
+
+    factory = lambda run_config: lambda scenario, path=None: TinyEnvironment(path)
+    pilot = PilotSpec("first", 7, definition(1))
+    train_pilots([pilot], config, factory, 1, device="cpu")
+    source = config.output_dir / "first"
+    adapted = replace(config, output_dir=config.output_dir.parent / "adapted")
+    if mismatch == "architecture":
+        adapted = replace(adapted, selected_skill_parameters=True)
+    elif mismatch == "checksum":
+        (source / "best_model.pt").write_bytes(b"corrupt")
+    trainer = PPOTrainer(factory(adapted), 1, adapted, "cpu",
+                         definition(2) if mismatch == "reward" else pilot.reward)
+    try:
+        with pytest.raises(ValueError, match={"reward": "reward", "architecture": "architecture", "checksum": "SHA-256"}[mismatch]):
+            initialize_pilot_from_checkpoint(trainer, source)
+        assert not trainer.diagnostics_path.exists()
+        assert not (adapted.output_dir / "best_model.pt").exists()
+    finally:
+        trainer.close()
 
 
 def test_arbitrary_roster_trains_distinct_models_and_preserves_reward_identity(config):
@@ -176,7 +290,8 @@ def test_failed_batch_keeps_completed_checkpoint_and_status(config):
     assert load_trained_pilot(config.output_dir / "first") is not None
 
 
-def test_recovery_reuses_completed_pilots_and_restarts_only_unfinished(config):
+@pytest.mark.parametrize("legacy_metadata", [False, True])
+def test_recovery_reuses_completed_pilots_and_restarts_only_unfinished(config, legacy_metadata):
     config = replace(config, test_scenarios_per_pilot=3)
     pilots = [PilotSpec("first", 7), PilotSpec("second", 107)]
 
@@ -187,6 +302,11 @@ def test_recovery_reuses_completed_pilots_and_restarts_only_unfinished(config):
 
     with pytest.raises(RuntimeError, match="worker failed"):
         train_pilots(pilots, config, fail_second, 1, "cpu")
+    if legacy_metadata:
+        path = config.output_dir / "first/config.json"
+        metadata = json.loads(path.read_text())
+        del metadata["training"]["skill_conditioned_parameters"]
+        path.write_text(json.dumps(metadata))
     failed_dir = config.output_dir / "second"
     failed_dir.mkdir()
     (failed_dir / "partial.txt").write_text("preserve the incomplete attempt")

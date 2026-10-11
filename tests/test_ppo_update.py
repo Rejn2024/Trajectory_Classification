@@ -129,9 +129,9 @@ def test_fresh_training_conditions_are_matched_by_epoch_and_leave_validation_fix
 
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
 @pytest.mark.parametrize("mixed_precision", [False, True])
-@pytest.mark.parametrize("selected_parameters", [False, True])
+@pytest.mark.parametrize("parameter_mode", ["legacy", "selected", "conditioned"])
 def test_graphed_ppo_preserves_updates_scaler_and_remainder_batches(
-    tmp_path, device, mixed_precision, selected_parameters,
+    tmp_path, device, mixed_precision, parameter_mode,
 ):
     if device == "cuda" and not torch.cuda.is_available():
         pytest.skip("CUDA is required to test graph replay")
@@ -142,7 +142,8 @@ def test_graphed_ppo_preserves_updates_scaler_and_remainder_batches(
             hidden_size=16, transformer_heads=2, transformer_layers=1,
             history_duration_s=2, sample_interval_s=1, minibatch_size=8,
             update_epochs=3, mixed_precision=mixed_precision, output_dir=tmp_path / "eager",
-            selected_skill_parameters=selected_parameters,
+            selected_skill_parameters=parameter_mode != "legacy",
+            skill_conditioned_parameters=parameter_mode == "conditioned",
         )
         eager = PPOTrainer(lambda *_: None, 3, config, device=device)
         graphed = PPOTrainer(

@@ -25,6 +25,7 @@ class HybridSkillPilot(nn.Module):
         transformer_heads: int = 4,
         transformer_layers: int = 2,
         selected_skill_parameters: bool = False,
+        skill_conditioned_parameters: bool = False,
     ):
         super().__init__()
         self.manager = manager or SkillManager()
@@ -39,6 +40,11 @@ class HybridSkillPilot(nn.Module):
             numeric.update(key for key, schema in properties.items() if schema["type"] == "number")
         self.parameter_names = tuple(sorted(numeric))
         self.selected_skill_parameters = selected_skill_parameters
+        if type(skill_conditioned_parameters) is not bool:
+            raise ValueError("skill_conditioned_parameters must be a boolean")
+        if skill_conditioned_parameters and not selected_skill_parameters:
+            raise ValueError("skill-conditioned parameters require selected_skill_parameters")
+        self.skill_conditioned_parameters = skill_conditioned_parameters
         # Derived from the existing contracts, with no new learned weights or
         # checkpoint keys. Old checkpoints and action decoding stay compatible.
         self.register_buffer(
@@ -72,6 +78,15 @@ class HybridSkillPilot(nn.Module):
         self.parameter_mean = nn.Linear(hidden_size, len(self.parameter_names))
         self.parameter_log_std = nn.Parameter(torch.full((len(self.parameter_names),), -0.5))
         self.value_head = nn.Linear(hidden_size, 1)
+        if self.skill_conditioned_parameters:
+            # Copy the shared initial predictor without consuming extra random
+            # draws. The backbone, critic and initial action distribution remain
+            # matched to the shared-head policy with the same seed.
+            count = len(self.skill_names)
+            self.parameter_mean.weight = nn.Parameter(self.parameter_mean.weight.detach().repeat(count, 1))
+            self.parameter_mean.bias = nn.Parameter(self.parameter_mean.bias.detach().repeat(count))
+            self.parameter_mean.out_features *= count
+            self.parameter_log_std = nn.Parameter(self.parameter_log_std.detach().repeat(count, 1))
 
     def distributions(self, observations, *, validate_args=True):
         if observations.ndim == 2:
@@ -86,6 +101,8 @@ class HybridSkillPilot(nn.Module):
         hidden = self.encoder_norm(self.encoder(tokens)[:, -1])
         skill = Categorical(logits=self.skill_head(hidden), validate_args=validate_args)
         mean = self.parameter_mean(hidden)
+        if self.skill_conditioned_parameters:
+            mean = mean.reshape(-1, len(self.skill_names), len(self.parameter_names))
         params = Normal(
             mean, self.parameter_log_std.clamp(-5, 2).exp().expand_as(mean),
             validate_args=validate_args,
@@ -105,7 +122,8 @@ class HybridSkillPilot(nn.Module):
         with torch.inference_mode():
             skill_dist, param_dist, value = self.distributions(obs)
             skill_index = skill_dist.probs.argmax(-1) if deterministic else skill_dist.sample()
-            raw = param_dist.mean if deterministic else param_dist.sample()
+            selected_params = self._selected_parameter_distribution(param_dist, skill_index)
+            raw = selected_params.mean if deterministic else selected_params.sample()
             log_prob = self._action_log_prob(skill_dist, param_dist, skill_index, raw)
         indices = skill_index.cpu().tolist()
         raw_cpu = raw.cpu().numpy()
@@ -148,14 +166,26 @@ class HybridSkillPilot(nn.Module):
             # Entropy of the raw hybrid action: H(skill) + E_skill[H(parameters)].
             # The expectation must retain gradients through skill probabilities;
             # using just the sampled skill would omit this part of the objective.
-            per_skill_entropy = parameter_entropy @ self._skill_parameter_mask.T
+            if self.skill_conditioned_parameters:
+                per_skill_entropy = (parameter_entropy * self._skill_parameter_mask).sum(-1)
+            else:
+                per_skill_entropy = parameter_entropy @ self._skill_parameter_mask.T
             entropy = skill.entropy() + (skill.probs * per_skill_entropy).sum(-1)
         else:
             entropy = skill.entropy() + parameter_entropy.sum(-1)
         return log_prob, entropy, values
 
     def _action_log_prob(self, skill, params, skill_indices, raw_parameters):
+        params = self._selected_parameter_distribution(params, skill_indices)
         parameter_log_prob = params.log_prob(raw_parameters)
         if self.selected_skill_parameters:
             parameter_log_prob = parameter_log_prob * self._skill_parameter_mask[skill_indices]
         return skill.log_prob(skill_indices) + parameter_log_prob.sum(-1)
+
+    def _selected_parameter_distribution(self, params, skill_indices):
+        """Gather only the chosen skill's Gaussian; rollout tensors stay (B, P)."""
+        if not self.skill_conditioned_parameters:
+            return params
+        indices = skill_indices[:, None, None].expand(-1, 1, len(self.parameter_names))
+        return Normal(params.loc.gather(1, indices).squeeze(1),
+                      params.scale.gather(1, indices).squeeze(1), validate_args=False)

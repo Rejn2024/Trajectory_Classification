@@ -1,6 +1,7 @@
 """Event-aware reward shaping for a BVR engagement."""
 
 import json
+import math
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from functools import partial
@@ -57,6 +58,44 @@ class CombatReward:
         return sum(components.values()), components
 
 
+class CleanWinCombatReward(CombatReward):
+    """Combat v2 plus one terminal bonus for a confirmed elimination and survival.
+
+    The collector supplies episode_ended from its termination/truncation flags.
+    A kill during a continuing flight is insufficient: a later death must exclude
+    the bonus. The episode's existing event rewards remain unchanged.
+    """
+
+    def __init__(self, weights=None, safe_altitude_m=500.0, clean_win_bonus=250.0):
+        if (isinstance(clean_win_bonus, bool) or not math.isfinite(clean_win_bonus)
+                or clean_win_bonus <= 0):
+            raise ValueError("clean_win_bonus must be finite and positive")
+        super().__init__(weights, safe_altitude_m)
+        self.clean_win_bonus = float(clean_win_bonus)
+        self._terminal_scored = False
+
+    def reset(self):
+        super().reset()
+        self._terminal_scored = False
+
+    def __call__(self, info):
+        if type(info.get("episode_ended")) is not bool:
+            raise ValueError("clean-win reward requires an explicit boolean episode_ended")
+        bonus = 0.0
+        if info["episode_ended"] and not self._terminal_scored:
+            for key in ("blue_alive", "opponent_eliminated", "opponent_destroyed"):
+                if key not in info:
+                    raise ValueError(f"clean-win reward requires terminal {key}")
+            if info["opponent_eliminated"] and not info["opponent_destroyed"]:
+                raise ValueError("a confirmed elimination requires opponent destruction")
+            if info["blue_alive"] and info["opponent_eliminated"]:
+                bonus = self.clean_win_bonus
+            self._terminal_scored = True
+        reward, components = super().__call__(info)
+        components["clean_win_bonus"] = bonus
+        return reward + bonus, components
+
+
 @dataclass(frozen=True)
 class RewardDefinition:
     """A named, versioned recipe creating a fresh reward callable per episode.
@@ -93,4 +132,20 @@ def combat_reward_definition(name="combat", weights=None, safe_altitude_m=500.0)
         factory=partial(CombatReward, weights=weights, safe_altitude_m=safe_altitude_m),
         parameters={"weights": asdict(weights), "safe_altitude_m": safe_altitude_m},
         version="2",
+    )
+
+
+def clean_win_reward_definition(name="combat_clean_win", weights=None, safe_altitude_m=500.0,
+                                clean_win_bonus=250.0):
+    """Versioned opt-in recipe; common evaluation continues using combat v2."""
+    weights = weights or RewardWeights()
+    # Validate before preparing simulators or writing a training batch.
+    CleanWinCombatReward(weights, safe_altitude_m, clean_win_bonus)
+    return RewardDefinition(
+        name=name,
+        factory=partial(CleanWinCombatReward, weights=weights, safe_altitude_m=safe_altitude_m,
+                        clean_win_bonus=clean_win_bonus),
+        parameters={"weights": asdict(weights), "safe_altitude_m": safe_altitude_m,
+                    "clean_win_bonus": float(clean_win_bonus)},
+        version="3",
     )

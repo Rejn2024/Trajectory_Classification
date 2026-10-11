@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import shutil
+import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path, PureWindowsPath
 
@@ -35,7 +36,16 @@ class PilotSpec:
 def _write_json(path, value):
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(value, indent=2, allow_nan=False), encoding="utf8")
-    temporary.replace(path)
+    # Windows readers can briefly deny replacement while inspecting the manifest.
+    # Keep the old complete document visible; persistent failures still propagate.
+    for attempt in range(10):
+        try:
+            temporary.replace(path)
+            return
+        except PermissionError as error:
+            if getattr(error, "winerror", None) not in (5, 32, 33) or attempt == 9:
+                raise
+            time.sleep(min(0.05 * 2**attempt, 1.0))
 
 
 def _sha256(path):
@@ -44,6 +54,56 @@ def _sha256(path):
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def initialize_pilot_from_checkpoint(trainer, run_dir):
+    """Load policy and critic weights with a fresh optimizer; retain epoch zero.
+
+    Initial checkpoint selection uses only the new run's validation scenarios.
+    The source population is never written to or evaluated on selection cases.
+    """
+    import numpy as np
+    import torch
+
+    run_dir = Path(run_dir).resolve()
+    metadata = json.loads((run_dir / "config.json").read_text(encoding="utf8"))
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf8"))
+    checkpoint = run_dir / "best_model.pt"
+    checksum = _sha256(checkpoint)
+    if checksum != manifest["checkpoint_sha256"]:
+        raise ValueError("initial checkpoint SHA-256 mismatch")
+    architecture = (
+        "hidden_size", "history_duration_s", "sample_interval_s", "transformer_heads",
+        "transformer_layers", "selected_skill_parameters", "skill_conditioned_parameters",
+    )
+    if any(metadata["training"].get(k, False) != getattr(trainer.config, k)
+           for k in architecture):
+        raise ValueError("initial checkpoint architecture differs from training configuration")
+    if (metadata["observation_size"] != trainer.observation_size
+            or metadata["skill_names"] != list(trainer.pilot.skill_names)
+            or metadata["parameter_names"] != list(trainer.pilot.parameter_names)):
+        raise ValueError("initial checkpoint observation or action contract differs")
+    if metadata["reward"] != trainer.reward_definition.as_dict():
+        raise ValueError("fine-tuning must preserve the pilot reward definition")
+    if trainer.optimizer.state or trainer.diagnostics_path.exists():
+        raise ValueError("checkpoint initialization requires a fresh trainer")
+    trainer.pilot.load_state_dict(torch.load(checkpoint, map_location=trainer.device, weights_only=True))
+    scores = trainer._evaluate()
+    if not np.isfinite(scores).all():
+        raise ValueError("initial validation produced non-finite returns")
+    trainer.best_score = float(np.mean(scores))
+    shutil.copy2(checkpoint, trainer.output / "initial_model.pt")
+    shutil.copy2(checkpoint, trainer.output / "best_model.pt")
+    initialization = {
+        "source_run": str(run_dir), "checkpoint_sha256": checksum,
+        "weights": "policy and critic", "optimizer": "fresh Adam; weights-only checkpoint",
+        "validation_seed": trainer.config.resolved_evaluation_seed,
+        "validation_scenarios": trainer.config.evaluation_scenarios_per_epoch,
+        "initial_validation_return": trainer.best_score,
+        "selection": "Maximum own validation return, including the initial checkpoint.",
+    }
+    _write_json(trainer.output / "initialization.json", initialization)
+    return initialization
 
 
 def train_pilots(
@@ -55,6 +115,7 @@ def train_pilots(
     benchmark_reward=None,
     population_metadata=None,
     reuse_completed_from=None,
+    initialize_from=None,
 ):
     """Train fresh models sequentially; return completed pilot records.
 
@@ -65,6 +126,8 @@ def train_pilots(
     a status manifest; this function deliberately does not resume optimizers.
     ``reuse_completed_from`` copies verified completed pilots from an older batch
     into the new root. Failed/pending pilots train afresh; the older batch stays intact.
+    ``initialize_from`` loads each matching pilot's policy and critic from a completed
+    population. Optimizers start fresh; the initial weights remain a validation candidate.
 
     Checkpoint selection uses each pilot's own reward. The selected policies
     are then scored with one common reward on identical validation scenarios.
@@ -78,6 +141,14 @@ def train_pilots(
     from .trainer import PPOTrainer
 
     pilots = list(pilots)
+    if initialize_from is not None:
+        initialize_from = Path(initialize_from).resolve()
+        parents = json.loads((initialize_from / "pilots.json").read_text(encoding="utf8"))
+        parent_records = {p["pilot_id"]: p for p in parents["pilots"]}
+        for pilot in pilots:
+            parent = parent_records.get(pilot.pilot_id)
+            if parent is None or parent["status"] != "completed" or parent["reward"] != pilot.reward.as_dict():
+                raise ValueError(f"initial population has no completed matching reward profile: {pilot.pilot_id}")
     if not pilots or not all(isinstance(pilot, PilotSpec) for pilot in pilots):
         raise ValueError("provide at least one PilotSpec")
     if len({pilot.pilot_id.casefold() for pilot in pilots}) != len(pilots):
@@ -149,6 +220,8 @@ def train_pilots(
             metadata = json.loads((directory / "config.json").read_text(encoding="utf8"))
             ignored = {"output_dir", "mlflow_tracking_uri"}
             expected = configs[pilot.pilot_id].as_dict()
+            expected.setdefault("skill_conditioned_parameters", False)
+            metadata["training"].setdefault("skill_conditioned_parameters", False)
             if ({k: v for k, v in metadata["training"].items() if k not in ignored}
                     != {k: v for k, v in expected.items() if k not in ignored}
                     or metadata["reward"] != pilot.reward.as_dict()
@@ -221,6 +294,12 @@ def train_pilots(
                 device=device,
                 reward_definition=pilot.reward,
             )
+            initialization = None
+            if initialize_from is not None:
+                print(f"Initializing {pilot.pilot_id} from its saved policy and critic", flush=True)
+                initialization = initialize_pilot_from_checkpoint(
+                    trainer, initialize_from / pilot.pilot_id
+                )
             print(f"Training {pilot.pilot_id}: reward={pilot.reward.name}, seed={pilot.seed}")
             trainer.train(
                 run_name=pilot.pilot_id, tags={"pilot_id": pilot.pilot_id, "pilot_batch": root.name}
@@ -285,6 +364,8 @@ def train_pilots(
                     "outcome_scores": dict(OUTCOME_SCORES), "episodes": test_records,
                 })
             result["population_metadata"] = population_metadata
+            if initialization is not None:
+                result["initialization"] = initialization
             _write_json(trainer.output / "manifest.json", result)
             # Add comparable scores to the same pilot's MLflow run.
             with mlflow.start_run(run_id=trainer.mlflow_run_id):
@@ -348,6 +429,7 @@ def load_trained_pilot(run_dir, device="cpu"):
         transformer_heads=config["transformer_heads"],
         transformer_layers=config["transformer_layers"],
         selected_skill_parameters=config.get("selected_skill_parameters", False),
+        **({"skill_conditioned_parameters": True} if config.get("skill_conditioned_parameters", False) else {}),
     ).to(device)
     if (
         list(pilot.skill_names) != metadata["skill_names"]

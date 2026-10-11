@@ -56,6 +56,9 @@ class PPOTrainer:
             transformer_heads=config.transformer_heads,
             transformer_layers=config.transformer_layers,
             selected_skill_parameters=config.selected_skill_parameters,
+            # Operational recovery can use the original frozen legacy model/config.
+            **({"skill_conditioned_parameters": True}
+               if getattr(config, "skill_conditioned_parameters", False) else {}),
         ).to(self.device)
         adam_options = {"fused": True} if self.device.type == "cuda" else {}
         self.optimizer = torch.optim.Adam(
@@ -96,6 +99,7 @@ class PPOTrainer:
             for _ in range(self.config.decisions_per_episode):
                 name, params, logp, value, raw = self.pilot.act(obs, deterministic=deterministic)
                 next_obs, terminated, truncated, info = env.step(name, params)
+                info = {**info, "episode_ended": bool(terminated or truncated)}
                 reward, components = reward_fn(info)
                 for key, component_value in components.items():
                     component_totals[key] = component_totals.get(key, 0.0) + float(component_value)
@@ -264,6 +268,7 @@ class PPOTrainer:
                     step, _, _ = timed_step_result
                     name, _, logp, value, raw = action
                     next_obs, terminated, truncated, info = step
+                    info = {**info, "episode_ended": bool(terminated or truncated)}
                     reward, components = rewards[index](info)
                     for key, component_value in components.items():
                         component_totals[index][key] = (

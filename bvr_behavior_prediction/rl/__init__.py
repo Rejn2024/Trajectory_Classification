@@ -15,11 +15,15 @@ from .dogfight_reward import (
     hybrid_dogfight_reward_definition,
 )
 from .multi_pilot import PilotSpec, load_trained_pilot, train_pilots
-from .reward import CombatReward, RewardDefinition, combat_reward_definition
+from .reward import (
+    CleanWinCombatReward, CombatReward, RewardDefinition,
+    clean_win_reward_definition, combat_reward_definition,
+)
 from .reward_population import combat_population_weights
 from .scenarios import EngagementScenario, ScenarioSampler
 
 __all__ = [
+    "CleanWinCombatReward",
     "CombatReward",
     "DogfightReward",
     "DogfightWeights",
@@ -32,6 +36,7 @@ __all__ = [
     "ScenarioSampler",
     "combat_population_weights",
     "combat_reward_definition",
+    "clean_win_reward_definition",
     "dogfight_population_weights",
     "dogfight_reward_definition",
     "hybrid_dogfight_reward_definition",

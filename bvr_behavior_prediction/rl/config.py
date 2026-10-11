@@ -55,6 +55,7 @@ class PilotTrainingConfig:
     mixed_precision: bool = True
     cuda_graph_updates: bool = False
     selected_skill_parameters: bool = False
+    skill_conditioned_parameters: bool = False
     training_reward_scale: float = 1.0
     target_kl: float | None = None
     log_ppo_diagnostics: bool = False
@@ -68,6 +69,10 @@ class PilotTrainingConfig:
     def __post_init__(self):
         if type(self.selected_skill_parameters) is not bool:
             raise ValueError("selected_skill_parameters must be a boolean")
+        if type(self.skill_conditioned_parameters) is not bool:
+            raise ValueError("skill_conditioned_parameters must be a boolean")
+        if self.skill_conditioned_parameters and not self.selected_skill_parameters:
+            raise ValueError("skill-conditioned parameters require selected_skill_parameters")
         for name in ("seed", "evaluation_seed", "test_seed"):
             value = getattr(self, name)
             if value is None and name != "seed":
