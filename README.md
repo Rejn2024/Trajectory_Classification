@@ -38,6 +38,12 @@ configurations, validation results, and complete epoch metrics (5.68 MiB in Git 
 
 ## Reinforcement-learning 1-v-1 pilot
 
+For the **branch presentation**, open the
+[offline slide deck and technical report](docs/presentations/README.md).
+The PDF and self-contained HTML work without Jupyter, Python, model downloads or
+Git LFS. All ten tactical adaptations finished: separate confirmation clean wins
+improved **32.7% → 38.6%**, and survival **75.1% → 83.8%** on matched tactical cases.
+
 Start with the [pilot experiment index](docs/pilot_experiments.md) to find the preserved
 populations, the current controlled experiment, reports and the local artifact archive.
 
@@ -65,6 +71,12 @@ tables and plots. **Run All reads saved results only**; it can refresh partial l
 curves during training and the complete evaluations afterward without starting training.
 See the [experiment workflow](docs/multi_pilot_training.md#matched-ppo-experiments)
 for launching a new experiment and choosing its report directory.
+
+Use [`07_tactical_adaptation.ipynb`](notebooks/07_tactical_adaptation.ipynb) for the
+completed tactical-opponent evaluation and fine-tuning run. **Run All reads saved
+results only.** It shows starting tactical outcomes, all 150 additional
+epochs per pilot, and comparisons against the same tactical opponent. Original
+selected-skill checkpoints and reward profiles are preserved.
 
 `bvr_behavior_prediction.rl` contains a PPO training path for a **blue-controlled**
 pilot against the simulator's simple baseline opponent. The hybrid policy chooses among

@@ -2,6 +2,26 @@
   "format_version": 1,
   "default_experiment": "selected_skill_parameters",
   "experiments": {
+    "tactical_adaptation": {
+      "label": "Tactical adaptation",
+      "job": "artifacts/rl_pilot_experiments/20261010T200223_142625Z_tactical",
+      "baseline": "artifacts/rl_pilot_experiments/20261009T153646_051001Z_selected_skill_parameters_recovery/training",
+      "training": "artifacts/rl_pilot_experiments/20261010T200223_142625Z_tactical/training",
+      "report_notebook": "notebooks/07_tactical_adaptation.ipynb"
+    },
+    "clean_win_bonus": {
+      "label": "Clean-win bonus",
+      "job": "artifacts/rl_pilot_experiments/20261010T194825_532536Z_clean_win_bonus_recovery",
+      "baseline": "artifacts/rl_pilot_experiments/20261009T153646_051001Z_selected_skill_parameters_recovery/training",
+      "training": "artifacts/rl_pilot_experiments/20261010T194825_532536Z_clean_win_bonus_recovery/training",
+      "previous_job": "artifacts/rl_pilot_experiments/20261010T114552_188643Z_clean_win_bonus"
+    },
+    "skill_conditioned_parameters": {
+      "label": "Skill-conditioned parameters",
+      "job": "artifacts/rl_pilot_experiments/20261010T000147_332865Z_skill_conditioned_parameters",
+      "baseline": "artifacts/rl_pilot_experiments/20261009T153646_051001Z_selected_skill_parameters_recovery/training",
+      "training": "artifacts/rl_pilot_experiments/20261010T000147_332865Z_skill_conditioned_parameters/training"
+    },
     "lower_learning_rate": {
       "label": "Lower learning rate",
       "job": "artifacts/rl_pilot_experiments/20261008T130810_285510Z_lr3e-05",

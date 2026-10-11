@@ -104,6 +104,12 @@ each pilot's own fixed validation objective to retain differences in preference.
 
 ## Notebook 06: tactical objectives and style diversity
 
+For the separate **tactical opponent adaptation** run, use
+[notebook 07](../notebooks/07_tactical_adaptation.ipynb) and the
+[experiment index](pilot_experiments.md). That run keeps notebook 05's original
+combat-event reward profiles and loads the selected-skill population's policy and
+critic weights. Notebook 06's reward experiment is a different workflow.
+
 Notebook 06 uses `HybridDogfightReward`. Its default reward is
 `250 * (w_evade * E + w_pursue * P + w_eliminate * K) + 100*K - 150*L + G`.
 The three weights vary by pilot; the shared outcome and guidance terms stay fixed:
@@ -497,8 +503,8 @@ again when the job completes.
 Open [`05_compare_population_runs.ipynb`](../notebooks/05_compare_population_runs.ipynb)
 in VS Code, select **Trajectory pilots (.venv)** (or the repository's
 `.venv/Scripts/python.exe` interpreter), and click **Run All**. The notebook reads the named experiments in `configs/pilot_experiments.json`. Its
-default is the current selected-skill experiment. Set `EXPERIMENT = "lower_learning_rate"`
-in the first code cell to inspect the completed learning-rate comparison, or override
+default is the completed selected-skill experiment. Set `EXPERIMENT = "skill_conditioned_parameters"`, `EXPERIMENT = "clean_win_bonus"`
+or `EXPERIMENT = "lower_learning_rate"` in the first code cell to inspect another comparison, or override
 `EXPERIMENT_JOB` with a prepared job directory. Each job records both populations.
 
 The report is read-only and does not load models, launch training, or run simulations.
@@ -508,6 +514,12 @@ scatter. Curves overlay matching pilots from both runs. Unfinished pilots show t
 progress; missing evaluations are not recorded as zero. Rerun **Run All** to refresh,
 then save the notebook to retain its outputs and embedded figures. Fresh confirmation
 tables and plots appear after those evaluations have been saved by the runner.
+
+The report also plots population outcome proportions and paired clean-win changes
+once the comparison completes. For standalone PNG/PDF figures, set
+`EXPORT_PLOTS = True` in its first code cell, or set `BVR_COMPARISON_EXPORT=1`
+before starting the notebook kernel. Exports go under the selected job's `plots/`
+directory. The default does not export files, and neither mode changes training results.
 
 The existing experiment is already running independently of the report notebook.
 To intentionally start an additional experiment from the repository root in a VS Code
@@ -598,7 +610,7 @@ $experimentScript = Join-Path $experimentPlan.source 'scripts/run_pilot_experime
 .\.venv\Scripts\python.exe -u $experimentScript --run-job $experimentPlan.job
 ```
 
-The current job is already running; these commands are for an intentional fresh run.
+This selected-skill job is complete; these commands reproduce it as an intentional fresh run.
 Training starts from the same random initialization, rather than fine-tuning the baseline
 checkpoints. Only the probability/entropy mode changes, apart from output destinations.
 Because the objective now counts fewer parameter dimensions, policy loss, entropy and
@@ -610,3 +622,74 @@ The [experiment index](pilot_experiments.md) links all preserved populations and
 Temporary checks and scripts were moved into `artifacts/archive/20261009/`; completed
 run paths were preserved so source inventories, checkpoint hashes and recorded paths
 stay valid. The archive manifest records the original location of every moved item.
+
+## Skill-conditioned parameter experiment
+
+`PilotTrainingConfig.skill_conditioned_parameters=True` adds one Gaussian parameter
+predictor per skill and requires `selected_skill_parameters=True`. For observation
+history `s`, selected skill `k`, raw parameters `u` and active parameter names `A(k)`:
+
+```text
+log pi(k, u | s) = log pi_skill(k | s)
+                  + sum[j in A(k)] log Normal(u_j; mu_kj(s), sigma_kj)
+H = H(pi_skill) + sum[k] pi_skill(k | s) sum[j in A(k)] H(Normal(mu_kj, sigma_kj))
+```
+
+The selected-skill baseline shares `mu_j(s)` and `sigma_j` across skills; the new
+architecture allows them to differ by skill. The shared Transformer, categorical
+head, critic, PPO clipping, advantage calculation and reward functions stay the same.
+The entropy still averages all possible skills, with gradients through skill
+probabilities. Inactive coordinates receive no policy or entropy gradient. Action
+decoding uses the existing skill contracts and bounded transformation.
+
+Every skill head initially copies the shared head, consuming no additional random
+draws. Only the selected head is sampled, so the rollout representation and number
+of random samples stay matched. Checkpoint metadata records the architecture;
+the loader handles old shared-head and new conditioned-head models. The opt-in flag
+defaults to false, preserving the existing training notebooks, including 04 and 06.
+
+The bounded experiment uses the completed selected-skill population as its baseline.
+See the [experiment index](pilot_experiments.md)
+for its live directory, fixed training budget and confirmation criteria. These are
+matched fresh training runs, not fine-tuning of the baseline checkpoints. The final
+comparison recommends a population for review but does not change defaults or launch
+tactical training. Rerun the comparison notebook to display the same outcome tables,
+learning curves and plots, plus the recorded decision when confirmation finishes.
+
+## Clean-win bonus experiment
+
+The `clean_win_bonus` intervention uses the successful shared parameter predictor
+with selected-skill probabilities. It changes only the reward recipe: each pilot
+retains its original event weights and receives **250 extra points once, at episode
+end, if its aircraft survives and has a confirmed opponent elimination**. Mutual
+destruction, survival without an elimination, and an opponent crash earn no bonus.
+The bonus waits until the episode ends, so eliminating the opponent and then dying
+does not qualify. The existing death penalties and event rewards still apply.
+
+`CleanWinCombatReward` and `clean_win_reward_definition` in `rl/reward.py` provide
+the version 3 recipe. The collector supplies `episode_ended` from the existing
+termination/truncation flags in both single-flight and batched collection paths.
+This adds reward context without changing simulator termination, physics or skills.
+Recipes create independent state for every flight and log `clean_win_bonus`
+separately in the reward components. Combat version 2 remains the default used by
+the training notebooks and all common benchmark evaluations.
+
+The trial trains ten fresh pilots for 150 epochs with 75 scenarios per epoch,
+learning rate 0.00003, 22 simulator workers and CUDA. Each model is selected by its
+own validation return, including the bonus. PPO, GAE, the critic, reward scaling,
+architecture, original reward profiles, seeds and default opponent remain matched
+to the selected-skill baseline. `reward_differences.json` records every recipe
+change separately from `configuration_differences.json`.
+
+The final comparison uses 300 new matched scenarios with seed 920000. Both
+populations are evaluated with the original common reward and outcome scores;
+the training bonus never inflates these benchmark returns. The success criteria
+remain a clean-win improvement of at least 3 percentage points, a paired 95%
+scenario-bootstrap interval above zero, at most a 2-point survival decrease and
+at most a 2-point mutual-destruction increase. No further training starts automatically.
+
+The report now displays the terminal bonus beside the event coefficients and
+labels own returns and critic losses as incomparable across reward recipes.
+Published models must retain their versioned reward metadata. The original 04,
+05 training and 06 notebooks remain unchanged; use the comparison notebook to
+follow this separately launched experiment.
