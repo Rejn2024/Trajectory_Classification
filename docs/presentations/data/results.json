@@ -1,0 +1,2291 @@
+{
+  "title": "Ten pilots: from population PPO to tactical adaptation",
+  "date": "11 October 2026",
+  "completed_utc": "2026-10-11T08:16:14.790567+00:00",
+  "started_utc": "2026-10-10T20:02:44.669395+00:00",
+  "job": "artifacts/rl_pilot_experiments/20261010T200223_142625Z_tactical",
+  "baseline": "artifacts/rl_pilot_experiments/20261009T153646_051001Z_selected_skill_parameters_recovery/training",
+  "audit": {
+    "parent_files_unchanged": 51,
+    "frozen_source_files_unchanged": 712
+  },
+  "suites": {
+    "assessment": {
+      "scenarios_per_pilot": 300,
+      "seed": 1120000,
+      "pilots": [
+        {
+          "pilot": "pilot_001",
+          "before": {
+            "surviving_elimination": 0.3233333333333333,
+            "survived_without_elimination": 0.37,
+            "mutual_destruction": 0.07666666666666666,
+            "loss_without_elimination": 0.23,
+            "survival": 0.6933333333333334,
+            "outcome_score": 5.5
+          },
+          "after": {
+            "surviving_elimination": 0.38666666666666666,
+            "survived_without_elimination": 0.4633333333333333,
+            "mutual_destruction": 0.02666666666666667,
+            "loss_without_elimination": 0.12333333333333334,
+            "survival": 0.85,
+            "outcome_score": 25.0
+          }
+        },
+        {
+          "pilot": "pilot_002",
+          "before": {
+            "surviving_elimination": 0.3433333333333333,
+            "survived_without_elimination": 0.4633333333333333,
+            "mutual_destruction": 0.05333333333333334,
+            "loss_without_elimination": 0.14,
+            "survival": 0.8066666666666666,
+            "outcome_score": 17.666666666666668
+          },
+          "after": {
+            "surviving_elimination": 0.36333333333333334,
+            "survived_without_elimination": 0.51,
+            "mutual_destruction": 0.043333333333333335,
+            "loss_without_elimination": 0.08333333333333333,
+            "survival": 0.8733333333333333,
+            "outcome_score": 25.833333333333332
+          }
+        },
+        {
+          "pilot": "pilot_003",
+          "before": {
+            "surviving_elimination": 0.30333333333333334,
+            "survived_without_elimination": 0.43333333333333335,
+            "mutual_destruction": 0.02666666666666667,
+            "loss_without_elimination": 0.23666666666666666,
+            "survival": 0.7366666666666667,
+            "outcome_score": 5.333333333333333
+          },
+          "after": {
+            "surviving_elimination": 0.3566666666666667,
+            "survived_without_elimination": 0.5,
+            "mutual_destruction": 0.05333333333333334,
+            "loss_without_elimination": 0.09,
+            "survival": 0.8566666666666667,
+            "outcome_score": 24.0
+          }
+        },
+        {
+          "pilot": "pilot_004",
+          "before": {
+            "surviving_elimination": 0.3,
+            "survived_without_elimination": 0.5133333333333333,
+            "mutual_destruction": 0.04,
+            "loss_without_elimination": 0.14666666666666667,
+            "survival": 0.8133333333333334,
+            "outcome_score": 13.333333333333334
+          },
+          "after": {
+            "surviving_elimination": 0.39666666666666667,
+            "survived_without_elimination": 0.4633333333333333,
+            "mutual_destruction": 0.03333333333333333,
+            "loss_without_elimination": 0.10666666666666667,
+            "survival": 0.86,
+            "outcome_score": 27.333333333333332
+          }
+        },
+        {
+          "pilot": "pilot_005",
+          "before": {
+            "surviving_elimination": 0.34,
+            "survived_without_elimination": 0.43333333333333335,
+            "mutual_destruction": 0.01,
+            "loss_without_elimination": 0.21666666666666667,
+            "survival": 0.7733333333333333,
+            "outcome_score": 11.833333333333334
+          },
+          "after": {
+            "surviving_elimination": 0.39666666666666667,
+            "survived_without_elimination": 0.5066666666666667,
+            "mutual_destruction": 0.03333333333333333,
+            "loss_without_elimination": 0.06333333333333334,
+            "survival": 0.9033333333333333,
+            "outcome_score": 31.666666666666668
+          }
+        },
+        {
+          "pilot": "pilot_006",
+          "before": {
+            "surviving_elimination": 0.26666666666666666,
+            "survived_without_elimination": 0.39666666666666667,
+            "mutual_destruction": 0.023333333333333334,
+            "loss_without_elimination": 0.31333333333333335,
+            "survival": 0.6633333333333333,
+            "outcome_score": -5.833333333333333
+          },
+          "after": {
+            "surviving_elimination": 0.37,
+            "survived_without_elimination": 0.4866666666666667,
+            "mutual_destruction": 0.05,
+            "loss_without_elimination": 0.09333333333333334,
+            "survival": 0.8566666666666667,
+            "outcome_score": 25.166666666666668
+          }
+        },
+        {
+          "pilot": "pilot_007",
+          "before": {
+            "surviving_elimination": 0.34,
+            "survived_without_elimination": 0.48,
+            "mutual_destruction": 0.04,
+            "loss_without_elimination": 0.14,
+            "survival": 0.82,
+            "outcome_score": 18.0
+          },
+          "after": {
+            "surviving_elimination": 0.42,
+            "survived_without_elimination": 0.48,
+            "mutual_destruction": 0.05,
+            "loss_without_elimination": 0.05,
+            "survival": 0.9,
+            "outcome_score": 34.5
+          }
+        },
+        {
+          "pilot": "pilot_008",
+          "before": {
+            "surviving_elimination": 0.31,
+            "survived_without_elimination": 0.43666666666666665,
+            "mutual_destruction": 0.07666666666666666,
+            "loss_without_elimination": 0.17666666666666667,
+            "survival": 0.7466666666666667,
+            "outcome_score": 9.5
+          },
+          "after": {
+            "surviving_elimination": 0.37333333333333335,
+            "survived_without_elimination": 0.4866666666666667,
+            "mutual_destruction": 0.03333333333333333,
+            "loss_without_elimination": 0.10666666666666667,
+            "survival": 0.86,
+            "outcome_score": 25.0
+          }
+        },
+        {
+          "pilot": "pilot_009",
+          "before": {
+            "surviving_elimination": 0.30333333333333334,
+            "survived_without_elimination": 0.49,
+            "mutual_destruction": 0.03666666666666667,
+            "loss_without_elimination": 0.17,
+            "survival": 0.7933333333333333,
+            "outcome_score": 11.5
+          },
+          "after": {
+            "surviving_elimination": 0.37,
+            "survived_without_elimination": 0.5233333333333333,
+            "mutual_destruction": 0.043333333333333335,
+            "loss_without_elimination": 0.06333333333333334,
+            "survival": 0.8933333333333333,
+            "outcome_score": 28.5
+          }
+        },
+        {
+          "pilot": "pilot_010",
+          "before": {
+            "surviving_elimination": 0.3433333333333333,
+            "survived_without_elimination": 0.49,
+            "mutual_destruction": 0.016666666666666666,
+            "loss_without_elimination": 0.15,
+            "survival": 0.8333333333333334,
+            "outcome_score": 18.5
+          },
+          "after": {
+            "surviving_elimination": 0.43333333333333335,
+            "survived_without_elimination": 0.43666666666666665,
+            "mutual_destruction": 0.02666666666666667,
+            "loss_without_elimination": 0.10333333333333333,
+            "survival": 0.87,
+            "outcome_score": 31.666666666666668
+          }
+        }
+      ],
+      "before": {
+        "surviving_elimination": 0.31733333333333336,
+        "survived_without_elimination": 0.45066666666666666,
+        "mutual_destruction": 0.04,
+        "loss_without_elimination": 0.192,
+        "survival": 0.768,
+        "outcome_score": 10.533333333333333
+      },
+      "after": {
+        "surviving_elimination": 0.38666666666666666,
+        "survived_without_elimination": 0.4856666666666667,
+        "mutual_destruction": 0.03933333333333333,
+        "loss_without_elimination": 0.08833333333333333,
+        "survival": 0.8723333333333333,
+        "outcome_score": 27.866666666666667
+      },
+      "clean_win_gain_pp": 6.93333333333333,
+      "ci95_gain_pp": [
+        3.8666666666666667,
+        9.90083333333333
+      ]
+    },
+    "confirmation": {
+      "scenarios_per_pilot": 100,
+      "seed": 1220000,
+      "pilots": [
+        {
+          "pilot": "pilot_001",
+          "before": {
+            "surviving_elimination": 0.34,
+            "survived_without_elimination": 0.38,
+            "mutual_destruction": 0.08,
+            "loss_without_elimination": 0.2,
+            "survival": 0.72,
+            "outcome_score": 10.0
+          },
+          "after": {
+            "surviving_elimination": 0.34,
+            "survived_without_elimination": 0.47,
+            "mutual_destruction": 0.11,
+            "loss_without_elimination": 0.08,
+            "survival": 0.81,
+            "outcome_score": 20.5
+          }
+        },
+        {
+          "pilot": "pilot_002",
+          "before": {
+            "surviving_elimination": 0.32,
+            "survived_without_elimination": 0.43,
+            "mutual_destruction": 0.13,
+            "loss_without_elimination": 0.12,
+            "survival": 0.75,
+            "outcome_score": 13.5
+          },
+          "after": {
+            "surviving_elimination": 0.38,
+            "survived_without_elimination": 0.46,
+            "mutual_destruction": 0.11,
+            "loss_without_elimination": 0.05,
+            "survival": 0.84,
+            "outcome_score": 27.5
+          }
+        },
+        {
+          "pilot": "pilot_003",
+          "before": {
+            "surviving_elimination": 0.32,
+            "survived_without_elimination": 0.42,
+            "mutual_destruction": 0.09,
+            "loss_without_elimination": 0.17,
+            "survival": 0.74,
+            "outcome_score": 10.5
+          },
+          "after": {
+            "surviving_elimination": 0.37,
+            "survived_without_elimination": 0.48,
+            "mutual_destruction": 0.09,
+            "loss_without_elimination": 0.06,
+            "survival": 0.85,
+            "outcome_score": 26.5
+          }
+        },
+        {
+          "pilot": "pilot_004",
+          "before": {
+            "surviving_elimination": 0.33,
+            "survived_without_elimination": 0.46,
+            "mutual_destruction": 0.09,
+            "loss_without_elimination": 0.12,
+            "survival": 0.79,
+            "outcome_score": 16.5
+          },
+          "after": {
+            "surviving_elimination": 0.39,
+            "survived_without_elimination": 0.45,
+            "mutual_destruction": 0.1,
+            "loss_without_elimination": 0.06,
+            "survival": 0.84,
+            "outcome_score": 28.0
+          }
+        },
+        {
+          "pilot": "pilot_005",
+          "before": {
+            "surviving_elimination": 0.31,
+            "survived_without_elimination": 0.43,
+            "mutual_destruction": 0.07,
+            "loss_without_elimination": 0.19,
+            "survival": 0.74,
+            "outcome_score": 8.5
+          },
+          "after": {
+            "surviving_elimination": 0.44,
+            "survived_without_elimination": 0.42,
+            "mutual_destruction": 0.08,
+            "loss_without_elimination": 0.06,
+            "survival": 0.86,
+            "outcome_score": 34.0
+          }
+        },
+        {
+          "pilot": "pilot_006",
+          "before": {
+            "surviving_elimination": 0.3,
+            "survived_without_elimination": 0.35,
+            "mutual_destruction": 0.07,
+            "loss_without_elimination": 0.28,
+            "survival": 0.65,
+            "outcome_score": -1.5
+          },
+          "after": {
+            "surviving_elimination": 0.39,
+            "survived_without_elimination": 0.44,
+            "mutual_destruction": 0.1,
+            "loss_without_elimination": 0.07,
+            "survival": 0.83,
+            "outcome_score": 27.0
+          }
+        },
+        {
+          "pilot": "pilot_007",
+          "before": {
+            "surviving_elimination": 0.33,
+            "survived_without_elimination": 0.47,
+            "mutual_destruction": 0.1,
+            "loss_without_elimination": 0.1,
+            "survival": 0.8,
+            "outcome_score": 18.0
+          },
+          "after": {
+            "surviving_elimination": 0.43,
+            "survived_without_elimination": 0.42,
+            "mutual_destruction": 0.08,
+            "loss_without_elimination": 0.07,
+            "survival": 0.85,
+            "outcome_score": 32.0
+          }
+        },
+        {
+          "pilot": "pilot_008",
+          "before": {
+            "surviving_elimination": 0.37,
+            "survived_without_elimination": 0.39,
+            "mutual_destruction": 0.14,
+            "loss_without_elimination": 0.1,
+            "survival": 0.76,
+            "outcome_score": 20.0
+          },
+          "after": {
+            "surviving_elimination": 0.38,
+            "survived_without_elimination": 0.45,
+            "mutual_destruction": 0.12,
+            "loss_without_elimination": 0.05,
+            "survival": 0.83,
+            "outcome_score": 27.0
+          }
+        },
+        {
+          "pilot": "pilot_009",
+          "before": {
+            "surviving_elimination": 0.34,
+            "survived_without_elimination": 0.42,
+            "mutual_destruction": 0.07,
+            "loss_without_elimination": 0.17,
+            "survival": 0.76,
+            "outcome_score": 13.5
+          },
+          "after": {
+            "surviving_elimination": 0.35,
+            "survived_without_elimination": 0.5,
+            "mutual_destruction": 0.09,
+            "loss_without_elimination": 0.06,
+            "survival": 0.85,
+            "outcome_score": 24.5
+          }
+        },
+        {
+          "pilot": "pilot_010",
+          "before": {
+            "surviving_elimination": 0.31,
+            "survived_without_elimination": 0.49,
+            "mutual_destruction": 0.07,
+            "loss_without_elimination": 0.13,
+            "survival": 0.8,
+            "outcome_score": 14.5
+          },
+          "after": {
+            "surviving_elimination": 0.39,
+            "survived_without_elimination": 0.43,
+            "mutual_destruction": 0.12,
+            "loss_without_elimination": 0.06,
+            "survival": 0.82,
+            "outcome_score": 27.0
+          }
+        }
+      ],
+      "before": {
+        "surviving_elimination": 0.327,
+        "survived_without_elimination": 0.424,
+        "mutual_destruction": 0.091,
+        "loss_without_elimination": 0.158,
+        "survival": 0.751,
+        "outcome_score": 12.35
+      },
+      "after": {
+        "surviving_elimination": 0.386,
+        "survived_without_elimination": 0.452,
+        "mutual_destruction": 0.1,
+        "loss_without_elimination": 0.062,
+        "survival": 0.838,
+        "outcome_score": 27.4
+      },
+      "clean_win_gain_pp": 5.8999999999999995,
+      "ci95_gain_pp": [
+        1.1974999999999996,
+        11.00249999999999
+      ]
+    }
+  },
+  "pilots": [
+    {
+      "pilot": "pilot_001",
+      "epochs": 150,
+      "selected_epoch": 90,
+      "simulator_retries": 0,
+      "initial_sha256": "6c1cf7e14df5b401b957ee27d565719b749f361d335893e5b5c99b81154fb40a",
+      "selected_sha256": "dee45270d89a1df7f6cba65dee927266d28ed7c2490970c9f3d3d98d716ba001",
+      "reward_weights": {
+        "crashed": -333.9065927166055,
+        "shot_down": -384.1682340371922,
+        "ground_clearance": 0.02,
+        "target_lock_acquired": 1.3947360581187278,
+        "fired_with_lock": 0.18835469577529906,
+        "incoming_missile_avoided": 14.634335274551338,
+        "opponent_destroyed": 250.0,
+        "fired_without_lock": -5.7114855577843695
+      },
+      "skill_decision_fractions": {
+        "beam_missile_right": 0.0002448579823702253,
+        "beam_target_left": 0.019955925563173358,
+        "beam_target_right": 0.004774730656219393,
+        "crank_target_left": 0.059745347698334964,
+        "crank_target_right": 0.008570029382957884,
+        "defensive_reversal": 0.0013467189030362389,
+        "extend": 0.031586679725759056,
+        "lag_pursuit": 0.48371694417238004,
+        "launch": 0.0003672869735553379,
+        "lead_pursuit": 0.09745347698334966,
+        "maintain_heading": 0.00232615083251714,
+        "notch_left": 0.006366307541625857,
+        "notch_right": 0.0039177277179236044,
+        "pursue_target": 0.0030607247796278158,
+        "recommit": 0.16234084231145934,
+        "secondary_shot": 0.05729676787463271,
+        "short_range_attack": 0.012610186092066602,
+        "turn_cold": 0.04431929480901078
+      },
+      "initial_validation_return": 10.426501939734608,
+      "selected_validation_return": 64.60145528366643,
+      "validation": [
+        {
+          "epoch": 1,
+          "return": -34.40263279488206
+        },
+        {
+          "epoch": 5,
+          "return": -23.718291485099318
+        },
+        {
+          "epoch": 10,
+          "return": -48.12283875802755
+        },
+        {
+          "epoch": 15,
+          "return": -53.3766636484407
+        },
+        {
+          "epoch": 20,
+          "return": 0.13701056852165977
+        },
+        {
+          "epoch": 25,
+          "return": 58.942049613923956
+        },
+        {
+          "epoch": 30,
+          "return": 54.08922849857347
+        },
+        {
+          "epoch": 35,
+          "return": 43.577449835952415
+        },
+        {
+          "epoch": 40,
+          "return": 59.11915743476549
+        },
+        {
+          "epoch": 45,
+          "return": 44.47147960983401
+        },
+        {
+          "epoch": 50,
+          "return": 38.04916119568124
+        },
+        {
+          "epoch": 55,
+          "return": 51.057520424246775
+        },
+        {
+          "epoch": 60,
+          "return": 47.65203379046286
+        },
+        {
+          "epoch": 65,
+          "return": 25.84950288069172
+        },
+        {
+          "epoch": 70,
+          "return": 22.58955166779755
+        },
+        {
+          "epoch": 75,
+          "return": 26.240142125331896
+        },
+        {
+          "epoch": 80,
+          "return": 56.238320402757644
+        },
+        {
+          "epoch": 85,
+          "return": 38.768863542855335
+        },
+        {
+          "epoch": 90,
+          "return": 64.60145528366643
+        },
+        {
+          "epoch": 95,
+          "return": 44.62735400191989
+        },
+        {
+          "epoch": 100,
+          "return": 57.04110035283472
+        },
+        {
+          "epoch": 105,
+          "return": 61.7111478351747
+        },
+        {
+          "epoch": 110,
+          "return": 63.45984264953332
+        },
+        {
+          "epoch": 115,
+          "return": 64.12775999825854
+        },
+        {
+          "epoch": 120,
+          "return": 53.54203209185806
+        },
+        {
+          "epoch": 125,
+          "return": 58.52415893283098
+        },
+        {
+          "epoch": 130,
+          "return": 56.46202291756295
+        },
+        {
+          "epoch": 135,
+          "return": 64.37249142205718
+        },
+        {
+          "epoch": 140,
+          "return": 56.3114991842434
+        },
+        {
+          "epoch": 145,
+          "return": 45.237434748547315
+        },
+        {
+          "epoch": 150,
+          "return": 53.811400294179414
+        }
+      ]
+    },
+    {
+      "pilot": "pilot_002",
+      "epochs": 150,
+      "selected_epoch": 55,
+      "simulator_retries": 0,
+      "initial_sha256": "487decca7eef20f4aba9061a51d8ffc80c5c42ed5ede6eb073cfdda56da516b9",
+      "selected_sha256": "9ae0761607c3e70c42bcfd4aa25909d084c0656524699864ed82514a29c0592a",
+      "reward_weights": {
+        "crashed": -430.78295509866814,
+        "shot_down": -382.44210931566494,
+        "ground_clearance": 0.02,
+        "target_lock_acquired": 1.8535299776972036,
+        "fired_with_lock": 1.287730240161329,
+        "incoming_missile_avoided": 12.34142419906245,
+        "opponent_destroyed": 250.0,
+        "fired_without_lock": -10.182090225721785
+      },
+      "skill_decision_fractions": {
+        "abort_support": 0.00954540031022551,
+        "beam_target_left": 0.04975539911705047,
+        "beam_target_right": 0.10607326094738098,
+        "crank_target_left": 0.12528337907170983,
+        "crank_target_right": 0.007994272759813865,
+        "descend_to_altitude": 0.008113590263691683,
+        "extend": 0.2990096647178141,
+        "lag_pursuit": 0.024698723302708506,
+        "launch": 0.0016704450542894642,
+        "lead_pursuit": 0.005488605178379668,
+        "maintain_heading": 0.0003579525116334566,
+        "notch_left": 0.00847154277532514,
+        "pursue_target": 0.032573678558644556,
+        "recommit": 0.09652786063715547,
+        "search": 0.0004772700155112755,
+        "secondary_shot": 0.05703376685359742,
+        "turn_cold": 0.1663286004056795,
+        "turn_to_heading": 0.0005965875193890943
+      },
+      "initial_validation_return": -16.220789797608948,
+      "selected_validation_return": 80.29589065422589,
+      "validation": [
+        {
+          "epoch": 1,
+          "return": -28.827568004919385
+        },
+        {
+          "epoch": 5,
+          "return": 25.285373444601223
+        },
+        {
+          "epoch": 10,
+          "return": 19.05376341709446
+        },
+        {
+          "epoch": 15,
+          "return": 61.92172026937551
+        },
+        {
+          "epoch": 20,
+          "return": 53.228296864940575
+        },
+        {
+          "epoch": 25,
+          "return": 45.057854613070205
+        },
+        {
+          "epoch": 30,
+          "return": 49.63271050125784
+        },
+        {
+          "epoch": 35,
+          "return": 55.59686869175952
+        },
+        {
+          "epoch": 40,
+          "return": 50.180841814811764
+        },
+        {
+          "epoch": 45,
+          "return": 31.43739119387564
+        },
+        {
+          "epoch": 50,
+          "return": 74.97263696588746
+        },
+        {
+          "epoch": 55,
+          "return": 80.29589065422589
+        },
+        {
+          "epoch": 60,
+          "return": 67.05565030084219
+        },
+        {
+          "epoch": 65,
+          "return": 56.309534164610255
+        },
+        {
+          "epoch": 70,
+          "return": 56.79687888385954
+        },
+        {
+          "epoch": 75,
+          "return": 60.19308173007757
+        },
+        {
+          "epoch": 80,
+          "return": 45.36069336414621
+        },
+        {
+          "epoch": 85,
+          "return": 54.46311715954212
+        },
+        {
+          "epoch": 90,
+          "return": 26.123505087355557
+        },
+        {
+          "epoch": 95,
+          "return": 53.834725777616
+        },
+        {
+          "epoch": 100,
+          "return": 53.74934091720483
+        },
+        {
+          "epoch": 105,
+          "return": 58.917127473776254
+        },
+        {
+          "epoch": 110,
+          "return": 60.09884511800558
+        },
+        {
+          "epoch": 115,
+          "return": 60.512760886860185
+        },
+        {
+          "epoch": 120,
+          "return": 59.07361361802957
+        },
+        {
+          "epoch": 125,
+          "return": 72.50193447114235
+        },
+        {
+          "epoch": 130,
+          "return": 56.67359975110433
+        },
+        {
+          "epoch": 135,
+          "return": 51.9940249318918
+        },
+        {
+          "epoch": 140,
+          "return": 23.293167690404566
+        },
+        {
+          "epoch": 145,
+          "return": 47.34348210218069
+        },
+        {
+          "epoch": 150,
+          "return": 49.74853555518532
+        }
+      ]
+    },
+    {
+      "pilot": "pilot_003",
+      "epochs": 150,
+      "selected_epoch": 135,
+      "simulator_retries": 0,
+      "initial_sha256": "85b765df82669b1d91bb2edb61ac582c34add91c2bdee2f22056f93a11174951",
+      "selected_sha256": "caeaefe2137e580379c3d01ec95ec65496513ae55d4da1a31c8543c6b556d875",
+      "reward_weights": {
+        "crashed": -366.8122819476248,
+        "shot_down": -440.4274115843737,
+        "ground_clearance": 0.02,
+        "target_lock_acquired": 1.2633287982441297,
+        "fired_with_lock": 1.5161754801707477,
+        "incoming_missile_avoided": 5.317889521948025,
+        "opponent_destroyed": 250.0,
+        "fired_without_lock": -4.855031029422419
+      },
+      "skill_decision_fractions": {
+        "abort_support": 0.0001201634222542658,
+        "beam_missile_left": 0.001201634222542658,
+        "beam_missile_right": 0.0007209805335255948,
+        "beam_target_left": 0.011776015380918048,
+        "beam_target_right": 0.026916606584955538,
+        "crank_target_left": 0.0832732516222062,
+        "descend_to_altitude": 0.0002403268445085316,
+        "dive_defense": 0.0013217976447969237,
+        "extend": 0.07714491708723864,
+        "lag_pursuit": 0.1967075222302331,
+        "launch": 0.0007209805335255948,
+        "lead_pursuit": 0.04914683970199471,
+        "notch_left": 0.005647680845950492,
+        "pursue_target": 0.15885604422013938,
+        "recommit": 0.27048786349435233,
+        "secondary_shot": 0.0681326604181687,
+        "short_range_attack": 0.02427301129536169,
+        "turn_cold": 0.02090843547224225,
+        "turn_to_heading": 0.002403268445085316
+      },
+      "initial_validation_return": -36.46847181908115,
+      "selected_validation_return": 59.56259445127558,
+      "validation": [
+        {
+          "epoch": 1,
+          "return": -31.027670188683956
+        },
+        {
+          "epoch": 5,
+          "return": -4.924352936385798
+        },
+        {
+          "epoch": 10,
+          "return": 36.32277843561026
+        },
+        {
+          "epoch": 15,
+          "return": 36.49401526828004
+        },
+        {
+          "epoch": 20,
+          "return": 27.414019202187138
+        },
+        {
+          "epoch": 25,
+          "return": 40.21137458490682
+        },
+        {
+          "epoch": 30,
+          "return": 40.227949380269614
+        },
+        {
+          "epoch": 35,
+          "return": 35.21425107530341
+        },
+        {
+          "epoch": 40,
+          "return": 30.599280251353044
+        },
+        {
+          "epoch": 45,
+          "return": 18.652730728077767
+        },
+        {
+          "epoch": 50,
+          "return": 13.445367561864996
+        },
+        {
+          "epoch": 55,
+          "return": 13.37251090033181
+        },
+        {
+          "epoch": 60,
+          "return": 39.85616749553215
+        },
+        {
+          "epoch": 65,
+          "return": 48.868740093623465
+        },
+        {
+          "epoch": 70,
+          "return": 45.16800715214152
+        },
+        {
+          "epoch": 75,
+          "return": 45.32987171936541
+        },
+        {
+          "epoch": 80,
+          "return": 40.464578496150374
+        },
+        {
+          "epoch": 85,
+          "return": 50.40452555695904
+        },
+        {
+          "epoch": 90,
+          "return": 49.77040800484545
+        },
+        {
+          "epoch": 95,
+          "return": 45.720201125918585
+        },
+        {
+          "epoch": 100,
+          "return": 58.07650668852662
+        },
+        {
+          "epoch": 105,
+          "return": 49.47904540476069
+        },
+        {
+          "epoch": 110,
+          "return": 58.100452578827664
+        },
+        {
+          "epoch": 115,
+          "return": 26.59813030606473
+        },
+        {
+          "epoch": 120,
+          "return": 36.78148100601158
+        },
+        {
+          "epoch": 125,
+          "return": 26.86434019746165
+        },
+        {
+          "epoch": 130,
+          "return": 44.11973808488251
+        },
+        {
+          "epoch": 135,
+          "return": 59.56259445127558
+        },
+        {
+          "epoch": 140,
+          "return": 30.21790146266054
+        },
+        {
+          "epoch": 145,
+          "return": 43.66955793678069
+        },
+        {
+          "epoch": 150,
+          "return": 38.882346912010256
+        }
+      ]
+    },
+    {
+      "pilot": "pilot_004",
+      "epochs": 150,
+      "selected_epoch": 75,
+      "simulator_retries": 0,
+      "initial_sha256": "9911858e2ac61a2ca84b65c076b4be0dafc570c0a1b5996f5b21ef727c0c264f",
+      "selected_sha256": "77c08f79a437b52fbd57d878d46bb05f129ef9e3656323be959c32a76e2eacb8",
+      "reward_weights": {
+        "crashed": -333.2424754389357,
+        "shot_down": -420.80419382220487,
+        "ground_clearance": 0.02,
+        "target_lock_acquired": 0.08760753157445755,
+        "fired_with_lock": 0.30857898413509566,
+        "incoming_missile_avoided": 10.245734298636819,
+        "opponent_destroyed": 250.0,
+        "fired_without_lock": -4.25992214052632
+      },
+      "skill_decision_fractions": {
+        "abort_support": 0.005534167468719923,
+        "beam_missile_right": 0.00697786333012512,
+        "beam_target_left": 0.022256977863330127,
+        "beam_target_right": 0.019971126082771896,
+        "crank_target_left": 0.12259384023099133,
+        "crank_target_right": 0.009143407122232916,
+        "extend": 0.021414821944177095,
+        "lag_pursuit": 0.011068334937439845,
+        "lead_pursuit": 0.03152069297401348,
+        "lock_target": 0.00024061597690086623,
+        "maintain_heading": 0.0032483156881616937,
+        "notch_left": 0.02045235803657363,
+        "notch_right": 0.00505293551491819,
+        "pursue_target": 0.0014436958614051972,
+        "recommit": 0.2781520692974013,
+        "secondary_shot": 0.07663618864292589,
+        "short_range_attack": 0.0038498556304138597,
+        "turn_cold": 0.3604427333974976
+      },
+      "initial_validation_return": -1.1841910473507349,
+      "selected_validation_return": 82.29809668828096,
+      "validation": [
+        {
+          "epoch": 1,
+          "return": 2.57878981283259
+        },
+        {
+          "epoch": 5,
+          "return": 7.219571547711014
+        },
+        {
+          "epoch": 10,
+          "return": 21.021505002632072
+        },
+        {
+          "epoch": 15,
+          "return": 43.258166512847374
+        },
+        {
+          "epoch": 20,
+          "return": 43.17717338855564
+        },
+        {
+          "epoch": 25,
+          "return": 21.986213330704704
+        },
+        {
+          "epoch": 30,
+          "return": 51.37721740219376
+        },
+        {
+          "epoch": 35,
+          "return": 55.14686492712413
+        },
+        {
+          "epoch": 40,
+          "return": 39.41484076648095
+        },
+        {
+          "epoch": 45,
+          "return": 48.09391665636252
+        },
+        {
+          "epoch": 50,
+          "return": 46.89820941792195
+        },
+        {
+          "epoch": 55,
+          "return": 51.735486798462034
+        },
+        {
+          "epoch": 60,
+          "return": 60.37372383024117
+        },
+        {
+          "epoch": 65,
+          "return": 66.89255257728738
+        },
+        {
+          "epoch": 70,
+          "return": 73.48368918767342
+        },
+        {
+          "epoch": 75,
+          "return": 82.29809668828096
+        },
+        {
+          "epoch": 80,
+          "return": 59.63067019150182
+        },
+        {
+          "epoch": 85,
+          "return": 44.45167923584325
+        },
+        {
+          "epoch": 90,
+          "return": 63.042010519840396
+        },
+        {
+          "epoch": 95,
+          "return": 58.24227774518474
+        },
+        {
+          "epoch": 100,
+          "return": 60.00598443565906
+        },
+        {
+          "epoch": 105,
+          "return": 55.932489611617164
+        },
+        {
+          "epoch": 110,
+          "return": 66.51479869754746
+        },
+        {
+          "epoch": 115,
+          "return": 61.73811483003925
+        },
+        {
+          "epoch": 120,
+          "return": 61.53218970628137
+        },
+        {
+          "epoch": 125,
+          "return": 52.85353363419118
+        },
+        {
+          "epoch": 130,
+          "return": 73.06486774921514
+        },
+        {
+          "epoch": 135,
+          "return": 73.67132654618143
+        },
+        {
+          "epoch": 140,
+          "return": 73.26081085550516
+        },
+        {
+          "epoch": 145,
+          "return": 82.05858993579541
+        },
+        {
+          "epoch": 150,
+          "return": 68.39757194432734
+        }
+      ]
+    },
+    {
+      "pilot": "pilot_005",
+      "epochs": 150,
+      "selected_epoch": 150,
+      "simulator_retries": 0,
+      "initial_sha256": "48a2b1afda6be5eccef828b48e32228ce22ec21e4d2119815b08f455880dc73c",
+      "selected_sha256": "5791be7ae3e90ec8f247d7370b4d006f6bd32b300db25fa27bf807b21eaa74f8",
+      "reward_weights": {
+        "crashed": -401.1261962792772,
+        "shot_down": -394.4310440947697,
+        "ground_clearance": 0.02,
+        "target_lock_acquired": 0.3789427181685714,
+        "fired_with_lock": 0.2598430106709433,
+        "incoming_missile_avoided": 7.135573893389006,
+        "opponent_destroyed": 250.0,
+        "fired_without_lock": -6.641488042539917
+      },
+      "skill_decision_fractions": {
+        "abort_support": 0.024646168862859932,
+        "beam_target_left": 0.21486090775988287,
+        "beam_target_right": 0.026110297706198146,
+        "crank_target_left": 0.05905319668130796,
+        "crank_target_right": 0.18618838457784284,
+        "decelerate_to_speed": 0.005978526110297706,
+        "defensive_reversal": 0.00012201073694485115,
+        "descend_to_altitude": 0.013421181063933627,
+        "extend": 0.05014641288433382,
+        "lag_pursuit": 0.04697413372376769,
+        "lead_pursuit": 0.017813567593948268,
+        "notch_left": 0.002318204001952172,
+        "notch_right": 0.00036603221083455345,
+        "pursue_target": 0.17166910688140558,
+        "recommit": 0.10151293313811616,
+        "search": 0.00036603221083455345,
+        "secondary_shot": 0.060883357735480724,
+        "short_range_attack": 0.006222547584187409,
+        "support_missile": 0.00012201073694485115,
+        "turn_cold": 0.011224987798926306
+      },
+      "initial_validation_return": -10.584897257570514,
+      "selected_validation_return": 76.63503920817877,
+      "validation": [
+        {
+          "epoch": 1,
+          "return": -34.67378603184916
+        },
+        {
+          "epoch": 5,
+          "return": 20.13674133336337
+        },
+        {
+          "epoch": 10,
+          "return": 15.040378144862581
+        },
+        {
+          "epoch": 15,
+          "return": -8.883912274163425
+        },
+        {
+          "epoch": 20,
+          "return": -19.4125021993646
+        },
+        {
+          "epoch": 25,
+          "return": -1.043947953575582
+        },
+        {
+          "epoch": 30,
+          "return": 7.975093712926337
+        },
+        {
+          "epoch": 35,
+          "return": -9.698984823124
+        },
+        {
+          "epoch": 40,
+          "return": 13.09652374803418
+        },
+        {
+          "epoch": 45,
+          "return": 34.1160432849098
+        },
+        {
+          "epoch": 50,
+          "return": 51.23955758798842
+        },
+        {
+          "epoch": 55,
+          "return": 74.36421204911625
+        },
+        {
+          "epoch": 60,
+          "return": 69.5897572648373
+        },
+        {
+          "epoch": 65,
+          "return": 69.20674369539115
+        },
+        {
+          "epoch": 70,
+          "return": 73.88374188529222
+        },
+        {
+          "epoch": 75,
+          "return": 69.28591460444251
+        },
+        {
+          "epoch": 80,
+          "return": 69.25870057124847
+        },
+        {
+          "epoch": 85,
+          "return": 48.10928211565138
+        },
+        {
+          "epoch": 90,
+          "return": 28.012047144915364
+        },
+        {
+          "epoch": 95,
+          "return": 9.639570610395223
+        },
+        {
+          "epoch": 100,
+          "return": 40.671608226505676
+        },
+        {
+          "epoch": 105,
+          "return": 55.668319671303145
+        },
+        {
+          "epoch": 110,
+          "return": 66.74824238103567
+        },
+        {
+          "epoch": 115,
+          "return": 74.39165882412111
+        },
+        {
+          "epoch": 120,
+          "return": 48.10746144801998
+        },
+        {
+          "epoch": 125,
+          "return": 69.60802983348417
+        },
+        {
+          "epoch": 130,
+          "return": 69.72881416762158
+        },
+        {
+          "epoch": 135,
+          "return": 46.24196899789692
+        },
+        {
+          "epoch": 140,
+          "return": 67.95121718802697
+        },
+        {
+          "epoch": 145,
+          "return": 26.104039514179075
+        },
+        {
+          "epoch": 150,
+          "return": 76.63503920817877
+        }
+      ]
+    },
+    {
+      "pilot": "pilot_006",
+      "epochs": 150,
+      "selected_epoch": 115,
+      "simulator_retries": 0,
+      "initial_sha256": "a15cb15973f9f0a89c512f2470308e3f9b533a10e8854f2111574549919e1d36",
+      "selected_sha256": "f13789f1a54ec9f06d94003dfcc886461cac8af6fce146f1f902803d41fd6df7",
+      "reward_weights": {
+        "crashed": -384.4272121691504,
+        "shot_down": -325.09827059132436,
+        "ground_clearance": 0.02,
+        "target_lock_acquired": 0.6247332827640821,
+        "fired_with_lock": 1.6645196027904021,
+        "incoming_missile_avoided": 12.071465362452027,
+        "opponent_destroyed": 250.0,
+        "fired_without_lock": -9.693375168558047
+      },
+      "skill_decision_fractions": {
+        "abort_support": 0.0028721876495931067,
+        "beam_missile_left": 0.001077070368597415,
+        "beam_target_left": 0.09825275251316419,
+        "beam_target_right": 0.0318334131163236,
+        "crank_target_left": 0.07012924844423168,
+        "crank_target_right": 0.04990426041168023,
+        "descend_to_altitude": 0.019985639061752034,
+        "extend": 0.005624700813786501,
+        "lag_pursuit": 0.36967448539971276,
+        "launch": 0.01771182383915749,
+        "lead_pursuit": 0.1310435615126855,
+        "notch_right": 0.0031115366203925323,
+        "pursue_target": 0.01902824317855433,
+        "recommit": 0.05157970320727621,
+        "secondary_shot": 0.03853518429870752,
+        "short_range_attack": 0.013882240306366683,
+        "support_missile": 0.0017951172809956917,
+        "turn_cold": 0.07383915749162279,
+        "turn_to_heading": 0.00011967448539971278
+      },
+      "initial_validation_return": -36.24519874714585,
+      "selected_validation_return": 91.08368002011731,
+      "validation": [
+        {
+          "epoch": 1,
+          "return": -35.8042300455103
+        },
+        {
+          "epoch": 5,
+          "return": -27.05658781062235
+        },
+        {
+          "epoch": 10,
+          "return": 47.73218425917213
+        },
+        {
+          "epoch": 15,
+          "return": 31.945826354980042
+        },
+        {
+          "epoch": 20,
+          "return": 48.32182081492649
+        },
+        {
+          "epoch": 25,
+          "return": 51.83746652036423
+        },
+        {
+          "epoch": 30,
+          "return": 39.79874310621014
+        },
+        {
+          "epoch": 35,
+          "return": 51.39749142363872
+        },
+        {
+          "epoch": 40,
+          "return": 51.97073981802213
+        },
+        {
+          "epoch": 45,
+          "return": 35.346919457349756
+        },
+        {
+          "epoch": 50,
+          "return": 54.75495637907369
+        },
+        {
+          "epoch": 55,
+          "return": 57.91617839713146
+        },
+        {
+          "epoch": 60,
+          "return": 73.23606229945216
+        },
+        {
+          "epoch": 65,
+          "return": 84.79970779190963
+        },
+        {
+          "epoch": 70,
+          "return": 80.49544749579086
+        },
+        {
+          "epoch": 75,
+          "return": 75.66210752407557
+        },
+        {
+          "epoch": 80,
+          "return": 82.27034411206945
+        },
+        {
+          "epoch": 85,
+          "return": 75.85205119206154
+        },
+        {
+          "epoch": 90,
+          "return": 77.9545527896435
+        },
+        {
+          "epoch": 95,
+          "return": 45.16787831147166
+        },
+        {
+          "epoch": 100,
+          "return": 48.88683983049784
+        },
+        {
+          "epoch": 105,
+          "return": 64.31099410314663
+        },
+        {
+          "epoch": 110,
+          "return": 76.0135837121648
+        },
+        {
+          "epoch": 115,
+          "return": 91.08368002011731
+        },
+        {
+          "epoch": 120,
+          "return": 82.76090677587965
+        },
+        {
+          "epoch": 125,
+          "return": 78.3577595554652
+        },
+        {
+          "epoch": 130,
+          "return": 68.93020534916485
+        },
+        {
+          "epoch": 135,
+          "return": 87.94436085764917
+        },
+        {
+          "epoch": 140,
+          "return": 76.14318191732043
+        },
+        {
+          "epoch": 145,
+          "return": 62.97729296258584
+        },
+        {
+          "epoch": 150,
+          "return": 74.74078494800042
+        }
+      ]
+    },
+    {
+      "pilot": "pilot_007",
+      "epochs": 150,
+      "selected_epoch": 115,
+      "simulator_retries": 0,
+      "initial_sha256": "2f24ce9a9c2145339198a0c0c61d208891c7bfa31a2dec2c8b7683cdb727a325",
+      "selected_sha256": "4835fd084c501372225cf1f44ce31bff3740611b71873338a2a35a63c879fc54",
+      "reward_weights": {
+        "crashed": -347.6256744037537,
+        "shot_down": -429.03712745860355,
+        "ground_clearance": 0.02,
+        "target_lock_acquired": 0.014724539502011025,
+        "fired_with_lock": 1.5738487550042768,
+        "incoming_missile_avoided": 9.972762848880482,
+        "opponent_destroyed": 250.0,
+        "fired_without_lock": -5.754167751824257
+      },
+      "skill_decision_fractions": {
+        "abort_support": 0.0004878048780487805,
+        "beam_missile_left": 0.0025609756097560977,
+        "beam_missile_right": 0.0006097560975609756,
+        "beam_target_left": 0.02853658536585366,
+        "beam_target_right": 0.027926829268292683,
+        "crank_target_left": 0.06439024390243903,
+        "decelerate_to_speed": 0.012439024390243903,
+        "descend_to_altitude": 0.009146341463414634,
+        "drag_missile": 0.0007317073170731707,
+        "extend": 0.34170731707317076,
+        "lag_pursuit": 0.31146341463414634,
+        "launch": 0.018902439024390243,
+        "lead_pursuit": 0.041951219512195125,
+        "maintain_heading": 0.0004878048780487805,
+        "notch_left": 0.01731707317073171,
+        "notch_right": 0.0024390243902439024,
+        "preemptive_crank": 0.0006097560975609756,
+        "recommit": 0.026585365853658536,
+        "search": 0.0004878048780487805,
+        "secondary_shot": 0.07817073170731707,
+        "turn_cold": 0.008048780487804878,
+        "turn_to_heading": 0.005
+      },
+      "initial_validation_return": 2.7762859836866407,
+      "selected_validation_return": 81.20170057740634,
+      "validation": [
+        {
+          "epoch": 1,
+          "return": 20.33461121450881
+        },
+        {
+          "epoch": 5,
+          "return": 20.898330809630185
+        },
+        {
+          "epoch": 10,
+          "return": 29.8600583991807
+        },
+        {
+          "epoch": 15,
+          "return": 17.023389821508026
+        },
+        {
+          "epoch": 20,
+          "return": -15.21723125734074
+        },
+        {
+          "epoch": 25,
+          "return": 37.65454927499306
+        },
+        {
+          "epoch": 30,
+          "return": 65.93918143622155
+        },
+        {
+          "epoch": 35,
+          "return": 50.687088660320754
+        },
+        {
+          "epoch": 40,
+          "return": 42.189405570558826
+        },
+        {
+          "epoch": 45,
+          "return": 60.08963282339493
+        },
+        {
+          "epoch": 50,
+          "return": 61.92763830710124
+        },
+        {
+          "epoch": 55,
+          "return": 57.35642579615653
+        },
+        {
+          "epoch": 60,
+          "return": 43.67404356844302
+        },
+        {
+          "epoch": 65,
+          "return": 57.580360197060116
+        },
+        {
+          "epoch": 70,
+          "return": 50.37251897968992
+        },
+        {
+          "epoch": 75,
+          "return": 52.92996064178912
+        },
+        {
+          "epoch": 80,
+          "return": 9.511200947463333
+        },
+        {
+          "epoch": 85,
+          "return": 37.53732491733285
+        },
+        {
+          "epoch": 90,
+          "return": 48.34075256484905
+        },
+        {
+          "epoch": 95,
+          "return": 40.499446660958974
+        },
+        {
+          "epoch": 100,
+          "return": 46.73338961776366
+        },
+        {
+          "epoch": 105,
+          "return": 55.49204439578024
+        },
+        {
+          "epoch": 110,
+          "return": 55.190931944571254
+        },
+        {
+          "epoch": 115,
+          "return": 81.20170057740634
+        },
+        {
+          "epoch": 120,
+          "return": 72.68191630687858
+        },
+        {
+          "epoch": 125,
+          "return": 65.93884725768247
+        },
+        {
+          "epoch": 130,
+          "return": 80.72775254452796
+        },
+        {
+          "epoch": 135,
+          "return": 70.88511980798555
+        },
+        {
+          "epoch": 140,
+          "return": 80.49362031245026
+        },
+        {
+          "epoch": 145,
+          "return": 60.20425715507229
+        },
+        {
+          "epoch": 150,
+          "return": 49.84683907231761
+        }
+      ]
+    },
+    {
+      "pilot": "pilot_008",
+      "epochs": 150,
+      "selected_epoch": 145,
+      "simulator_retries": 0,
+      "initial_sha256": "3b155a7405ef7eafc67654037171db40384135874016ba427ea43f9ea9778264",
+      "selected_sha256": "92aa526fd19a3ed7463244e5c749bf62f9f5b9b7dfc7de12f59249bdeb4a27f0",
+      "reward_weights": {
+        "crashed": -381.162633669249,
+        "shot_down": -364.68882060706596,
+        "ground_clearance": 0.02,
+        "target_lock_acquired": 0.22906014707194688,
+        "fired_with_lock": 1.3368059235809433,
+        "incoming_missile_avoided": 7.066443092146988,
+        "opponent_destroyed": 250.0,
+        "fired_without_lock": -5.880009140671795
+      },
+      "skill_decision_fractions": {
+        "beam_missile_right": 0.0003639451655950503,
+        "beam_target_left": 0.006187067815115856,
+        "beam_target_right": 0.013223341016620163,
+        "crank_target_left": 0.11403615188644911,
+        "crank_target_right": 0.018075943224554167,
+        "decelerate_to_speed": 0.03493873589712483,
+        "extend": 0.025476161591653525,
+        "launch": 0.0025476161591653523,
+        "lead_pursuit": 0.04682761130656314,
+        "notch_right": 0.0026689312143637024,
+        "preemptive_crank": 0.00012131505519835011,
+        "pursue_target": 0.23935460390634478,
+        "recommit": 0.093897852723523,
+        "secondary_shot": 0.0515588984592988,
+        "short_range_attack": 0.01868251850054592,
+        "support_missile": 0.001213150551983501,
+        "turn_cold": 0.32597355331796674,
+        "turn_to_heading": 0.004852602207934004
+      },
+      "initial_validation_return": 22.255073890821947,
+      "selected_validation_return": 73.2107731287805,
+      "validation": [
+        {
+          "epoch": 1,
+          "return": 4.947916275739185
+        },
+        {
+          "epoch": 5,
+          "return": 29.561953132655425
+        },
+        {
+          "epoch": 10,
+          "return": 48.87120299436592
+        },
+        {
+          "epoch": 15,
+          "return": 45.892142310848264
+        },
+        {
+          "epoch": 20,
+          "return": 57.83482867643047
+        },
+        {
+          "epoch": 25,
+          "return": 57.99140580775828
+        },
+        {
+          "epoch": 30,
+          "return": 32.99977622900715
+        },
+        {
+          "epoch": 35,
+          "return": 42.87631772504745
+        },
+        {
+          "epoch": 40,
+          "return": 57.59556983242192
+        },
+        {
+          "epoch": 45,
+          "return": 57.71029550924986
+        },
+        {
+          "epoch": 50,
+          "return": 64.95619968444792
+        },
+        {
+          "epoch": 55,
+          "return": 64.83070029503128
+        },
+        {
+          "epoch": 60,
+          "return": 55.55773000620029
+        },
+        {
+          "epoch": 65,
+          "return": 42.942772412653994
+        },
+        {
+          "epoch": 70,
+          "return": 55.32123173710628
+        },
+        {
+          "epoch": 75,
+          "return": 50.2897708068689
+        },
+        {
+          "epoch": 80,
+          "return": 57.698224626353294
+        },
+        {
+          "epoch": 85,
+          "return": 68.04577338404098
+        },
+        {
+          "epoch": 90,
+          "return": 62.774466270547585
+        },
+        {
+          "epoch": 95,
+          "return": 72.88527781097748
+        },
+        {
+          "epoch": 100,
+          "return": 72.7193677461931
+        },
+        {
+          "epoch": 105,
+          "return": 63.09141184322024
+        },
+        {
+          "epoch": 110,
+          "return": 63.23186097776726
+        },
+        {
+          "epoch": 115,
+          "return": 62.67146835677645
+        },
+        {
+          "epoch": 120,
+          "return": 52.87431589407911
+        },
+        {
+          "epoch": 125,
+          "return": 53.12311785792745
+        },
+        {
+          "epoch": 130,
+          "return": 36.20317412978259
+        },
+        {
+          "epoch": 135,
+          "return": 50.56996281805804
+        },
+        {
+          "epoch": 140,
+          "return": 48.49932975948058
+        },
+        {
+          "epoch": 145,
+          "return": 73.2107731287805
+        },
+        {
+          "epoch": 150,
+          "return": 65.80623344569415
+        }
+      ]
+    },
+    {
+      "pilot": "pilot_009",
+      "epochs": 150,
+      "selected_epoch": 85,
+      "simulator_retries": 0,
+      "initial_sha256": "ad6d28a376d34c46f4360e0b0c713fd100c2014dc3e4252453a920bef121106b",
+      "selected_sha256": "c18033eff26c8ea96f4706176947fec5541ac0db01fc26afc829b2bdb2d3aa4d",
+      "reward_weights": {
+        "crashed": -354.7922519999114,
+        "shot_down": -366.96308990130063,
+        "ground_clearance": 0.02,
+        "target_lock_acquired": 0.6079001961252244,
+        "fired_with_lock": 0.06163566913587881,
+        "incoming_missile_avoided": 6.550760838485435,
+        "opponent_destroyed": 250.0,
+        "fired_without_lock": -8.73177085020291
+      },
+      "skill_decision_fractions": {
+        "beam_missile_left": 0.00023526643924244207,
+        "beam_missile_right": 0.0016468650746970944,
+        "beam_target_left": 0.17986119280084695,
+        "beam_target_right": 0.15962827902599694,
+        "crank_target_left": 0.08234325373485472,
+        "decelerate_to_speed": 0.005881660981061051,
+        "descend_to_altitude": 0.026702740854017176,
+        "extend": 0.007410892836136925,
+        "lag_pursuit": 0.17986119280084695,
+        "last_ditch_break": 0.0005881660981061052,
+        "launch": 0.003058463710151747,
+        "lead_pursuit": 0.012233854840606987,
+        "lock_target": 0.0003528996588636631,
+        "maintain_heading": 0.0043524291259851786,
+        "notch_left": 0.004234795906363957,
+        "notch_right": 0.0023526643924244206,
+        "pursue_target": 0.037877896718033176,
+        "recommit": 0.20774026585107636,
+        "secondary_shot": 0.02999647100341136,
+        "short_range_attack": 0.012704387719091872,
+        "support_missile": 0.0005881660981061052,
+        "turn_cold": 0.03976002823197271,
+        "turn_to_heading": 0.0005881660981061052
+      },
+      "initial_validation_return": 19.625066351225723,
+      "selected_validation_return": 106.55904584603054,
+      "validation": [
+        {
+          "epoch": 1,
+          "return": 19.312892836267807
+        },
+        {
+          "epoch": 5,
+          "return": 9.305244208422678
+        },
+        {
+          "epoch": 10,
+          "return": 69.02074600208513
+        },
+        {
+          "epoch": 15,
+          "return": 64.18186430111952
+        },
+        {
+          "epoch": 20,
+          "return": 63.88443212044713
+        },
+        {
+          "epoch": 25,
+          "return": 63.71403300490504
+        },
+        {
+          "epoch": 30,
+          "return": 63.754636614661685
+        },
+        {
+          "epoch": 35,
+          "return": 63.75530576113081
+        },
+        {
+          "epoch": 40,
+          "return": 63.729093456425026
+        },
+        {
+          "epoch": 45,
+          "return": 63.75914031780093
+        },
+        {
+          "epoch": 50,
+          "return": 71.07527383640507
+        },
+        {
+          "epoch": 55,
+          "return": 76.1187768418516
+        },
+        {
+          "epoch": 60,
+          "return": 68.94416485039433
+        },
+        {
+          "epoch": 65,
+          "return": 71.52390375006102
+        },
+        {
+          "epoch": 70,
+          "return": 61.23252946059224
+        },
+        {
+          "epoch": 75,
+          "return": 76.46537845952125
+        },
+        {
+          "epoch": 80,
+          "return": 81.31294998572568
+        },
+        {
+          "epoch": 85,
+          "return": 106.55904584603054
+        },
+        {
+          "epoch": 90,
+          "return": 68.88077855048552
+        },
+        {
+          "epoch": 95,
+          "return": 69.15413983755582
+        },
+        {
+          "epoch": 100,
+          "return": 76.91074568066648
+        },
+        {
+          "epoch": 105,
+          "return": 74.57002773856982
+        },
+        {
+          "epoch": 110,
+          "return": 44.56953703782901
+        },
+        {
+          "epoch": 115,
+          "return": 29.492991222155798
+        },
+        {
+          "epoch": 120,
+          "return": 39.757752763853475
+        },
+        {
+          "epoch": 125,
+          "return": 69.4227322493488
+        },
+        {
+          "epoch": 130,
+          "return": 41.93985895425674
+        },
+        {
+          "epoch": 135,
+          "return": 26.971146920742807
+        },
+        {
+          "epoch": 140,
+          "return": 22.17817072251458
+        },
+        {
+          "epoch": 145,
+          "return": -9.861763647418579
+        },
+        {
+          "epoch": 150,
+          "return": 51.907422266542966
+        }
+      ]
+    },
+    {
+      "pilot": "pilot_010",
+      "epochs": 150,
+      "selected_epoch": 125,
+      "simulator_retries": 0,
+      "initial_sha256": "fd8e6bf7fdfb7d40ad3a60c8dc5babe8580f69ca9e4b9335abcfe2571274b60f",
+      "selected_sha256": "76ad0fbef45e0bfcf039919a90aced8f346bcf0e841f49cdfed195d66cab9ca2",
+      "reward_weights": {
+        "crashed": -321.98953900977506,
+        "shot_down": -414.9090771201989,
+        "ground_clearance": 0.02,
+        "target_lock_acquired": 0.5627677840439931,
+        "fired_with_lock": 0.5871875155333672,
+        "incoming_missile_avoided": 9.928747720903425,
+        "opponent_destroyed": 250.0,
+        "fired_without_lock": -5.728814327148692
+      },
+      "skill_decision_fractions": {
+        "abort_support": 0.026348808030112924,
+        "beam_target_left": 0.1178168130489335,
+        "beam_target_right": 0.05846925972396487,
+        "climb_to_altitude": 0.0003764115432873275,
+        "crank_target_left": 0.05495608531994981,
+        "crank_target_right": 0.011166875784190716,
+        "extend": 0.02233375156838143,
+        "lag_pursuit": 0.010790464240903387,
+        "last_ditch_break": 0.00012547051442910915,
+        "lead_pursuit": 0.06549560853199499,
+        "notch_left": 0.0010037641154328732,
+        "notch_right": 0.002509410288582183,
+        "pursue_target": 0.04265997490589712,
+        "recommit": 0.049937264742785446,
+        "search": 0.0010037641154328732,
+        "secondary_shot": 0.05194479297365119,
+        "short_range_attack": 0.009284818067754079,
+        "support_missile": 0.011543287327478042,
+        "turn_cold": 0.46223337515683816
+      },
+      "initial_validation_return": 3.2496675724963593,
+      "selected_validation_return": 83.09203719846569,
+      "validation": [
+        {
+          "epoch": 1,
+          "return": 2.9960989170775822
+        },
+        {
+          "epoch": 5,
+          "return": 48.24589265773707
+        },
+        {
+          "epoch": 10,
+          "return": 34.9019307090996
+        },
+        {
+          "epoch": 15,
+          "return": 39.626891464800615
+        },
+        {
+          "epoch": 20,
+          "return": 43.00848366677109
+        },
+        {
+          "epoch": 25,
+          "return": 53.14220326550826
+        },
+        {
+          "epoch": 30,
+          "return": 26.62469727757348
+        },
+        {
+          "epoch": 35,
+          "return": 12.938534575401368
+        },
+        {
+          "epoch": 40,
+          "return": 24.905957433223374
+        },
+        {
+          "epoch": 45,
+          "return": 43.5460576335315
+        },
+        {
+          "epoch": 50,
+          "return": 41.508977678836324
+        },
+        {
+          "epoch": 55,
+          "return": 64.11347267943243
+        },
+        {
+          "epoch": 60,
+          "return": 65.20417431396582
+        },
+        {
+          "epoch": 65,
+          "return": 80.14005466840405
+        },
+        {
+          "epoch": 70,
+          "return": 55.11742431148049
+        },
+        {
+          "epoch": 75,
+          "return": 63.28123715164105
+        },
+        {
+          "epoch": 80,
+          "return": 47.87040516428159
+        },
+        {
+          "epoch": 85,
+          "return": 68.23481042879862
+        },
+        {
+          "epoch": 90,
+          "return": 46.220008129409074
+        },
+        {
+          "epoch": 95,
+          "return": 46.00560996425058
+        },
+        {
+          "epoch": 100,
+          "return": 58.16103630445719
+        },
+        {
+          "epoch": 105,
+          "return": 49.562049450711605
+        },
+        {
+          "epoch": 110,
+          "return": 65.15174306303382
+        },
+        {
+          "epoch": 115,
+          "return": 43.56257997822587
+        },
+        {
+          "epoch": 120,
+          "return": 70.02217436079044
+        },
+        {
+          "epoch": 125,
+          "return": 83.09203719846569
+        },
+        {
+          "epoch": 130,
+          "return": 70.88366798484964
+        },
+        {
+          "epoch": 135,
+          "return": 71.09901883451883
+        },
+        {
+          "epoch": 140,
+          "return": 65.8028885603893
+        },
+        {
+          "epoch": 145,
+          "return": 54.51722360477042
+        },
+        {
+          "epoch": 150,
+          "return": 80.14058686513981
+        }
+      ]
+    }
+  ],
+  "history": [
+    {
+      "label": "Lower learning rate",
+      "opponent": "simple",
+      "pilots": 10,
+      "suite": {
+        "seed": 420000,
+        "scenarios": 100
+      },
+      "role": "fresh confirmation",
+      "before": 0.445,
+      "after": 0.544,
+      "ci95_gain_pp": [
+        6.497499999999999,
+        13.402499999999987
+      ]
+    },
+    {
+      "label": "Selected-skill probabilities",
+      "opponent": "simple",
+      "pilots": 10,
+      "suite": {
+        "seed": 620000,
+        "scenarios": 100
+      },
+      "role": "fresh confirmation",
+      "before": 0.42400000000000004,
+      "after": 0.5599999999999999,
+      "ci95_gain_pp": [
+        9.7975,
+        17.40249999999999
+      ]
+    },
+    {
+      "label": "Per-skill parameter heads",
+      "opponent": "simple",
+      "pilots": 10,
+      "suite": {
+        "seed": 820000,
+        "scenarios": 300
+      },
+      "role": "fresh confirmation",
+      "before": 0.5796666666666666,
+      "after": 0.507,
+      "ci95_gain_pp": [
+        -9.233333333333334,
+        -5.532500000000003
+      ]
+    },
+    {
+      "label": "Terminal clean-win bonus (stopped)",
+      "opponent": "simple",
+      "pilots": 6,
+      "suite": {
+        "seed": 211307,
+        "scenarios": 100
+      },
+      "role": "development only",
+      "before": 0.515,
+      "after": 0.49833333333333335
+    }
+  ],
+  "training": {
+    "planning_horizon_s": 1.0,
+    "episode_duration_s": 120.0,
+    "scenarios_per_epoch": 75,
+    "evaluation_scenarios_per_epoch": 50,
+    "evaluation_interval": 5,
+    "simulator_workers": 22,
+    "simulator_executor": "process",
+    "epochs": 150,
+    "simulation_dt_s": 0.1,
+    "seed": 1000007,
+    "evaluation_seed": 1100000,
+    "resample_training_scenarios": true,
+    "test_scenarios_per_pilot": 100,
+    "test_seed": 1220000,
+    "hidden_size": 64,
+    "history_duration_s": 2.0,
+    "sample_interval_s": 0.1,
+    "transformer_heads": 4,
+    "transformer_layers": 2,
+    "learning_rate": 3e-05,
+    "discount": 0.99,
+    "gae_lambda": 0.95,
+    "clip_ratio": 0.2,
+    "update_epochs": 10,
+    "minibatch_size": 256,
+    "entropy_coefficient": 0.01,
+    "value_coefficient": 0.5,
+    "gradient_clip": 0.5,
+    "mixed_precision": true,
+    "cuda_graph_updates": true,
+    "selected_skill_parameters": true,
+    "skill_conditioned_parameters": false,
+    "training_reward_scale": 0.01,
+    "target_kl": 0.02,
+    "log_ppo_diagnostics": true,
+    "checkpoint_interval": 30,
+    "diagnostic_interval": 1,
+    "mlflow_experiment": "jsbsim-tactical-adaptation",
+    "reward": {
+      "crashed": -100.0,
+      "shot_down": -150.0,
+      "ground_clearance": 0.02,
+      "target_lock_acquired": 2.0,
+      "fired_with_lock": 8.0,
+      "incoming_missile_avoided": 20.0,
+      "opponent_destroyed": 250.0,
+      "fired_without_lock": -4.0
+    },
+    "resolved_simulator_workers": 22
+  },
+  "skill_names": [
+    "maintain_heading",
+    "turn_to_heading",
+    "climb_to_altitude",
+    "descend_to_altitude",
+    "accelerate_to_speed",
+    "decelerate_to_speed",
+    "pursue_target",
+    "lead_pursuit",
+    "lag_pursuit",
+    "beam_target_left",
+    "beam_target_right",
+    "crank_target_left",
+    "crank_target_right",
+    "turn_cold",
+    "extend",
+    "recommit",
+    "search",
+    "lock_target",
+    "commit",
+    "launch",
+    "support_missile",
+    "abort_support",
+    "secondary_shot",
+    "short_range_attack",
+    "preemptive_crank",
+    "notch_left",
+    "notch_right",
+    "beam_missile_left",
+    "beam_missile_right",
+    "drag_missile",
+    "dive_defense",
+    "last_ditch_break",
+    "defensive_reversal"
+  ],
+  "parameter_names": [
+    "altitude_m",
+    "capture_angle_deg",
+    "commit_range_m",
+    "heading_deg",
+    "launch_range_m",
+    "max_g",
+    "min_altitude_m",
+    "offset_deg",
+    "range_m",
+    "short_range_m",
+    "speed_mps",
+    "support_timeout_s",
+    "timeout_s",
+    "tolerance_deg",
+    "tolerance_m",
+    "tolerance_mps"
+  ],
+  "observation_size": 51
+}

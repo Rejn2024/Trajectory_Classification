@@ -1,0 +1,11 @@
+{
+  ".gitattributes": "aa862b25d11245139f9c59cfbdab3968e0a23c32978245a9d75afb92d732746b",
+  "data/paired_outcomes.csv": "4da8481742077664a9515f151bac4a62daa5fdab7f834bcd28d486389de09219",
+  "data/pilot_outcomes.csv": "41b686e18772ecac7c0d5d60086a952a80c24aba2a17419492837c13a99716bc",
+  "data/results.json": "ac203330b5fd5e6ee4b2b59c430ee375d08e9be0943cbd9d21dafca79380b170",
+  "data/reward_profiles.csv": "ebd2ca23f16567aab53029698ef916b9672584d8add4558720161525cf333ffe",
+  "data/source_hashes.json": "70ee17adb2cd908f3914b0f3e37e5ed1745ea7e5e17e94006c30d89c756cb533",
+  "presentation.html": "6a5449056b3495672788abd9fabda871c4cdefb6c5cc1ae09a6c3fd9844b1f4e",
+  "presentation.pdf": "0870f32fe80fcfe99a4db631cee918e6eac31e044f6ed27d57c3fa1116c6cc65",
+  "README.md": "667ff01b1a8c99916357dd9d855118c31c03ddb8375789ad5c304c01d30cb917"
+}
