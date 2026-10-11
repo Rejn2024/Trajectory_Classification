@@ -20,15 +20,25 @@ benchmark, for ongoing comparisons. All four complete simple-opponent population
 use the same ten reward profiles, training seed 7 and scenario schedule, validation seed
 111257 (50 cases), and development seeds 211307–211406 (100 cases per pilot).
 
-| Population | Shared development clean-win rate |
-| --- | --- |
-| Original | **28.2%** |
-| Reduced learning rate | **36.8%** |
-| Reduced LR + selected-skill probabilities | **50.0%** |
-| Separate parameter heads per skill, not retained | **42.5%** |
+| Population | Elimination | Survival | Clean win | Mutual destruction |
+| --- | --- | --- | --- | --- |
+| Original | **59.8%** | **57.6%** | **28.2%** | 31.6% |
+| Reduced learning rate | **60.8%** | **66.5%** | **36.8%** | 24.0% |
+| Reduced LR + selected-skill probabilities | **72.2%** | **68.8%** | **50.0%** | 22.2% |
+| Separate parameter heads per skill, not retained | **65.4%** | **68.3%** | **42.5%** | 22.9% |
 
-The six completed bonus-trial pilots scored 49.83% against their matched six-pilot
-baseline's 51.5%; this is a subset comparison, not a full-population result.
+Elimination measures a confirmed missile kill regardless of own survival; survival
+measures remaining alive regardless of opponent outcome. Clean wins are their joint
+occurrence. These overlapping rates should be read together, not summed.
+
+The lower learning rate mainly improved survival (+8.9 percentage points), with similar
+elimination frequency (+1.0 point). The selected-skill correction then improved
+elimination by 11.4 points and survival by 2.3 points. The larger parameter-head model
+lost 6.8 elimination points and 0.5 survival points relative to the retained population.
+
+The six completed bonus-trial pilots recorded elimination **72.83% → 72.17%**, survival
+**68.33% → 63.83%**, and clean wins **51.50% → 49.83%** against their matched baseline;
+this is a subset comparison, not a full-population result.
 
 The shared benchmark is stored in the historical `test_episodes.json` files. It is
 distinct from training and checkpoint-selection validation, and is considered development
@@ -55,10 +65,10 @@ all epoch metrics are finite, with **zero simulator-worker retries**. The origin
 51 baseline files and all frozen source files passed SHA-256 checks. Each initial
 checkpoint matches its own parent; each selected checkpoint matches its manifest.
 
-| Matched tactical suite | Clean wins before → after | Survival before → after | Mutual destruction before → after |
-| --- | --- | --- | --- |
-| 300-case assessment, seed 1120000 | 31.73% → 38.67% | 76.80% → 87.23% | 4.00% → 3.93% |
-| Separate 100-case confirmation, seed 1220000 | **32.7% → 38.6%** | **75.1% → 83.8%** | 9.1% → 10.0% |
+| Matched tactical suite | Elimination before → after | Survival before → after | Clean win before → after | Mutual destruction before → after |
+| --- | --- | --- | --- | --- |
+| 300-case assessment, seed 1120000 | 35.73% → 42.60% | 76.80% → 87.23% | 31.73% → 38.67% | 4.00% → 3.93% |
+| Historical 100-case confirmation, seed 1220000 | **41.8% → 48.6%** | **75.1% → 83.8%** | **32.7% → 38.6%** | 9.1% → 10.0% |
 
 Confirmation clean wins improved **5.9 percentage points**, paired scenario bootstrap
 95% interval **+1.2 to +11.0 points**. Nine pilots improved and one tied. Pilot 005
@@ -110,7 +120,7 @@ intact. This is checkpoint fine-tuning against a scripted opponent, not self-pla
 Stopped **10 October 2026 at 21:02 BST** to redirect compute to tactical adaptation.
 Pilots 001-006 completed, and pilot 007 completed 38 epochs; all saved files remain.
 Across those six matching pilots, development clean wins were **49.8% versus 51.5%**
-for the baseline, with survival **63.8% versus 68.3%**. Confirmation did not run, so
+for the baseline, with eliminations **72.2% versus 72.8%** and survival **63.8% versus 68.3%**. Confirmation did not run, so
 this is an incomplete experiment, not a final population comparison.
 
 Launched **10 October 2026 at 12:46 BST**, using the successful **selected-skill population with
@@ -246,14 +256,14 @@ Do not launch the same job again: training runs independently of the report note
 
 ## Preserved populations
 
-| Population | Models and results | Assessment |
-| --- | --- | --- |
-| 5 October: original weight sweep | [80-epoch run](../artifacts/rl_pilot_notebook/20261005T231808_624505Z/) | Validation only; earlier reward implementation |
-| 6 October: varied relative weights | [150-epoch run](../artifacts/rl_pilot_notebook/combat/20261006T140858_362365Z/), [published models](../shared/models/notebook05-combat-20261006T140858_362365Z/) | Validation only; published historical population |
-| 7 October: random reward ranges and fresh training batches | [150-epoch run](../artifacts/rl_pilot_notebook/combat/20261007T212241_526315Z/) | Original test mean clean wins: **28.2%** |
-| 8 October: lower learning rate | [150-epoch run](../artifacts/rl_pilot_experiments/20261008T130810_285510Z_lr3e-05/training/), [comparison report](../artifacts/rl_pilot_experiments/20261008T130810_285510Z_lr3e-05/comparison.html) | Original test clean wins **36.8%**; fresh confirmation **54.4% versus 44.5%** for its baseline |
-| 9 October: selected-skill probabilities | [Completed run](../artifacts/rl_pilot_experiments/20261009T153646_051001Z_selected_skill_parameters_recovery/training/), [saved report](../notebooks/results/20261010_selected_skill_comparison.ipynb) | Original test clean wins **50.0% versus 36.8%**; fresh confirmation **56.0% versus 42.4%** |
-| 10 October: skill-conditioned predictors | [Completed run](../artifacts/rl_pilot_experiments/20261010T000147_332865Z_skill_conditioned_parameters/training/), [saved report](../notebooks/results/20261010_skill_conditioned_comparison.ipynb) | Original test clean wins **42.5% versus 50.0%**; fresh confirmation **50.70% versus 57.97%** |
+| Population | Models and results | Evaluation basis | Elimination | Survival | Clean win |
+| --- | --- | --- | --- | --- | --- |
+| 5 October: original weight sweep | [80-epoch run](../artifacts/rl_pilot_notebook/20261005T231808_624505Z/) | Validation only; earlier reward implementation | Not comparable | Not comparable | Not comparable |
+| 6 October: varied relative weights | [150-epoch run](../artifacts/rl_pilot_notebook/combat/20261006T140858_362365Z/), [published models](../shared/models/notebook05-combat-20261006T140858_362365Z/) | Validation only; published historical population | Not comparable | Not comparable | Not comparable |
+| 7 October: random reward ranges and fresh training batches | [150-epoch run](../artifacts/rl_pilot_notebook/combat/20261007T212241_526315Z/) | Shared development, seed 211307 | 59.8% | 57.6% | 28.2% |
+| 8 October: lower learning rate | [150-epoch run](../artifacts/rl_pilot_experiments/20261008T130810_285510Z_lr3e-05/training/), [comparison report](../artifacts/rl_pilot_experiments/20261008T130810_285510Z_lr3e-05/comparison.html) | Shared development, seed 211307 | 60.8% | 66.5% | 36.8% |
+| 9 October: selected-skill probabilities | [Completed run](../artifacts/rl_pilot_experiments/20261009T153646_051001Z_selected_skill_parameters_recovery/training/), [saved report](../notebooks/results/20261010_selected_skill_comparison.ipynb) | Shared development, seed 211307 | 72.2% | 68.8% | 50.0% |
+| 10 October: skill-conditioned predictors | [Completed run](../artifacts/rl_pilot_experiments/20261010T000147_332865Z_skill_conditioned_parameters/training/), [saved report](../notebooks/results/20261010_skill_conditioned_comparison.ipynb) | Shared development, seed 211307 | 65.4% | 68.3% | 42.5% |
 
 Compare rates only within matching evaluation suites. The fresh confirmation cases
 for the learning-rate experiment differ from both its original test cases and the

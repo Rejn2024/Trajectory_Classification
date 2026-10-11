@@ -1,13 +1,13 @@
 {
   ".gitattributes": "aa862b25d11245139f9c59cfbdab3968e0a23c32978245a9d75afb92d732746b",
-  "data/development_summary.csv": "5dac0fefa9d3f3fec76bf2dfb690f505dd72e459225e1272974bf24ce03c8bd5",
+  "data/development_summary.csv": "42ac9e178df15a4fcb3eb0cbea9812d09d2387bcd159210361952d49a43f99fa",
   "data/learning_curves.csv": "66b73e102b14b3563ae77f9c989b4f054698c9919c9d444df845e21d4df687b5",
-  "data/paired_outcomes.csv": "4da8481742077664a9515f151bac4a62daa5fdab7f834bcd28d486389de09219",
-  "data/pilot_outcomes.csv": "41b686e18772ecac7c0d5d60086a952a80c24aba2a17419492837c13a99716bc",
-  "data/results.json": "6714d3b1cb1743d8b4d09b0557b88442a6926f45cf1d1173f64e5b3ff8279880",
+  "data/paired_outcomes.csv": "0ecdf2f3b48f52fcf3f8c17c71b60e5361951c49c51312eeab200bcabffc7ef0",
+  "data/pilot_outcomes.csv": "448ec3d4f802470fa70b7127b2b0768a062013cc081d46d5d28e9561e4bf7a66",
+  "data/results.json": "cd911c3b6ee0d09792ad8c1d183728d4caefa7fa3036845719341742de8e7b94",
   "data/reward_profiles.csv": "ebd2ca23f16567aab53029698ef916b9672584d8add4558720161525cf333ffe",
-  "data/source_hashes.json": "98a700f2b8b167f8d5a2f52868119c5cc9b05e304e6342381adf6f01b707e808",
-  "presentation.html": "8b91d906a6b91ccd5800ea228d0bca6e13cba7bea9204a6f00e714e15a91450d",
-  "presentation.pdf": "aeabcb20c51b4a3175af7fe86a5ed08cec289532bf951e8526f6463c975d5517",
-  "README.md": "e145be81be2afd16a78d23b7929dd1806270ead497d47ec21a89405337c44062"
+  "data/source_hashes.json": "4d3549286f09cc658094739397a53afc2c71169f8ddee88fc6a45c157619ad53",
+  "presentation.html": "1fb4015eed819617e757da4ab2cb85536536341f135c2b46880f4cc8daf88bf7",
+  "presentation.pdf": "deff5d9a6b2b092580fffebfea76b11afed837f7cd9a7d23d8591171ee6aaa1d",
+  "README.md": "8423d4f759060f8d7f1c0ab1a493c9a9a75e7926e046027d6f856050813dcd14"
 }

@@ -41,11 +41,23 @@ configurations, validation results, and complete epoch metrics (5.68 MiB in Git 
 For the **branch presentation**, open the
 [offline slide deck and technical report](docs/presentations/README.md).
 The PDF and self-contained HTML work without Jupyter, Python, model downloads or
-Git LFS. All ten tactical adaptations finished: separate confirmation clean wins
-improved **32.7% → 38.6%**, and survival **75.1% → 83.8%** on matched tactical cases.
-For progress across the simple-opponent experiments, the same 100-case development
-benchmark gives **28.2% → 36.8% → 50.0%** clean wins. The presentation includes
-recorded training and validation curves; previously inspected confirmation suites
+Git LFS. The simple-opponent results use the same 100 development cases per pilot:
+
+| Population | Elimination | Survival | Clean win |
+| --- | --- | --- | --- |
+| Original | 59.8% | 57.6% | 28.2% |
+| Reduced learning rate | 60.8% | 66.5% | 36.8% |
+| Reduced LR + selected-skill probabilities | 72.2% | 68.8% | 50.0% |
+| Separate parameter heads, not retained | 65.4% | 68.3% | 42.5% |
+
+Lowering the learning rate mainly improved survival; the selected-skill correction
+then improved eliminations. Clean wins require both a confirmed elimination and own
+survival in the same flight. The separate rates show the balance between the two.
+
+All ten tactical adaptations then finished. On matched historical confirmation cases,
+eliminations improved **41.8% → 48.6%**, survival **75.1% → 83.8%**, and clean wins
+**32.7% → 38.6%**. The presentation includes recorded training and validation curves;
+previously inspected confirmation suites
 are supplementary evidence. Untouched final testing is reserved until experimental
 choices are frozen.
 

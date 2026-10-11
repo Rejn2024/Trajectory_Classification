@@ -21,6 +21,7 @@
             "survived_without_elimination": 0.37,
             "mutual_destruction": 0.07666666666666666,
             "loss_without_elimination": 0.23,
+            "elimination": 0.4,
             "survival": 0.6933333333333334,
             "outcome_score": 5.5
           },
@@ -29,6 +30,7 @@
             "survived_without_elimination": 0.4633333333333333,
             "mutual_destruction": 0.02666666666666667,
             "loss_without_elimination": 0.12333333333333334,
+            "elimination": 0.41333333333333333,
             "survival": 0.85,
             "outcome_score": 25.0
           }
@@ -40,6 +42,7 @@
             "survived_without_elimination": 0.4633333333333333,
             "mutual_destruction": 0.05333333333333334,
             "loss_without_elimination": 0.14,
+            "elimination": 0.39666666666666667,
             "survival": 0.8066666666666666,
             "outcome_score": 17.666666666666668
           },
@@ -48,6 +51,7 @@
             "survived_without_elimination": 0.51,
             "mutual_destruction": 0.043333333333333335,
             "loss_without_elimination": 0.08333333333333333,
+            "elimination": 0.4066666666666667,
             "survival": 0.8733333333333333,
             "outcome_score": 25.833333333333332
           }
@@ -59,6 +63,7 @@
             "survived_without_elimination": 0.43333333333333335,
             "mutual_destruction": 0.02666666666666667,
             "loss_without_elimination": 0.23666666666666666,
+            "elimination": 0.33,
             "survival": 0.7366666666666667,
             "outcome_score": 5.333333333333333
           },
@@ -67,6 +72,7 @@
             "survived_without_elimination": 0.5,
             "mutual_destruction": 0.05333333333333334,
             "loss_without_elimination": 0.09,
+            "elimination": 0.41,
             "survival": 0.8566666666666667,
             "outcome_score": 24.0
           }
@@ -78,6 +84,7 @@
             "survived_without_elimination": 0.5133333333333333,
             "mutual_destruction": 0.04,
             "loss_without_elimination": 0.14666666666666667,
+            "elimination": 0.34,
             "survival": 0.8133333333333334,
             "outcome_score": 13.333333333333334
           },
@@ -86,6 +93,7 @@
             "survived_without_elimination": 0.4633333333333333,
             "mutual_destruction": 0.03333333333333333,
             "loss_without_elimination": 0.10666666666666667,
+            "elimination": 0.43,
             "survival": 0.86,
             "outcome_score": 27.333333333333332
           }
@@ -97,6 +105,7 @@
             "survived_without_elimination": 0.43333333333333335,
             "mutual_destruction": 0.01,
             "loss_without_elimination": 0.21666666666666667,
+            "elimination": 0.35,
             "survival": 0.7733333333333333,
             "outcome_score": 11.833333333333334
           },
@@ -105,6 +114,7 @@
             "survived_without_elimination": 0.5066666666666667,
             "mutual_destruction": 0.03333333333333333,
             "loss_without_elimination": 0.06333333333333334,
+            "elimination": 0.43,
             "survival": 0.9033333333333333,
             "outcome_score": 31.666666666666668
           }
@@ -116,6 +126,7 @@
             "survived_without_elimination": 0.39666666666666667,
             "mutual_destruction": 0.023333333333333334,
             "loss_without_elimination": 0.31333333333333335,
+            "elimination": 0.29,
             "survival": 0.6633333333333333,
             "outcome_score": -5.833333333333333
           },
@@ -124,6 +135,7 @@
             "survived_without_elimination": 0.4866666666666667,
             "mutual_destruction": 0.05,
             "loss_without_elimination": 0.09333333333333334,
+            "elimination": 0.42,
             "survival": 0.8566666666666667,
             "outcome_score": 25.166666666666668
           }
@@ -135,6 +147,7 @@
             "survived_without_elimination": 0.48,
             "mutual_destruction": 0.04,
             "loss_without_elimination": 0.14,
+            "elimination": 0.38,
             "survival": 0.82,
             "outcome_score": 18.0
           },
@@ -143,6 +156,7 @@
             "survived_without_elimination": 0.48,
             "mutual_destruction": 0.05,
             "loss_without_elimination": 0.05,
+            "elimination": 0.47,
             "survival": 0.9,
             "outcome_score": 34.5
           }
@@ -154,6 +168,7 @@
             "survived_without_elimination": 0.43666666666666665,
             "mutual_destruction": 0.07666666666666666,
             "loss_without_elimination": 0.17666666666666667,
+            "elimination": 0.38666666666666666,
             "survival": 0.7466666666666667,
             "outcome_score": 9.5
           },
@@ -162,6 +177,7 @@
             "survived_without_elimination": 0.4866666666666667,
             "mutual_destruction": 0.03333333333333333,
             "loss_without_elimination": 0.10666666666666667,
+            "elimination": 0.4066666666666667,
             "survival": 0.86,
             "outcome_score": 25.0
           }
@@ -173,6 +189,7 @@
             "survived_without_elimination": 0.49,
             "mutual_destruction": 0.03666666666666667,
             "loss_without_elimination": 0.17,
+            "elimination": 0.34,
             "survival": 0.7933333333333333,
             "outcome_score": 11.5
           },
@@ -181,6 +198,7 @@
             "survived_without_elimination": 0.5233333333333333,
             "mutual_destruction": 0.043333333333333335,
             "loss_without_elimination": 0.06333333333333334,
+            "elimination": 0.41333333333333333,
             "survival": 0.8933333333333333,
             "outcome_score": 28.5
           }
@@ -192,6 +210,7 @@
             "survived_without_elimination": 0.49,
             "mutual_destruction": 0.016666666666666666,
             "loss_without_elimination": 0.15,
+            "elimination": 0.36,
             "survival": 0.8333333333333334,
             "outcome_score": 18.5
           },
@@ -200,6 +219,7 @@
             "survived_without_elimination": 0.43666666666666665,
             "mutual_destruction": 0.02666666666666667,
             "loss_without_elimination": 0.10333333333333333,
+            "elimination": 0.46,
             "survival": 0.87,
             "outcome_score": 31.666666666666668
           }
@@ -210,6 +230,7 @@
         "survived_without_elimination": 0.45066666666666666,
         "mutual_destruction": 0.04,
         "loss_without_elimination": 0.192,
+        "elimination": 0.35733333333333334,
         "survival": 0.768,
         "outcome_score": 10.533333333333333
       },
@@ -218,6 +239,7 @@
         "survived_without_elimination": 0.4856666666666667,
         "mutual_destruction": 0.03933333333333333,
         "loss_without_elimination": 0.08833333333333333,
+        "elimination": 0.426,
         "survival": 0.8723333333333333,
         "outcome_score": 27.866666666666667
       },
@@ -238,6 +260,7 @@
             "survived_without_elimination": 0.38,
             "mutual_destruction": 0.08,
             "loss_without_elimination": 0.2,
+            "elimination": 0.42,
             "survival": 0.72,
             "outcome_score": 10.0
           },
@@ -246,6 +269,7 @@
             "survived_without_elimination": 0.47,
             "mutual_destruction": 0.11,
             "loss_without_elimination": 0.08,
+            "elimination": 0.45,
             "survival": 0.81,
             "outcome_score": 20.5
           }
@@ -257,6 +281,7 @@
             "survived_without_elimination": 0.43,
             "mutual_destruction": 0.13,
             "loss_without_elimination": 0.12,
+            "elimination": 0.45,
             "survival": 0.75,
             "outcome_score": 13.5
           },
@@ -265,6 +290,7 @@
             "survived_without_elimination": 0.46,
             "mutual_destruction": 0.11,
             "loss_without_elimination": 0.05,
+            "elimination": 0.49,
             "survival": 0.84,
             "outcome_score": 27.5
           }
@@ -276,6 +302,7 @@
             "survived_without_elimination": 0.42,
             "mutual_destruction": 0.09,
             "loss_without_elimination": 0.17,
+            "elimination": 0.41,
             "survival": 0.74,
             "outcome_score": 10.5
           },
@@ -284,6 +311,7 @@
             "survived_without_elimination": 0.48,
             "mutual_destruction": 0.09,
             "loss_without_elimination": 0.06,
+            "elimination": 0.46,
             "survival": 0.85,
             "outcome_score": 26.5
           }
@@ -295,6 +323,7 @@
             "survived_without_elimination": 0.46,
             "mutual_destruction": 0.09,
             "loss_without_elimination": 0.12,
+            "elimination": 0.42,
             "survival": 0.79,
             "outcome_score": 16.5
           },
@@ -303,6 +332,7 @@
             "survived_without_elimination": 0.45,
             "mutual_destruction": 0.1,
             "loss_without_elimination": 0.06,
+            "elimination": 0.49,
             "survival": 0.84,
             "outcome_score": 28.0
           }
@@ -314,6 +344,7 @@
             "survived_without_elimination": 0.43,
             "mutual_destruction": 0.07,
             "loss_without_elimination": 0.19,
+            "elimination": 0.38,
             "survival": 0.74,
             "outcome_score": 8.5
           },
@@ -322,6 +353,7 @@
             "survived_without_elimination": 0.42,
             "mutual_destruction": 0.08,
             "loss_without_elimination": 0.06,
+            "elimination": 0.52,
             "survival": 0.86,
             "outcome_score": 34.0
           }
@@ -333,6 +365,7 @@
             "survived_without_elimination": 0.35,
             "mutual_destruction": 0.07,
             "loss_without_elimination": 0.28,
+            "elimination": 0.37,
             "survival": 0.65,
             "outcome_score": -1.5
           },
@@ -341,6 +374,7 @@
             "survived_without_elimination": 0.44,
             "mutual_destruction": 0.1,
             "loss_without_elimination": 0.07,
+            "elimination": 0.49,
             "survival": 0.83,
             "outcome_score": 27.0
           }
@@ -352,6 +386,7 @@
             "survived_without_elimination": 0.47,
             "mutual_destruction": 0.1,
             "loss_without_elimination": 0.1,
+            "elimination": 0.43,
             "survival": 0.8,
             "outcome_score": 18.0
           },
@@ -360,6 +395,7 @@
             "survived_without_elimination": 0.42,
             "mutual_destruction": 0.08,
             "loss_without_elimination": 0.07,
+            "elimination": 0.51,
             "survival": 0.85,
             "outcome_score": 32.0
           }
@@ -371,6 +407,7 @@
             "survived_without_elimination": 0.39,
             "mutual_destruction": 0.14,
             "loss_without_elimination": 0.1,
+            "elimination": 0.51,
             "survival": 0.76,
             "outcome_score": 20.0
           },
@@ -379,6 +416,7 @@
             "survived_without_elimination": 0.45,
             "mutual_destruction": 0.12,
             "loss_without_elimination": 0.05,
+            "elimination": 0.5,
             "survival": 0.83,
             "outcome_score": 27.0
           }
@@ -390,6 +428,7 @@
             "survived_without_elimination": 0.42,
             "mutual_destruction": 0.07,
             "loss_without_elimination": 0.17,
+            "elimination": 0.41,
             "survival": 0.76,
             "outcome_score": 13.5
           },
@@ -398,6 +437,7 @@
             "survived_without_elimination": 0.5,
             "mutual_destruction": 0.09,
             "loss_without_elimination": 0.06,
+            "elimination": 0.44,
             "survival": 0.85,
             "outcome_score": 24.5
           }
@@ -409,6 +449,7 @@
             "survived_without_elimination": 0.49,
             "mutual_destruction": 0.07,
             "loss_without_elimination": 0.13,
+            "elimination": 0.38,
             "survival": 0.8,
             "outcome_score": 14.5
           },
@@ -417,6 +458,7 @@
             "survived_without_elimination": 0.43,
             "mutual_destruction": 0.12,
             "loss_without_elimination": 0.06,
+            "elimination": 0.51,
             "survival": 0.82,
             "outcome_score": 27.0
           }
@@ -427,6 +469,7 @@
         "survived_without_elimination": 0.424,
         "mutual_destruction": 0.091,
         "loss_without_elimination": 0.158,
+        "elimination": 0.418,
         "survival": 0.751,
         "outcome_score": 12.35
       },
@@ -435,6 +478,7 @@
         "survived_without_elimination": 0.452,
         "mutual_destruction": 0.1,
         "loss_without_elimination": 0.062,
+        "elimination": 0.486,
         "survival": 0.838,
         "outcome_score": 27.4
       },
@@ -2133,6 +2177,24 @@
       "role": "fresh confirmation",
       "before": 0.445,
       "after": 0.544,
+      "before_outcomes": {
+        "surviving_elimination": 0.445,
+        "survived_without_elimination": 0.215,
+        "mutual_destruction": 0.264,
+        "loss_without_elimination": 0.076,
+        "elimination": 0.709,
+        "survival": 0.66,
+        "outcome_score": 23.7
+      },
+      "after_outcomes": {
+        "surviving_elimination": 0.544,
+        "survived_without_elimination": 0.217,
+        "mutual_destruction": 0.171,
+        "loss_without_elimination": 0.068,
+        "elimination": 0.715,
+        "survival": 0.761,
+        "outcome_score": 39.05
+      },
       "ci95_gain_pp": [
         6.497499999999999,
         13.402499999999987
@@ -2149,6 +2211,24 @@
       "role": "fresh confirmation",
       "before": 0.42400000000000004,
       "after": 0.5599999999999999,
+      "before_outcomes": {
+        "surviving_elimination": 0.424,
+        "survived_without_elimination": 0.283,
+        "mutual_destruction": 0.218,
+        "loss_without_elimination": 0.075,
+        "elimination": 0.642,
+        "survival": 0.707,
+        "outcome_score": 24.0
+      },
+      "after_outcomes": {
+        "surviving_elimination": 0.56,
+        "survived_without_elimination": 0.149,
+        "mutual_destruction": 0.207,
+        "loss_without_elimination": 0.084,
+        "elimination": 0.767,
+        "survival": 0.709,
+        "outcome_score": 37.25
+      },
       "ci95_gain_pp": [
         9.7975,
         17.40249999999999
@@ -2165,6 +2245,24 @@
       "role": "fresh confirmation",
       "before": 0.5796666666666666,
       "after": 0.507,
+      "before_outcomes": {
+        "surviving_elimination": 0.5796666666666667,
+        "survived_without_elimination": 0.12966666666666668,
+        "mutual_destruction": 0.20133333333333334,
+        "loss_without_elimination": 0.08933333333333333,
+        "elimination": 0.781,
+        "survival": 0.7093333333333334,
+        "outcome_score": 38.96666666666667
+      },
+      "after_outcomes": {
+        "surviving_elimination": 0.507,
+        "survived_without_elimination": 0.21233333333333335,
+        "mutual_destruction": 0.20866666666666667,
+        "loss_without_elimination": 0.072,
+        "elimination": 0.7156666666666667,
+        "survival": 0.7193333333333334,
+        "outcome_score": 33.06666666666667
+      },
       "ci95_gain_pp": [
         -9.233333333333334,
         -5.532500000000003
@@ -2180,7 +2278,25 @@
       },
       "role": "development only",
       "before": 0.515,
-      "after": 0.49833333333333335
+      "after": 0.49833333333333335,
+      "before_outcomes": {
+        "surviving_elimination": 0.515,
+        "survived_without_elimination": 0.16833333333333333,
+        "mutual_destruction": 0.21333333333333335,
+        "loss_without_elimination": 0.10333333333333333,
+        "elimination": 0.7283333333333334,
+        "survival": 0.6833333333333333,
+        "outcome_score": 30.5
+      },
+      "after_outcomes": {
+        "surviving_elimination": 0.49833333333333335,
+        "survived_without_elimination": 0.14,
+        "mutual_destruction": 0.22333333333333333,
+        "loss_without_elimination": 0.13833333333333334,
+        "elimination": 0.7216666666666667,
+        "survival": 0.6383333333333333,
+        "outcome_score": 24.833333333333332
+      }
     }
   ],
   "training": {
@@ -2317,6 +2433,7 @@
             "development_survived_without_elimination": 0.42,
             "development_mutual_destruction": 0.11,
             "development_loss_without_elimination": 0.18,
+            "development_elimination": 0.4,
             "development_survival": 0.71,
             "development_outcome_score": 5.5
           },
@@ -2335,6 +2452,7 @@
             "development_survived_without_elimination": 0.22,
             "development_mutual_destruction": 0.37,
             "development_loss_without_elimination": 0.09,
+            "development_elimination": 0.69,
             "development_survival": 0.54,
             "development_outcome_score": 4.5
           },
@@ -2353,6 +2471,7 @@
             "development_survived_without_elimination": 0.32,
             "development_mutual_destruction": 0.38,
             "development_loss_without_elimination": 0.1,
+            "development_elimination": 0.58,
             "development_survival": 0.52,
             "development_outcome_score": -9.0
           },
@@ -2371,6 +2490,7 @@
             "development_survived_without_elimination": 0.18,
             "development_mutual_destruction": 0.41,
             "development_loss_without_elimination": 0.15,
+            "development_elimination": 0.67,
             "development_survival": 0.44,
             "development_outcome_score": -9.5
           },
@@ -2389,6 +2509,7 @@
             "development_survived_without_elimination": 0.23,
             "development_mutual_destruction": 0.36,
             "development_loss_without_elimination": 0.09,
+            "development_elimination": 0.68,
             "development_survival": 0.55,
             "development_outcome_score": 5.0
           },
@@ -2407,6 +2528,7 @@
             "development_survived_without_elimination": 0.3,
             "development_mutual_destruction": 0.34,
             "development_loss_without_elimination": 0.07,
+            "development_elimination": 0.63,
             "development_survival": 0.59,
             "development_outcome_score": 5.0
           },
@@ -2425,6 +2547,7 @@
             "development_survived_without_elimination": 0.38,
             "development_mutual_destruction": 0.31,
             "development_loss_without_elimination": 0.07,
+            "development_elimination": 0.55,
             "development_survival": 0.62,
             "development_outcome_score": 1.5
           },
@@ -2443,6 +2566,7 @@
             "development_survived_without_elimination": 0.22,
             "development_mutual_destruction": 0.4,
             "development_loss_without_elimination": 0.09,
+            "development_elimination": 0.69,
             "development_survival": 0.51,
             "development_outcome_score": 0.0
           },
@@ -2461,6 +2585,7 @@
             "development_survived_without_elimination": 0.4,
             "development_mutual_destruction": 0.23,
             "development_loss_without_elimination": 0.12,
+            "development_elimination": 0.48,
             "development_survival": 0.65,
             "development_outcome_score": 1.5
           },
@@ -2479,11 +2604,15 @@
             "development_survived_without_elimination": 0.27,
             "development_mutual_destruction": 0.25,
             "development_loss_without_elimination": 0.12,
+            "development_elimination": 0.61,
             "development_survival": 0.63,
             "development_outcome_score": 11.5
           }
         ],
         "clean_win_rate": 0.282,
+        "elimination_rate": 0.598,
+        "survival_rate": 0.5760000000000001,
+        "mutual_destruction_rate": 0.31599999999999995,
         "learning": [
           {
             "epoch": 1,
@@ -3257,6 +3386,7 @@
             "development_survived_without_elimination": 0.39,
             "development_mutual_destruction": 0.12,
             "development_loss_without_elimination": 0.2,
+            "development_elimination": 0.41,
             "development_survival": 0.68,
             "development_outcome_score": 3.0
           },
@@ -3275,6 +3405,7 @@
             "development_survived_without_elimination": 0.26,
             "development_mutual_destruction": 0.37,
             "development_loss_without_elimination": 0.05,
+            "development_elimination": 0.69,
             "development_survival": 0.58,
             "development_outcome_score": 8.5
           },
@@ -3293,6 +3424,7 @@
             "development_survived_without_elimination": 0.26,
             "development_mutual_destruction": 0.28,
             "development_loss_without_elimination": 0.07,
+            "development_elimination": 0.67,
             "development_survival": 0.65,
             "development_outcome_score": 18.0
           },
@@ -3311,6 +3443,7 @@
             "development_survived_without_elimination": 0.34,
             "development_mutual_destruction": 0.23,
             "development_loss_without_elimination": 0.05,
+            "development_elimination": 0.61,
             "development_survival": 0.72,
             "development_outcome_score": 21.5
           },
@@ -3329,6 +3462,7 @@
             "development_survived_without_elimination": 0.35,
             "development_mutual_destruction": 0.18,
             "development_loss_without_elimination": 0.17,
+            "development_elimination": 0.48,
             "development_survival": 0.65,
             "development_outcome_score": 4.0
           },
@@ -3347,6 +3481,7 @@
             "development_survived_without_elimination": 0.28,
             "development_mutual_destruction": 0.26,
             "development_loss_without_elimination": 0.05,
+            "development_elimination": 0.67,
             "development_survival": 0.69,
             "development_outcome_score": 23.0
           },
@@ -3365,6 +3500,7 @@
             "development_survived_without_elimination": 0.29,
             "development_mutual_destruction": 0.2,
             "development_loss_without_elimination": 0.12,
+            "development_elimination": 0.59,
             "development_survival": 0.68,
             "development_outcome_score": 17.0
           },
@@ -3383,6 +3519,7 @@
             "development_survived_without_elimination": 0.37,
             "development_mutual_destruction": 0.25,
             "development_loss_without_elimination": 0.07,
+            "development_elimination": 0.56,
             "development_survival": 0.68,
             "development_outcome_score": 11.5
           },
@@ -3401,6 +3538,7 @@
             "development_survived_without_elimination": 0.28,
             "development_mutual_destruction": 0.27,
             "development_loss_without_elimination": 0.08,
+            "development_elimination": 0.64,
             "development_survival": 0.65,
             "development_outcome_score": 15.5
           },
@@ -3419,11 +3557,15 @@
             "development_survived_without_elimination": 0.15,
             "development_mutual_destruction": 0.24,
             "development_loss_without_elimination": 0.09,
+            "development_elimination": 0.76,
             "development_survival": 0.67,
             "development_outcome_score": 31.0
           }
         ],
         "clean_win_rate": 0.368,
+        "elimination_rate": 0.6079999999999999,
+        "survival_rate": 0.665,
+        "mutual_destruction_rate": 0.24000000000000005,
         "learning": [
           {
             "epoch": 1,
@@ -4197,6 +4339,7 @@
             "development_survived_without_elimination": 0.1,
             "development_mutual_destruction": 0.27,
             "development_loss_without_elimination": 0.09,
+            "development_elimination": 0.81,
             "development_survival": 0.64,
             "development_outcome_score": 31.5
           },
@@ -4215,6 +4358,7 @@
             "development_survived_without_elimination": 0.13,
             "development_mutual_destruction": 0.23,
             "development_loss_without_elimination": 0.04,
+            "development_elimination": 0.83,
             "development_survival": 0.73,
             "development_outcome_score": 44.5
           },
@@ -4233,6 +4377,7 @@
             "development_survived_without_elimination": 0.2,
             "development_mutual_destruction": 0.21,
             "development_loss_without_elimination": 0.06,
+            "development_elimination": 0.74,
             "development_survival": 0.73,
             "development_outcome_score": 36.5
           },
@@ -4251,6 +4396,7 @@
             "development_survived_without_elimination": 0.29,
             "development_mutual_destruction": 0.23,
             "development_loss_without_elimination": 0.07,
+            "development_elimination": 0.64,
             "development_survival": 0.7,
             "development_outcome_score": 22.5
           },
@@ -4269,6 +4415,7 @@
             "development_survived_without_elimination": 0.11,
             "development_mutual_destruction": 0.2,
             "development_loss_without_elimination": 0.13,
+            "development_elimination": 0.76,
             "development_survival": 0.67,
             "development_outcome_score": 33.0
           },
@@ -4287,6 +4434,7 @@
             "development_survived_without_elimination": 0.18,
             "development_mutual_destruction": 0.14,
             "development_loss_without_elimination": 0.23,
+            "development_elimination": 0.59,
             "development_survival": 0.63,
             "development_outcome_score": 15.0
           },
@@ -4305,6 +4453,7 @@
             "development_survived_without_elimination": 0.26,
             "development_mutual_destruction": 0.23,
             "development_loss_without_elimination": 0.06,
+            "development_elimination": 0.68,
             "development_survival": 0.71,
             "development_outcome_score": 27.5
           },
@@ -4323,6 +4472,7 @@
             "development_survived_without_elimination": 0.18,
             "development_mutual_destruction": 0.27,
             "development_loss_without_elimination": 0.07,
+            "development_elimination": 0.75,
             "development_survival": 0.66,
             "development_outcome_score": 27.5
           },
@@ -4341,6 +4491,7 @@
             "development_survived_without_elimination": 0.15,
             "development_mutual_destruction": 0.23,
             "development_loss_without_elimination": 0.1,
+            "development_elimination": 0.75,
             "development_survival": 0.67,
             "development_outcome_score": 30.5
           },
@@ -4359,11 +4510,15 @@
             "development_survived_without_elimination": 0.28,
             "development_mutual_destruction": 0.21,
             "development_loss_without_elimination": 0.05,
+            "development_elimination": 0.67,
             "development_survival": 0.74,
             "development_outcome_score": 30.5
           }
         ],
         "clean_win_rate": 0.4999999999999999,
+        "elimination_rate": 0.7220000000000001,
+        "survival_rate": 0.688,
+        "mutual_destruction_rate": 0.22200000000000003,
         "learning": [
           {
             "epoch": 1,
@@ -5137,6 +5292,7 @@
             "development_survived_without_elimination": 0.24,
             "development_mutual_destruction": 0.26,
             "development_loss_without_elimination": 0.12,
+            "development_elimination": 0.64,
             "development_survival": 0.62,
             "development_outcome_score": 13.0
           },
@@ -5155,6 +5311,7 @@
             "development_survived_without_elimination": 0.26,
             "development_mutual_destruction": 0.23,
             "development_loss_without_elimination": 0.08,
+            "development_elimination": 0.66,
             "development_survival": 0.69,
             "development_outcome_score": 23.5
           },
@@ -5173,6 +5330,7 @@
             "development_survived_without_elimination": 0.26,
             "development_mutual_destruction": 0.23,
             "development_loss_without_elimination": 0.05,
+            "development_elimination": 0.69,
             "development_survival": 0.72,
             "development_outcome_score": 29.5
           },
@@ -5191,6 +5349,7 @@
             "development_survived_without_elimination": 0.3,
             "development_mutual_destruction": 0.24,
             "development_loss_without_elimination": 0.08,
+            "development_elimination": 0.62,
             "development_survival": 0.68,
             "development_outcome_score": 18.0
           },
@@ -5209,6 +5368,7 @@
             "development_survived_without_elimination": 0.28,
             "development_mutual_destruction": 0.21,
             "development_loss_without_elimination": 0.08,
+            "development_elimination": 0.64,
             "development_survival": 0.71,
             "development_outcome_score": 24.5
           },
@@ -5227,6 +5387,7 @@
             "development_survived_without_elimination": 0.25,
             "development_mutual_destruction": 0.22,
             "development_loss_without_elimination": 0.07,
+            "development_elimination": 0.68,
             "development_survival": 0.71,
             "development_outcome_score": 28.0
           },
@@ -5245,6 +5406,7 @@
             "development_survived_without_elimination": 0.25,
             "development_mutual_destruction": 0.23,
             "development_loss_without_elimination": 0.1,
+            "development_elimination": 0.65,
             "development_survival": 0.67,
             "development_outcome_score": 20.5
           },
@@ -5263,6 +5425,7 @@
             "development_survived_without_elimination": 0.24,
             "development_mutual_destruction": 0.21,
             "development_loss_without_elimination": 0.12,
+            "development_elimination": 0.64,
             "development_survival": 0.67,
             "development_outcome_score": 20.5
           },
@@ -5281,6 +5444,7 @@
             "development_survived_without_elimination": 0.3,
             "development_mutual_destruction": 0.23,
             "development_loss_without_elimination": 0.08,
+            "development_elimination": 0.62,
             "development_survival": 0.69,
             "development_outcome_score": 19.5
           },
@@ -5299,11 +5463,15 @@
             "development_survived_without_elimination": 0.2,
             "development_mutual_destruction": 0.23,
             "development_loss_without_elimination": 0.1,
+            "development_elimination": 0.7,
             "development_survival": 0.67,
             "development_outcome_score": 25.5
           }
         ],
         "clean_win_rate": 0.425,
+        "elimination_rate": 0.6540000000000001,
+        "survival_rate": 0.683,
+        "mutual_destruction_rate": 0.229,
         "learning": [
           {
             "epoch": 1,

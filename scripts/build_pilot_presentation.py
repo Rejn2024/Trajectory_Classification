@@ -50,7 +50,9 @@ def summarize(episodes):
     assert set(counts) <= set(OUTCOMES)
     n = len(episodes)
     result = {k: counts[k] / n for k in OUTCOMES}
+    result["elimination"] = sum(bool(e["eliminated"]) for e in episodes) / n
     result["survival"] = sum(bool(e["survived"]) for e in episodes) / n
+    assert all((e["outcome"] == OUTCOMES[0]) == (bool(e["eliminated"]) and bool(e["survived"])) for e in episodes)
     result["outcome_score"] = sum(SCORES[e["outcome"]] for e in episodes) / n
     return result
 
@@ -123,6 +125,8 @@ def collect_development(registry, evidence, inventory):
                                    "policy_loss": m["policy_loss"], "value_loss": m["value_loss"]})
             curves.append(metrics)
         population["clean_win_rate"] = float(np.mean([p["development_surviving_elimination"] for p in population["pilots"]]))
+        for metric in ("elimination", "survival", "mutual_destruction"):
+            population[f"{metric}_rate"] = float(np.mean([p[f"development_{metric}"] for p in population["pilots"]]))
         population["learning"] = [
             {"epoch": epoch + 1,
              "training_return": float(np.mean([c[epoch]["training_mean_return"] for c in curves])),
@@ -182,6 +186,7 @@ def collect(dest):
                 assert b["scenario"] == a["scenario"]
                 paired.append({"suite": suite, "pilot": pid, "seed": b["seed"],
                                "before_outcome": b["outcome"], "after_outcome": a["outcome"],
+                               "before_eliminated": int(b["eliminated"]), "after_eliminated": int(a["eliminated"]),
                                "before_survived": int(b["survived"]), "after_survived": int(a["survived"])})
             row = {"pilot": pid, **{k: summarize(v) for k, v in episodes.items()}}
             expected = next(p for p in comp[comparison_key]["pilots"] if p["pilot_id"] == pid)
@@ -251,10 +256,24 @@ def collect(dest):
                        ("skill_conditioned_parameters", "Per-skill parameter heads")):
         c = evidence(ROOT / registry[key]["job"] / "comparison.json")
         fresh = c["fresh_confirmation"]
+        combined = {"baseline": [], "experiment": []}
+        for pid in pilot_ids:
+            pair = {}
+            for population in combined:
+                path = ROOT / registry[key]["job"] / "confirmation" / population / pid / "evaluation.json"
+                pair[population] = evidence(path)["episodes"]
+                assert len(pair[population]) == c["confirmation_suite"]["scenarios"]
+                combined[population].extend(pair[population])
+            assert [(e["seed"], e["scenario"]) for e in pair["baseline"]] == [
+                (e["seed"], e["scenario"]) for e in pair["experiment"]]
+        before, after = (summarize(combined[name]) for name in ("baseline", "experiment"))
+        assert math.isclose(before[OUTCOMES[0]], fresh["baseline_mean_clean_win_rate"])
+        assert math.isclose(after[OUTCOMES[0]], fresh["experiment_mean_clean_win_rate"])
         data["history"].append({"label": label, "opponent": "simple", "pilots": 10,
                                 "suite": c["confirmation_suite"], "role": "fresh confirmation",
                                 "before": fresh["baseline_mean_clean_win_rate"],
                                 "after": fresh["experiment_mean_clean_win_rate"],
+                                "before_outcomes": before, "after_outcomes": after,
                                 "ci95_gain_pp": fresh["paired_scenario_bootstrap_ci95_percentage_points"]})
     bonus = registry["clean_win_bonus"]
     before, after = [], []
@@ -262,10 +281,11 @@ def collect(dest):
         pid = f"pilot_{i:03d}"
         before.extend(evidence(ROOT / bonus["baseline"] / pid / "test_episodes.json")["episodes"])
         after.extend(evidence(ROOT / bonus["training"] / pid / "test_episodes.json")["episodes"])
-    assert [e["seed"] for e in before] == [e["seed"] for e in after]
+    assert [(e["seed"], e["scenario"]) for e in before] == [(e["seed"], e["scenario"]) for e in after]
     data["history"].append({"label": "Terminal clean-win bonus (stopped)", "opponent": "simple", "pilots": 6,
                             "suite": {"seed": before[0]["seed"], "scenarios": 100}, "role": "development only",
-                            "before": summarize(before)[OUTCOMES[0]], "after": summarize(after)[OUTCOMES[0]]})
+                            "before": summarize(before)[OUTCOMES[0]], "after": summarize(after)[OUTCOMES[0]],
+                            "before_outcomes": summarize(before), "after_outcomes": summarize(after)})
     data_dir = dest / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     data["development"], curves, summaries = collect_development(registry, evidence, inventory)
@@ -326,18 +346,29 @@ def render(dest, data):
     def finish(fig, note):
         slides.append((fig, note))
 
-    s = data["suites"]["confirmation"]
-    f = page("Tactical adaptation: population outcomes", "Ten independent pilots • 150 additional epochs each • all training runs completed")
-    for x, value, label, detail in (
-        (.065, "38.6%", "CLEAN WINS", "32.7% before  /  +5.9 points"),
-        (.375, "83.8%", "SURVIVAL", "75.1% before  /  +8.7 points"),
-        (.685, "10 / 10", "PILOTS COMPLETED", "150 epochs each  /  0 worker retries"),
-    ):
-        f.text(x, .59, value, size=53, weight="bold", color=TEAL)
-        f.text(x, .515, label, size=15, weight="bold")
-        f.text(x, .456, detail, size=14, color=MUTED)
-    words(f, .065, .32, "Summary of findings", "On the same separate tactical cases, the adapted pilots won more often and survived more often.\nMutual destruction increased slightly: 9.1% → 10.0%.")
-    finish(f, "The matched 100-case confirmation comprises 1,000 flights per population with 100 shared scenario IDs. Clean wins require a confirmed missile elimination and survival. The report was generated from existing results without additional training.")
+    def outcome_table(fig, bounds, rows, labels, widths, fontsize=14):
+        ax = fig.add_axes(bounds)
+        ax.axis("off")
+        table = ax.table(cellText=rows, colLabels=labels, colWidths=widths,
+                         cellLoc="left", colLoc="left", bbox=[0, 0, 1, 1])
+        table.auto_set_font_size(False)
+        table.set_fontsize(fontsize)
+        for (row, _col), cell in table.get_celld().items():
+            cell.set_facecolor("#1c324b" if row == 0 else BG)
+            cell.set_edgecolor("#35485e")
+            cell.get_text().set_color(TEAL if row == 0 else FG)
+
+    f = page("Simple-opponent results", "Shared development benchmark • 10 pilots × 100 matched cases • seed 211307")
+    rows = [[p["label"], *[f"{100*p[key]:.1f}%" for key in
+             ("elimination_rate", "survival_rate", "clean_win_rate", "mutual_destruction_rate")]]
+            for p in data["development"]["populations"]]
+    outcome_table(f, [.065, .36, .87, .36], rows,
+                  ["Population", "Elimination", "Survival", "Clean win", "Mutual loss"],
+                  [.38, .155, .155, .155, .155])
+    f.text(.065, .285, "Lower learning rate: the main observed gain was survival, with similar elimination frequency.", size=16)
+    f.text(.065, .225, "Selected-skill probabilities: more eliminations, with a smaller further improvement in survival.", size=16)
+    f.text(.065, .145, "Elimination and survival overlap. Clean win records both occurring in the same flight.", size=16, color=TEAL)
+    finish(f, "Rates are equal-weight means over the same ten reward profiles. All four populations share training seed 7, validation seed 111257 and development seed 211307. Elimination means a confirmed missile elimination regardless of own survival; survival means the pilot remains alive regardless of opponent outcome. Neither is a substitute for their joint clean-win outcome. The separate parameter-head trial was not retained. The inspected benchmark is development evidence, not an untouched final test.")
 
     f = page("Experimental development", "Independent population training, controlled PPO experiments and tactical adaptation")
     entries = [
@@ -387,23 +418,11 @@ def render(dest, data):
     words(f, .065, .245, "Common outcome scoring", "Clean win +100  •  survive without elimination 0  •  mutual destruction −50  •  own loss −100")
     finish(f, "These are plausible ranges chosen as hypotheses, not calibrated optimal rewards. The population is not restricted to named aggression categories. Different weights encourage different tradeoffs but do not guarantee a particular style. Own reward chooses each pilot's checkpoint. Common benchmark reward and common outcome score are distinct summaries. Tactical adaptation reused the exact parent reward profiles; it did not add the terminal clean-win bonus.")
 
-    f = page("Shared development benchmark", "Simple opponent • the same 10 reward profiles and 100 cases per pilot • seed 211307")
-    ax = f.add_axes([.065, .28, .87, .44]); ax.axis("off")
-    rows = []
-    statuses = {"original": "Starting population", "lower_learning_rate": "Retained",
-                "selected_skill_parameters": "Tactical parent", "skill_conditioned_parameters": "Not retained"}
-    for e in data["development"]["populations"]:
-        rows.append([e["label"], "10 / 100", f"{100*e['clean_win_rate']:.1f}%",
-                     statuses[e["key"]]])
-    table = ax.table(cellText=rows, colLabels=["Population", "Pilots / cases", "Clean wins", "Status"],
-                     colWidths=[.38, .16, .17, .29], cellLoc="left", colLoc="left", bbox=[0, 0, 1, 1])
-    table.auto_set_font_size(False); table.set_fontsize(14)
-    for (row, _col), cell in table.get_celld().items():
-        cell.set_facecolor("#1c324b" if row == 0 else BG)
-        cell.set_edgecolor("#35485e"); cell.get_text().set_color(TEAL if row == 0 else FG)
-    f.text(.065, .19, "Bonus trial: 6 completed pilots only; matched development clean wins 51.5% → 49.8%.", size=14, color=MUTED)
-    f.text(.065, .135, "Fixed development cases support comparison across runs; they are not an untouched final test.", size=15, color=TEAL)
-    finish(f, "All four complete populations share training seed 7, validation seed 111257 and development seed 211307. The original test became a development benchmark after inspection; these are not training or validation clean-win rates. The retained sequence is 28.2, 36.8 and 50.0 percent. Larger per-skill heads scored 42.5 percent. The bonus trial only completed six pilots and must be compared with its matching six-pilot baseline. Historical confirmation suites remain in the evidence but are not the cross-experiment progress measure. Final testing should use untouched scenarios after development decisions are frozen.")
+    f = page("Interpretation of simple-opponent results", "Changes on the fixed development benchmark • percentage points relative to the matching baseline")
+    words(f, .065, .68, "LOWER LEARNING RATE", "Eliminations: +1.0 points.\nSurvival: +8.9 points.\nClean wins: +8.6 points.\nMutual destruction: −7.6 points.")
+    words(f, .535, .68, "SELECTED-SKILL PROBABILITIES", "Eliminations: +11.4 points.\nSurvival: +2.3 points.\nClean wins: +13.2 points.\nMutual destruction: −1.8 points.")
+    words(f, .065, .34, "Bounded trials", "Per-skill heads: eliminations fell 72.2% → 65.4%; survival was similar, 68.8% → 68.3%.\nBonus trial (6 matched pilots): eliminations 72.8% → 72.2%; survival 68.3% → 63.8%.\nBoth scored fewer clean wins; the shared-head selected-skill population was retained.")
+    finish(f, "Lower LR changed 0.0003 to 0.00003. The selected-skill correction changed action probabilities without increasing network capacity. The first intervention mainly improved survival on these cases; the second mainly increased eliminations. Overall, original to selected-skill elimination rose 12.4 points, survival 11.2 points and clean wins 21.8 points. These are observed outcome changes, not proof of a unique behavioural mechanism. Per-skill-head clean wins fell 50.0 to 42.5 percent. Bonus clean wins fell 51.5 to 49.83 percent in only six completed pilots; this subset cannot be compared directly with full-population averages.")
 
     f = page("Recorded training and validation", "Population mean own return • identical reward profiles across runs • 150 epochs per pilot")
     for bounds, metric, title in (([.08, .29, .38, .40], "training_return", "Training: 75 fresh cases / epoch"),
@@ -418,7 +437,7 @@ def render(dest, data):
     handles, labels = ax.get_legend_handles_labels()
     f.legend(handles, labels, loc="lower center", bbox_to_anchor=(.5, .14), ncol=2,
              frameon=False, labelcolor=FG, fontsize=12)
-    f.text(.065, .105, "Validation selects checkpoints. Own-return curves describe learning; clean wins measure combat outcomes.", size=14, color=MUTED)
+    f.text(.065, .105, "Own return describes learning. Assess combat using elimination, survival, clean wins and mutual destruction.", size=14, color=MUTED)
     finish(f, "Curves read recorded epoch metrics only. Training uses stochastic actions and changing cases; validation uses fixed cases and evaluation actions, so their returns need not coincide. Population means are descriptive: the same ten pilot reward profiles are held fixed across all four runs. Raw own reward must not rank pilots with different coefficients. Per-pilot returns and PPO losses are included in learning_curves.csv; selected-epoch validation statistics are in development_summary.csv. Historical validation files do not record the joint clean-win outcome, so it cannot be reconstructed from separate survival and elimination rates.")
 
     f = page("Tactical adaptation: experimental design", "Same reward profiles, skills, physics and PPO settings; new scripted opponent behaviour")
@@ -428,8 +447,14 @@ def render(dest, data):
     words(f, .535, .365, "COMPARE", "Repeat the same 300-case assessment.\nUse a separate 100-case confirmation\nfor both parent and adapted pilots.")
     finish(f, "Tactical evades incoming missiles and supports/cranks during its own missile flight; simple pursues and fires. Both use the same JSBSim aircraft. Seeds: training 1000007 onward, validation 1100000, assessment 1120000, confirmation 1220000. Report suites never select checkpoints. Retention against simple after adaptation has not been measured.")
 
-    f = page("Tactical confirmation outcomes", "Separate 100-case tactical confirmation • population means across all ten pilots")
-    ax = chart(f, [.085, .29, .83, .40])
+    s = data["suites"]["confirmation"]
+    f = page("Tactical adaptation outcomes", "Historical 100-case confirmation • seed 1220000 • the same cases before and after adaptation")
+    rows = [[label, *[f"{100*s[state][key]:.1f}%" for key in
+             ("elimination", "survival", OUTCOMES[0], OUTCOMES[2])]]
+            for state, label in (("before", "Before"), ("after", "After"))]
+    outcome_table(f, [.085, .55, .83, .17], rows,
+                  ["Population", "Elimination", "Survival", "Clean win", "Mutual loss"], [.24, .19, .19, .19, .19])
+    ax = chart(f, [.085, .25, .83, .23])
     labels = ["Clean win", "Survive, no elimination", "Mutual destruction", "Own loss, no elimination"]
     colours = [TEAL, BLUE, "#ffcf88", RED]
     left = np.zeros(2)
@@ -440,20 +465,17 @@ def render(dest, data):
             ax.text(offset + v / 2, y, f"{v:.1f}%", ha="center", va="center", color=BG, size=16, weight="bold")
         left += widths
     ax.set(yticks=[1, 0], yticklabels=["Before", "After"], xlim=(0, 100), xlabel="Share of flights (%)", ylim=(-.6, 1.6))
-    ax.legend(loc="lower center", bbox_to_anchor=(.5, 1.02), ncol=2, frameon=False, labelcolor=FG, fontsize=11)
+    ax.legend(loc="lower center", bbox_to_anchor=(.5, .93), ncol=4, frameon=False, labelcolor=FG, fontsize=10)
     f.text(.085, .145, "Clean-win gain: +5.9 pp  |  Paired scenario bootstrap 95% interval: +1.2 to +11.0 pp", size=17, color=TEAL)
-    finish(f, "Clean wins rose 32.7 to 38.6 percent. Survival rose 75.1 to 83.8, while losses without elimination fell 15.8 to 6.2. Mutual destruction rose 9.1 to 10.0 and remains a tradeoff. Intervals resample shared scenarios jointly across pilots, not all flights independently; they do not measure variation between training seeds.")
+    finish(f, "Eliminations rose 41.8 to 48.6 percent, survival 75.1 to 83.8 and clean wins 32.7 to 38.6. Losses without elimination fell 15.8 to 6.2. Mutual destruction rose 9.1 to 10.0 and remains a tradeoff. The table's elimination and survival rates overlap; the stacked bars below instead partition flights into exclusive outcomes. Intervals resample shared scenarios jointly across pilots and omit training-seed variability. The separate 300-case assessment records eliminations 35.73 to 42.60, survival 76.80 to 87.23 and clean wins 31.73 to 38.67 percent.")
 
     f = page("Per-pilot confirmation results", "Nine clean-win rates improved and one tied on the same 100 tactical confirmation cases")
-    ax = chart(f, [.085, .255, .83, .46])
-    x = np.arange(10)
-    for offset, state, colour, label in ((-.18, "before", BLUE, "Before"), (.18, "after", TEAL, "After")):
-        values = [100 * p[state][OUTCOMES[0]] for p in s["pilots"]]
-        bars = ax.bar(x + offset, values, width=.34, color=colour, label=label)
-        ax.bar_label(bars, fmt="%.0f", padding=4, color=FG, fontsize=12)
-    ax.set(xticks=x, xticklabels=[f"{i:03d}" for i in range(1, 11)], ylim=(0, 55), ylabel="Clean wins (%)", xlabel="Pilot")
-    ax.legend(frameon=False, labelcolor=FG, loc="upper left", ncol=2)
-    f.text(.085, .14, "Pilot 005: 44% clean wins, 86% survival. Pilot 007: 43%, 85%. Small gaps are uncertain.", size=17)
+    rows = [[p["pilot"].removeprefix("pilot_"), *[
+        f"{100*p['before'][key]:.0f}% → {100*p['after'][key]:.0f}%"
+        for key in ("elimination", "survival", OUTCOMES[0], OUTCOMES[2])]] for p in s["pilots"]]
+    outcome_table(f, [.085, .22, .83, .50], rows,
+                  ["Pilot", "Elimination", "Survival", "Clean win", "Mutual loss"], [.12, .22, .22, .22, .22], fontsize=13)
+    f.text(.085, .13, "005 after adaptation: 52% eliminations, 86% survival, 44% clean wins. Small gaps remain uncertain.", size=15)
     finish(f, "005 has the highest observed confirmation clean-win rate, not a proven universal best policy. On the distinct 300-case assessment, pilot 010 leads. No pilot regressed in confirmation clean-win rate, but individual confidence intervals overlap and one tied. Selected epochs vary from 55 to 150; the final epoch is not always the saved best model.")
 
     f = page("Behavioural variation after adaptation", "Observed decision frequencies on confirmation flights • descriptive measures, not aggression rankings")
