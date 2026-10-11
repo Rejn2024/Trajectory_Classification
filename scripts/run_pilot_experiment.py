@@ -50,6 +50,36 @@ def baseline_inventory(baseline, pilots):
     return {p.relative_to(baseline).as_posix(): digest(p) for p in paths}
 
 
+def experiment_reward(metadata, intervention):
+    """Return a separate recipe, preserving every original event coefficient."""
+    result = json.loads(json.dumps(metadata))
+    if intervention == "clean_win_bonus":
+        if result.get("version") != "2" or set(result.get("parameters", {})) != {"weights", "safe_altitude_m"}:
+            raise ValueError("clean-win experiment requires the original CombatReward v2 recipe")
+        result["version"] = "3"
+        result["parameters"]["clean_win_bonus"] = 250.0
+    return result
+
+
+def definition(metadata):
+    """Load a recorded combat reward; import new recipes only when requested."""
+    from bvr_behavior_prediction.rl.config import RewardWeights
+    from bvr_behavior_prediction.rl.reward import combat_reward_definition
+
+    parameters = metadata["parameters"]
+    expected = {"weights", "safe_altitude_m"}
+    factory = combat_reward_definition
+    if metadata["version"] == "3":
+        from bvr_behavior_prediction.rl.reward import clean_win_reward_definition
+        expected.add("clean_win_bonus")
+        factory = clean_win_reward_definition
+    elif metadata["version"] != "2":
+        raise ValueError("unsupported combat reward version")
+    if set(parameters) != expected:
+        raise ValueError("combat reward parameters differ from the recorded recipe")
+    return factory(metadata["name"], **{**parameters, "weights": RewardWeights(**parameters["weights"])})
+
+
 def prepare(args):
     root = Path(__file__).resolve().parents[1]
     baseline = args.prepare.resolve()
@@ -63,7 +93,32 @@ def prepare(args):
         raise ValueError("baseline learning rates must match")
     baseline_rate = next(iter(rates))
     baseline_selected = configs[0]["training"].get("selected_skill_parameters", False)
-    if args.intervention == "selected_skill_parameters":
+    baseline_conditioned = configs[0]["training"].get("skill_conditioned_parameters", False)
+    conditioned_parameters = baseline_conditioned
+    if args.intervention == "clean_win_bonus":
+        if not baseline_selected or baseline_conditioned:
+            raise ValueError("clean-win experiment requires a shared-head selected-skill baseline")
+        if args.learning_rate is not None and args.learning_rate != baseline_rate:
+            raise ValueError("clean-win experiment must preserve the baseline learning rate")
+        for pilot in pilots:
+            experiment_reward(pilot["reward"], args.intervention)
+        learning_rate = baseline_rate
+        selected_parameters = baseline_selected
+        label = "Clean-win bonus"
+        change = "Only a +250 terminal clean-win bonus was added to each pilot's existing event reward."
+        suffix = "clean_win_bonus"
+    elif args.intervention == "skill_conditioned_parameters":
+        if not baseline_selected or baseline_conditioned:
+            raise ValueError("skill-conditioned experiment requires a shared-head selected-skill baseline")
+        if args.learning_rate is not None and args.learning_rate != baseline_rate:
+            raise ValueError("skill-conditioned experiment must preserve the baseline learning rate")
+        learning_rate = baseline_rate
+        selected_parameters = True
+        conditioned_parameters = True
+        label = "Skill-conditioned parameters"
+        change = "Only the continuous parameter predictor changed from one shared head to one head per skill."
+        suffix = "skill_conditioned_parameters"
+    elif args.intervention == "selected_skill_parameters":
         if baseline_selected:
             raise ValueError("the baseline already uses selected-skill parameters")
         if args.learning_rate is not None and args.learning_rate != baseline_rate:
@@ -88,7 +143,7 @@ def prepare(args):
     end = args.confirmation_seed + args.confirmation_scenarios
     if not 0 <= args.confirmation_seed < end <= 2**32:
         raise ValueError("confirmation seed range is invalid")
-    settings = configs[0]["training"]
+    settings = {"skill_conditioned_parameters": False, **configs[0]["training"]}
     # Previous confirmation suites have already informed later experiments.
     # Reject reuse anywhere in this baseline's recorded experiment ancestry.
     ancestor = baseline
@@ -102,13 +157,22 @@ def prepare(args):
         ancestor_plan = read(ancestor_plan_path)
         previous_suites.append(ancestor_plan["confirmation"])
         ancestor = Path(ancestor_plan["baseline"])
+    # A sibling experiment can also have informed this proposal. Reserve suites
+    # from all registered jobs, not only the baseline's direct ancestry.
+    registry_path = root / "configs/pilot_experiments.json"
+    if registry_path.exists():
+        for experiment in read(registry_path)["experiments"].values():
+            recorded_plan = root / experiment["job"] / "experiment.json"
+            if recorded_plan.exists():
+                previous_suites.append(read(recorded_plan)["confirmation"])
     if any(max(args.confirmation_seed, suite["seed"]) < min(
             end, suite["seed"] + suite["scenarios"]) for suite in previous_suites):
         raise ValueError("confirmation overlaps a previously inspected confirmation suite")
     for pilot, config in zip(pilots, configs):
-        training = config["training"]
-        changed = {key for key in settings if training.get(key) != settings[key]}
-        if changed - {"seed", "output_dir"}:
+        training = {"skill_conditioned_parameters": False, **config["training"]}
+        changed = {key for key in settings.keys() | training.keys() if training.get(key) != settings.get(key)}
+        # Recovered populations retain their original per-pilot logging destinations.
+        if changed - {"seed", "output_dir", "mlflow_tracking_uri"}:
             raise ValueError(f"baseline training settings differ for {pilot['pilot_id']}: {changed}")
         if config["reward"] != pilot["reward"]:
             raise ValueError("baseline reward metadata is inconsistent")
@@ -124,7 +188,8 @@ def prepare(args):
                for seed, count in periods):
             raise ValueError("confirmation overlaps a previous training/evaluation seed range")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
-    job = root / "artifacts/rl_pilot_experiments" / f"{stamp}_{suffix}"
+    job_root = getattr(args, "job_root", None) or root / "artifacts/rl_pilot_experiments"
+    job = job_root.resolve() / f"{stamp}_{suffix}"
     job.mkdir(parents=True, exist_ok=False)
     source = job / "source"
     ignored = shutil.ignore_patterns("__pycache__", "*.pyc", "build", "install", ".git")
@@ -149,6 +214,8 @@ def prepare(args):
         "learning_rate": learning_rate, "pilot_count": len(pilots),
         "baseline_selected_skill_parameters": baseline_selected,
         "selected_skill_parameters": selected_parameters,
+        "baseline_skill_conditioned_parameters": baseline_conditioned,
+        "skill_conditioned_parameters": conditioned_parameters,
         "experiment_label": label, "change_description": change,
         "epochs_per_pilot": settings["epochs"], "device": "cuda",
         "torch_threads": min(8, settings["simulator_workers"]),
@@ -158,8 +225,28 @@ def prepare(args):
         "primary_measure": "mean clean win rate across matched reward profiles",
         "existing_test_role": "development comparison; these cases have already been inspected",
         "confirmation_role": "predeclared fresh paired evaluation; never used to select checkpoints",
+        "previous_confirmation_suites": previous_suites,
         "baseline_hashes": baseline_inventory(baseline, pilots), "source_hashes": source_hashes,
     }
+    if args.intervention == "skill_conditioned_parameters":
+        plan["initialization"] = "Repeat shared parameter-head initialization per skill without extra RNG draws."
+    if args.intervention == "clean_win_bonus":
+        plan["reward_intervention"] = {
+            "clean_win_bonus": 250.0,
+            "condition": "Once at episode end, own aircraft alive and confirmed opponent elimination.",
+            "original_coefficients": "unchanged",
+            "selection": "Maximum own validation return, including the new bonus.",
+            "benchmark": "Original common CombatReward v2; bonus excluded from both populations' benchmark evaluations.",
+        }
+    if args.intervention in ("skill_conditioned_parameters", "clean_win_bonus"):
+        plan["bounded_decision_criteria"] = {
+            "minimum_clean_win_gain_percentage_points": 3.0,
+            "minimum_ci_lower_bound_percentage_points_exclusive": 0.0,
+            "maximum_survival_drop_percentage_points": 2.0,
+            "maximum_mutual_destruction_increase_percentage_points": 2.0,
+            "training_runs_per_profile": 1,
+            "next_step": "Review this one comparison, then choose a population for tactical adaptation; no automatic extra trials.",
+        }
     write(job / "experiment.json", plan)
     write(job / "status.json", {"status": "prepared", "updated_utc": now()})
     print(json.dumps({key: value for key, value in plan.items()
@@ -286,6 +373,11 @@ def paired_comparison(old, new):
 def save_report(job, comparison):
     write(job / "comparison.json", comparison)
     sections = []
+    for key, title in (("bounded_decision_criteria", "Predeclared decision criteria"),
+                       ("decision", "Bounded experiment decision")):
+        if key in comparison:
+            sections.append(f"<h2>{title}</h2><pre>"
+                            f"{html.escape(json.dumps(comparison[key], indent=2))}</pre>")
     for key, title in (("existing_test", "Previously inspected comparison cases"),
                        ("fresh_confirmation", "Predeclared fresh confirmation cases")):
         result = comparison.get(key)
@@ -317,12 +409,48 @@ def save_report(job, comparison):
         f"<h1>{html.escape(comparison['experiment_label'])}</h1>"
         f"<p>Status: {html.escape(comparison['status'])}. "
         f"{html.escape(comparison['change_description'])} "
-        "All pilots trained from scratch, with matched rewards and scenario seeds.</p>"
+        "All pilots trained from scratch with matched scenario seeds; "
+        "the recorded intervention describes any reward differences.</p>"
         + "".join(sections)
         + "<p>Lower training loss is not the outcome measure. The baseline and all new models "
         "are retained regardless of the result. One training seed cannot establish robust improvement.</p>"
     )
     (job / "comparison.html").write_text(document, encoding="utf8")
+
+
+def bounded_decision(comparison, plan):
+    """Assess only a complete, predeclared confirmation suite; never select models."""
+    result = comparison.get("fresh_confirmation")
+    if comparison.get("status") != "completed" or result is None:
+        raise ValueError("a bounded decision requires completed fresh confirmation")
+    rows = result["pilots"]
+    if (len(rows) != plan["pilot_count"] or len({r["pilot_id"] for r in rows}) != len(rows)
+            or any(r["scenarios"] != plan["confirmation"]["scenarios"] for r in rows)
+            or comparison.get("confirmation_suite") != plan["confirmation"]):
+        raise ValueError("fresh confirmation is incomplete or differs from the plan")
+    criteria = plan["bounded_decision_criteria"]
+    survival_change = 100 * sum(r["experiment_survival_rate"] - r["baseline_survival_rate"]
+                               for r in rows) / len(rows)
+    mutual_change = 100 * sum(r["experiment_mutual_destruction_rate"] - r["baseline_mutual_destruction_rate"]
+                             for r in rows) / len(rows)
+    checks = {
+        "clean_win_gain": result["difference_percentage_points"] + 1e-9 >= criteria["minimum_clean_win_gain_percentage_points"],
+        "positive_paired_interval": result["paired_scenario_bootstrap_ci95_percentage_points"][0]
+            > criteria["minimum_ci_lower_bound_percentage_points_exclusive"],
+        "survival_margin": survival_change + 1e-9 >= -criteria["maximum_survival_drop_percentage_points"],
+        "mutual_destruction_margin": mutual_change - 1e-9 <= criteria["maximum_mutual_destruction_increase_percentage_points"],
+    }
+    passed = all(checks.values())
+    return {
+        "passed": passed, "checks": checks,
+        "clean_win_change_percentage_points": result["difference_percentage_points"],
+        "survival_change_percentage_points": survival_change,
+        "mutual_destruction_change_percentage_points": mutual_change,
+        "recommendation": (f"Use the {plan.get('experiment_label', 'experiment')} population for tactical adaptation review." if passed
+                           else "Retain the selected-skill baseline for tactical adaptation review."),
+        "limitation": "One training seed per profile; intervals describe scenario uncertainty only. Safety margins use point estimates.",
+        "automatic_followup_training": False,
+    }
 
 
 def run(job):
@@ -356,7 +484,6 @@ def run(job):
     from bvr_behavior_prediction.rl.config import PilotTrainingConfig, RewardWeights
     from bvr_behavior_prediction.rl.evaluation import summarize_test_episodes
     from bvr_behavior_prediction.rl.multi_pilot import PilotSpec, load_trained_pilot, train_pilots
-    from bvr_behavior_prediction.rl.reward import combat_reward_definition
     from bvr_behavior_prediction.rl.scenarios import ScenarioSampler
     from bvr_behavior_prediction.rl.trainer import PPOTrainer
 
@@ -372,13 +499,6 @@ def run(job):
         kwargs["output_dir"] = output
         return PilotTrainingConfig(**kwargs)
 
-    def definition(metadata):
-        if metadata["version"] != "2" or set(metadata["parameters"]) != {"weights", "safe_altitude_m"}:
-            raise ValueError("this runner supports the recorded CombatReward v2 recipe only")
-        return combat_reward_definition(metadata["name"],
-                                        weights=RewardWeights(**metadata["parameters"]["weights"]),
-                                        safe_altitude_m=metadata["parameters"]["safe_altitude_m"])
-
     # Exclusive marker prevents accidental duplicate training against this job.
     with (job / "started.json").open("x", encoding="utf8") as stream:
         json.dump({"pid": os.getpid(), "started_utc": now()}, stream)
@@ -389,9 +509,12 @@ def run(job):
         config = replace(config_for(baseline / batch["pilots"][0]["pilot_id"], output),
                          learning_rate=plan["learning_rate"],
                          selected_skill_parameters=plan["selected_skill_parameters"],
+                         **({"skill_conditioned_parameters": plan.get("skill_conditioned_parameters", False)}
+                            if "skill_conditioned_parameters" in config_fields else {}),
                          mlflow_experiment=f"jsbsim-combat-{plan['intervention']}",
                          mlflow_tracking_uri=f"sqlite:///{(job / 'mlflow.db').as_posix()}")
-        pilots = [PilotSpec(p["pilot_id"], p["seed"], definition(p["reward"])) for p in batch["pilots"]]
+        pilots = [PilotSpec(p["pilot_id"], p["seed"], definition(experiment_reward(p["reward"], plan["intervention"])))
+                  for p in batch["pilots"]]
         benchmark = definition(batch["benchmark_reward"])
         config_diffs = {}
         for pilot in pilots:
@@ -399,12 +522,18 @@ def run(job):
             experiment = replace(config, seed=pilot.seed).as_dict()
             changes = {k: {"old": original[k], "new": experiment[k]}
                        for k in original if original[k] != experiment[k]}
-            changed_setting = ("selected_skill_parameters" if plan["intervention"] ==
-                               "selected_skill_parameters" else "learning_rate")
-            if set(changes) != {changed_setting, "mlflow_experiment", "mlflow_tracking_uri"}:
+            changed_settings = {"selected_skill_parameters": {"selected_skill_parameters"},
+                                "skill_conditioned_parameters": {"skill_conditioned_parameters"},
+                                "learning_rate_only": {"learning_rate"},
+                                "clean_win_bonus": set()}[plan["intervention"]]
+            if set(changes) != changed_settings | {"mlflow_experiment", "mlflow_tracking_uri"}:
                 raise ValueError(f"unexpected configuration difference: {changes}")
             config_diffs[pilot.pilot_id] = changes
         write(job / "configuration_differences.json", config_diffs)
+        write(job / "reward_differences.json", {
+            p.pilot_id: {"old": old["reward"], "new": p.reward.as_dict()}
+            for old, p in zip(batch["pilots"], pilots) if old["reward"] != p.reward.as_dict()
+        })
         print(f"Starting {len(pilots)} pilots, {config.epochs} epochs each: {plan['change_description']}", flush=True)
         results = train_pilots(
             pilots, config, make_environment_factory,
@@ -415,6 +544,8 @@ def run(job):
                 "baseline_learning_rate": plan["baseline_learning_rate"],
                 "learning_rate": plan["learning_rate"], "source_snapshot": str(source),
                 "selected_skill_parameters": plan["selected_skill_parameters"],
+                "skill_conditioned_parameters": plan.get("skill_conditioned_parameters", False),
+                "reward_intervention": plan.get("reward_intervention"),
             }},
             reuse_completed_from=Path(recovery["previous_training"]) if recovery else None,
         )
@@ -431,6 +562,10 @@ def run(job):
             comparison["recovery"] = {k: recovery[k] for k in (
                 "previous_job", "reused_pilots", "restart_from_scratch", "note",
             )}
+        if "bounded_decision_criteria" in plan:
+            comparison["bounded_decision_criteria"] = plan["bounded_decision_criteria"]
+        if "reward_intervention" in plan:
+            comparison["reward_intervention"] = plan["reward_intervention"]
         save_report(job, comparison)
         suite = plan["confirmation"]
         scenarios = ScenarioSampler(suite["seed"]).sample_batch(suite["scenarios"])
@@ -446,7 +581,7 @@ def run(job):
                 run_config = config_for(root / pilot.pilot_id, directory)
                 model_config = read(root / pilot.pilot_id / "config.json")
                 trainer = PPOTrainer(make_environment_factory(run_config), model_config["observation_size"],
-                                     run_config, plan["device"], definition(pilot.reward.as_dict()))
+                                     run_config, plan["device"], definition(model_config["reward"]))
                 try:
                     trainer.pilot.load_state_dict(load_trained_pilot(root / pilot.pilot_id, plan["device"]).state_dict())
                     episodes = trainer.evaluate_scenarios(scenarios, seeds, reward_definition=benchmark)
@@ -464,6 +599,8 @@ def run(job):
         if baseline_inventory(baseline, batch["pilots"]) != plan["baseline_hashes"]:
             raise RuntimeError("baseline files changed during the experiment")
         comparison.update(status="completed", completed_utc=now(), baseline_unchanged=True)
+        if "bounded_decision_criteria" in plan:
+            comparison["decision"] = bounded_decision(comparison, plan)
         save_report(job, comparison)
         status.update(status="completed", updated_utc=now(), trained_pilots=len(results),
                       comparison=str(job / "comparison.html"), baseline_unchanged=True)
@@ -482,16 +619,18 @@ if __name__ == "__main__":
     mode.add_argument("--prepare", type=Path)
     mode.add_argument("--run-job", type=Path)
     mode.add_argument("--recover", type=Path, help="prepare a fresh job reusing completed pilots from a failed job")
-    parser.add_argument("--intervention", choices=("learning_rate_only", "selected_skill_parameters"),
+    parser.add_argument("--intervention", choices=("learning_rate_only", "selected_skill_parameters", "skill_conditioned_parameters", "clean_win_bonus"),
                         default="learning_rate_only")
     parser.add_argument("--learning-rate", type=float)
     parser.add_argument("--confirmation-scenarios", type=int, default=100)
     parser.add_argument("--confirmation-seed", type=int)
+    parser.add_argument("--job-root", type=Path, help="optional output parent for diagnostic smoke jobs")
     options = parser.parse_args()
     if options.prepare:
         if options.confirmation_seed is None:
             options.confirmation_seed = (
-                620000 if options.intervention == "selected_skill_parameters" else 420000
+                {"learning_rate_only": 420000, "selected_skill_parameters": 620000,
+                 "skill_conditioned_parameters": 820000, "clean_win_bonus": 920000}[options.intervention]
             )
         prepare(options)
     elif options.recover:

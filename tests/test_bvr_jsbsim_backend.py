@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from bvr_behavior_prediction.rl.bvr_jsbsim_backend import BVRJSBSimBackend
 
@@ -108,6 +109,19 @@ def test_backend_declares_expected_compact_observation_and_energy_fields():
         '"red_altitude_m"',
     ):
         assert field in source
+
+
+def test_tactical_selection_reaches_simulator_and_episode_metadata(tmp_path):
+    backend = BVRJSBSimBackend(
+        {"range_m": 30_000, "blue_altitude_m": 6000, "red_altitude_m": 7000},
+        env_factory=_Environment, log_dir=tmp_path, opponent_type="tactical",
+    )
+    assert backend.env.config["blue_opponent_type"] == "tactical"
+    assert backend.reset(7)[1]["red_policy"] == "tactical"
+    assert _step(backend)["red_policy"] == "tactical"
+    backend.close()
+    with pytest.raises(ValueError, match="opponent_type"):
+        BVRJSBSimBackend({}, opponent_type="misspelled")
 
 
 def _backend(tmp_path):

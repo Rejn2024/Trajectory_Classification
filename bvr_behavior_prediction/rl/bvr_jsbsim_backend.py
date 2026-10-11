@@ -15,14 +15,18 @@ class BVRJSBSimBackend:
     exposes that aircraft as ``blue`` to preserve the public blue-pilot contract
     used by the training pipeline.  Both aircraft are F-16s using BVR Sim's
     JSBSim FDM, and the opposing (internally blue) aircraft uses the simulator's
-    simple baseline policy.
+    selected scripted baseline policy (simple by default).
     """
 
     CONTROLLED_ID = "A01"
     OPPONENT_ID = "B01"
     OBSERVATION_SIZE = 47  # compact 1-v-1 observation supplied by BVR Sim
 
-    def __init__(self, scenario: dict, recording_path=None, env_factory=None, log_dir=None):
+    def __init__(self, scenario: dict, recording_path=None, env_factory=None, log_dir=None,
+                 opponent_type="simple"):
+        if opponent_type not in ("simple", "tactical"):
+            raise ValueError("opponent_type must be simple or tactical")
+        self.opponent_type = opponent_type
         self.scenario = scenario
         self.recording_path = Path(recording_path) if recording_path else None
         self.skill_manager = SkillManager()
@@ -59,7 +63,7 @@ class BVRJSBSimBackend:
                 self.OPPONENT_ID: {"model": "F16", "record": False},
             },
             "obs_type": "compact",
-            "blue_opponent_type": "simple",
+            "blue_opponent_type": self.opponent_type,
             "initial_separation_nm": self.scenario["range_m"] / 1852.0,
             "formation_max_spread_nm": 0.0,
             # SpawnManager samples the two aircraft independently in this interval.
@@ -107,7 +111,7 @@ class BVRJSBSimBackend:
         return {
             **self._target_geometry(),
             **self._initial_geometry,
-            "red_policy": "simple",
+            "red_policy": self.opponent_type,
             "blue_speed_mps": float(controlled.get_speed()),
             "blue_altitude_m": float(controlled.get_altitude()),
             "red_speed_mps": float(opponent.get_speed()),
@@ -169,7 +173,7 @@ class BVRJSBSimBackend:
         }
 
     def step(self, blue_action, red_action):
-        # The opponent is owned by BVR Sim's simple baseline; the second action is
+        # The opponent is owned by BVR Sim's scripted baseline; the second action is
         # accepted only to satisfy BluePilotEnvironment's simulator-neutral API.
         del red_action
         name = blue_action["skill_name"]
