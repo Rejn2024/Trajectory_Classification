@@ -55,6 +55,85 @@ def summarize(episodes):
     return result
 
 
+def collect_development(registry, evidence, inventory):
+    """Package the fixed simple-opponent benchmark and recorded learning curves."""
+    populations = [
+        ("original", "Original", registry["lower_learning_rate"]["baseline"]),
+        ("lower_learning_rate", "Reduced learning rate", registry["lower_learning_rate"]["training"]),
+        ("selected_skill_parameters", "Selected-skill probabilities", registry["selected_skill_parameters"]["training"]),
+        ("skill_conditioned_parameters", "Per-skill parameter heads", registry["skill_conditioned_parameters"]["training"]),
+    ]
+    result = {"opponent": "simple", "role": "shared development benchmark",
+              "seed": 211307, "scenarios_per_pilot": 100, "training_seed": 7,
+              "validation_seed": 111257, "validation_scenarios_per_pilot": 50,
+              "populations": []}
+    curve_rows, summary_rows = [], []
+    reference_cases, reference_schedule, reference_rewards = None, None, {}
+    for key, label, directory in populations:
+        population = {"key": key, "label": label, "directory": directory, "pilots": []}
+        curves = []
+        for i in range(1, 11):
+            pid = f"pilot_{i:03d}"
+            run = ROOT / directory / pid
+            config = evidence(run / "config.json")["training"]
+            manifest = evidence(run / "manifest.json")
+            evaluation = evidence(run / "test_episodes.json")
+            assert config["seed"] == 7 and config["evaluation_seed"] == 111257
+            assert config["evaluation_scenarios_per_epoch"] == 50
+            assert config["test_seed"] == 211307 and config["test_scenarios_per_pilot"] == 100
+            assert sha(run / "best_model.pt") == evaluation["checkpoint_sha256"] == manifest["checkpoint_sha256"]
+            if key == "original":
+                reference_rewards[pid] = manifest["reward"]
+            assert manifest["reward"] == reference_rewards[pid]
+            episodes = evaluation["episodes"]
+            cases = [(e["seed"], e["scenario"]) for e in episodes]
+            assert [e["seed"] for e in episodes] == list(range(211307, 211407))
+            if reference_cases is None:
+                reference_cases = cases
+            assert cases == reference_cases, f"Mismatched development cases: {key}/{pid}"
+            path = run / "training_metrics.jsonl"
+            inventory[path.relative_to(ROOT).as_posix()] = sha(path)
+            metrics = [json.loads(line) for line in path.read_text().splitlines()]
+            assert [m["epoch"] for m in metrics] == list(range(1, 151))
+            schedule = [(m["training_seed_first"], m["training_seed_last"]) for m in metrics]
+            assert schedule == [(7 + epoch * 75, 81 + epoch * 75) for epoch in range(150)]
+            if reference_schedule is None:
+                reference_schedule = schedule
+            assert schedule == reference_schedule
+            assert all(m["episodes"] == 75 for m in metrics)
+            assert all(math.isfinite(v) for m in metrics for v in m.values() if isinstance(v, float))
+            assert [m["epoch"] for m in metrics if m["evaluation_performed"]] == [1, *range(5, 151, 5)]
+            selected = max((m for m in metrics if m["evaluation_performed"]), key=lambda m: m["mean_return"])
+            assert math.isclose(selected["mean_return"], manifest["selection_return"])
+            row = {"population": key, "label": label, "pilot": pid,
+                   "selected_epoch": selected["epoch"], "checkpoint_sha256": manifest["checkpoint_sha256"],
+                   "final_training_return": metrics[-1]["training_mean_return"],
+                   "selected_validation_return": manifest["selection_return"],
+                   "validation_benchmark_return": manifest["benchmark_return"],
+                   "validation_survival": manifest["survival_rate"],
+                   "validation_elimination": manifest["elimination_rate"],
+                   **{f"development_{k}": v for k, v in summarize(episodes).items()}}
+            population["pilots"].append(row)
+            summary_rows.append(row)
+            for m in metrics:
+                curve_rows.append({"population": key, "pilot": pid, "epoch": m["epoch"],
+                                   "training_return": m["training_mean_return"],
+                                   "validation_return": m["mean_return"] if m["evaluation_performed"] else None,
+                                   "best_validation_return": m["best_return"],
+                                   "policy_loss": m["policy_loss"], "value_loss": m["value_loss"]})
+            curves.append(metrics)
+        population["clean_win_rate"] = float(np.mean([p["development_surviving_elimination"] for p in population["pilots"]]))
+        population["learning"] = [
+            {"epoch": epoch + 1,
+             "training_return": float(np.mean([c[epoch]["training_mean_return"] for c in curves])),
+             "validation_return": float(np.mean([c[epoch]["mean_return"] for c in curves]))
+             if all(c[epoch]["evaluation_performed"] for c in curves) else None}
+            for epoch in range(150)
+        ]
+        result["populations"].append(population)
+    return result, curve_rows, summary_rows
+
+
 def collect(dest):
     """Read, cross-check and copy only presentation evidence, never model weights."""
     registry = read(ROOT / "configs/pilot_experiments.json")["experiments"]
@@ -189,6 +268,12 @@ def collect(dest):
                             "before": summarize(before)[OUTCOMES[0]], "after": summarize(after)[OUTCOMES[0]]})
     data_dir = dest / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
+    data["development"], curves, summaries = collect_development(registry, evidence, inventory)
+    for filename, rows in (("learning_curves.csv", curves), ("development_summary.csv", summaries)):
+        with (data_dir / filename).open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(stream, fieldnames=list(rows[0]), lineterminator="\n")
+            writer.writeheader()
+            writer.writerows(rows)
     write_json(data_dir / "results.json", data)
     write_json(data_dir / "source_hashes.json", inventory)
     with (data_dir / "paired_outcomes.csv").open("w", newline="", encoding="utf-8") as stream:
@@ -258,7 +343,7 @@ def render(dest, data):
     entries = [
         ("04 → 05", "One PPO pilot became an arbitrary-size population with separate rewards and checkpoints."),
         ("Reward diversity", "Monotonic sweep → relative Halton profiles → seeded, independent uniform ranges."),
-        ("Evaluation design", "Fresh training cases, common outcome metrics and separate confirmation suites."),
+        ("Evaluation design", "Recorded training/validation and a fixed benchmark; final testing after development."),
         ("Optimisation", "Lower learning rate and selected-skill probabilities improved clean wins."),
         ("Bounded trials", "More parameter heads underperformed; the terminal-bonus trial stopped incomplete."),
         ("Tactical", "The stronger shared-head population was retained and adapted to scripted tactical."),
@@ -302,23 +387,39 @@ def render(dest, data):
     words(f, .065, .245, "Common outcome scoring", "Clean win +100  •  survive without elimination 0  •  mutual destruction −50  •  own loss −100")
     finish(f, "These are plausible ranges chosen as hypotheses, not calibrated optimal rewards. The population is not restricted to named aggression categories. Different weights encourage different tradeoffs but do not guarantee a particular style. Own reward chooses each pilot's checkpoint. Common benchmark reward and common outcome score are distinct summaries. Tactical adaptation reused the exact parent reward profiles; it did not add the terminal clean-win bonus.")
 
-    f = page("Controlled experiment results", "Clean wins against simple • each row compares the same pilots on the same cases")
+    f = page("Shared development benchmark", "Simple opponent • the same 10 reward profiles and 100 cases per pilot • seed 211307")
     ax = f.add_axes([.065, .28, .87, .44]); ax.axis("off")
     rows = []
-    for e in data["history"]:
-        rows.append([e["label"], f"{e['pilots']} / {e['suite']['scenarios']}",
-                     f"{100*e['before']:.1f}% → {100*e['after']:.1f}%",
-                     f"{100*(e['after']-e['before']):+.1f} pp",
-                     str(e["suite"]["seed"])])
-    table = ax.table(cellText=rows, colLabels=["Intervention", "Pilots / cases", "Before → after", "Change", "Suite seed"],
-                     colWidths=[.38, .16, .20, .12, .14], cellLoc="left", colLoc="left", bbox=[0, 0, 1, 1])
+    statuses = {"original": "Starting population", "lower_learning_rate": "Retained",
+                "selected_skill_parameters": "Tactical parent", "skill_conditioned_parameters": "Not retained"}
+    for e in data["development"]["populations"]:
+        rows.append([e["label"], "10 / 100", f"{100*e['clean_win_rate']:.1f}%",
+                     statuses[e["key"]]])
+    table = ax.table(cellText=rows, colLabels=["Population", "Pilots / cases", "Clean wins", "Status"],
+                     colWidths=[.38, .16, .17, .29], cellLoc="left", colLoc="left", bbox=[0, 0, 1, 1])
     table.auto_set_font_size(False); table.set_fontsize(14)
     for (row, _col), cell in table.get_celld().items():
         cell.set_facecolor("#1c324b" if row == 0 else BG)
         cell.set_edgecolor("#35485e"); cell.get_text().set_color(TEAL if row == 0 else FG)
-    f.text(.065, .19, "First three rows: fresh confirmation. Bonus: only 6 completed pilots, development cases; no confirmation.", size=14, color=MUTED)
-    f.text(.065, .135, "Suite difficulty varies. Reported changes compare matched cases within each experiment.", size=16, color=TEAL)
-    finish(f, "Lower LR was 0.0003 to 0.00003. Selected-skill probabilities improved clean wins without adding parameters. Separate per-skill heads increased parameters from 107,970 to 141,762 and underperformed under this budget. The +250 terminal bonus experiment stopped with six completed pilots and pilot 007 at 38 epochs. These findings do not establish that all larger models or terminal rewards are worse.")
+    f.text(.065, .19, "Bonus trial: 6 completed pilots only; matched development clean wins 51.5% → 49.8%.", size=14, color=MUTED)
+    f.text(.065, .135, "Fixed development cases support comparison across runs; they are not an untouched final test.", size=15, color=TEAL)
+    finish(f, "All four complete populations share training seed 7, validation seed 111257 and development seed 211307. The original test became a development benchmark after inspection; these are not training or validation clean-win rates. The retained sequence is 28.2, 36.8 and 50.0 percent. Larger per-skill heads scored 42.5 percent. The bonus trial only completed six pilots and must be compared with its matching six-pilot baseline. Historical confirmation suites remain in the evidence but are not the cross-experiment progress measure. Final testing should use untouched scenarios after development decisions are frozen.")
+
+    f = page("Recorded training and validation", "Population mean own return • identical reward profiles across runs • 150 epochs per pilot")
+    for bounds, metric, title in (([.08, .29, .38, .40], "training_return", "Training: 75 fresh cases / epoch"),
+                                  ([.56, .29, .38, .40], "validation_return", "Validation: 50 fixed cases, seed 111257")):
+        ax = chart(f, bounds)
+        for p, colour in zip(data["development"]["populations"], (BLUE, "#ffcf88", TEAL, RED)):
+            points = [m for m in p["learning"] if m[metric] is not None]
+            ax.plot([m["epoch"] for m in points], [m[metric] for m in points], color=colour,
+                    label=p["label"], linewidth=1.6)
+        ax.set(title=title, xlabel="Epoch", ylabel="Mean own return")
+        ax.grid(alpha=.15)
+    handles, labels = ax.get_legend_handles_labels()
+    f.legend(handles, labels, loc="lower center", bbox_to_anchor=(.5, .14), ncol=2,
+             frameon=False, labelcolor=FG, fontsize=12)
+    f.text(.065, .105, "Validation selects checkpoints. Own-return curves describe learning; clean wins measure combat outcomes.", size=14, color=MUTED)
+    finish(f, "Curves read recorded epoch metrics only. Training uses stochastic actions and changing cases; validation uses fixed cases and evaluation actions, so their returns need not coincide. Population means are descriptive: the same ten pilot reward profiles are held fixed across all four runs. Raw own reward must not rank pilots with different coefficients. Per-pilot returns and PPO losses are included in learning_curves.csv; selected-epoch validation statistics are in development_summary.csv. Historical validation files do not record the joint clean-win outcome, so it cannot be reconstructed from separate survival and elimination rates.")
 
     f = page("Tactical adaptation: experimental design", "Same reward profiles, skills, physics and PPO settings; new scripted opponent behaviour")
     words(f, .065, .68, "BEFORE", "Freeze the 10 selected-skill parents.\nAssess all on 300 tactical cases.\nKeep the originals unchanged.")
@@ -374,11 +475,11 @@ def render(dest, data):
     words(f, .535, .68, "EVALUATION LIMITATIONS", "One training seed per reward profile.\nNo post-adaptation test against simple.\nMutual destruction did not improve\non the confirmation suite.\nNo universal best pilot or style proven.")
     f.text(.065, .195, "No direct seed overlap was found across training, selection and tactical report suites.", size=17, color=TEAL)
     f.text(.065, .13, "Held-out gains do not establish the absence of overfitting to this simulator or opponent.", size=16)
-    finish(f, "Own return and PPO loss are unsuitable for ranking pilots with different reward scales. The 300-case assessment improved from 31.73 to 38.67 percent, paired interval +3.87 to +9.90 points. This assessment is distinct from confirmation. Simulation results cannot establish real-world flight performance. Potential further evaluation includes retention against simple, broader held-out geometries and opponents, and repeated training seeds; these were outside the reported experiments.")
+    finish(f, "Own return and PPO loss are unsuitable for ranking pilots with different reward scales. The 300-case assessment improved from 31.73 to 38.67 percent, paired interval +3.87 to +9.90 points. Historical tactical and simple confirmation suites have already been inspected and cannot serve as untouched final tests in later experiments. Ongoing comparisons use recorded training, validation and fixed development cases. Final testing should occur after model and reward choices are frozen, on unused scenarios shared across all final candidates. Simulation results cannot establish real-world flight performance.")
 
     f = page("Portable reports and supporting data", "PDF and self-contained HTML formats; no notebook runtime, Python, GPU or LFS download required")
     words(f, .065, .68, "REPORTS", "presentation.pdf — slide deck\npresentation.html — offline browser deck\nREADME.md — technical report")
-    words(f, .535, .68, "DATA", "data/results.json — verified summaries\ndata/paired_outcomes.csv — 4,000 paired rows\ndata/reward_profiles.csv — exact coefficients")
+    words(f, .535, .68, "DATA", "data/results.json — verified summaries\ndata/learning_curves.csv — recorded epochs\ndata/development_summary.csv — pilot results")
     words(f, .065, .345, "Principal findings", "Controlled comparisons improved PPO performance in a diverse pilot population.\nSubsequent tactical adaptation improved clean wins and survival on separate\nevaluation cases, with continued variation in observed behaviour.")
     finish(f, "The branch also contains executed read-only report notebooks for technical follow-up. Large model weights remain in the existing local experiment directories; the presentation evidence is committed as ordinary Git files. Historical shared MP4 demonstrations depict earlier populations and must not be labelled as tactical adaptation footage.")
 
@@ -407,7 +508,7 @@ document.addEventListener('keydown',e=>{if(['ArrowRight','PageDown',' '].include
     (dest / "presentation.html").write_text(markup, encoding="utf-8", newline="\n")
     # Preview sheets are local checks, not extra files needed by the other PC.
     from PIL import Image, ImageOps
-    sheet = Image.new("RGB", (1200, 4 * 225), BG)
+    sheet = Image.new("RGB", (1200, math.ceil(len(thumbs) / 3) * 225), BG)
     for i, png in enumerate(thumbs):
         tile = ImageOps.contain(Image.open(io.BytesIO(png)).convert("RGB"), (400, 225))
         sheet.paste(tile, ((i % 3) * 400, (i // 3) * 225))

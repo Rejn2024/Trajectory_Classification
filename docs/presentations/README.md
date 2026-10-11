@@ -7,8 +7,8 @@ GitHub shows its source rather than hosting the slideshow. Both files are standa
 no Jupyter, Python, network connection, GPU, model weights or Git LFS are required.
 In HTML, use arrow keys; **N** toggles supplementary notes and **F** enters fullscreen.
 
-The deck contains **12 slides**. Slides 1–9 cover the methodology and principal results;
-slides 10–12 cover observed behaviour, limitations and supporting evidence. The report
+The deck contains **13 slides**. Slides 1–10 cover the methodology and principal results;
+slides 11–13 cover observed behaviour, limitations and supporting evidence. The report
 is generated from existing files without additional training, simulations or evaluation flights.
 
 ## Executive summary
@@ -69,21 +69,66 @@ by pilot 007. Pilot 010 leads the distinct 300-case assessment (43.33%). These r
 are subject to uncertainty and do not establish universal superiority. The checkpoint
 is selected by its own reward on validation, not its confirmation clean-win result.
 
-### Controlled experiments against the simple opponent
+### Shared development benchmark against the simple opponent
 
-| Intervention | Matching pilots | Cases / pilot and seed | Clean wins before → after | Interpretation |
-| --- | --- | --- | --- | --- |
-| LR 0.0003 → 0.00003 | 10 | 100 fresh, 420000 | 44.5% → 54.4% | Retained |
-| Count only selected skill's parameter probabilities | 10 | 100 fresh, 620000 | 42.4% → 56.0% | Retained; no extra network capacity |
-| Separate parameter heads per skill | 10 | 300 fresh, 820000 | 57.97% → 50.70% | Not retained under this budget |
-| Add +250 terminal clean-win bonus | **6 completed** | 100 development, 211307 | 51.5% → 49.83% | Stopped; no fresh confirmation |
+The principal comparison uses **the same 100 scenarios per pilot**, seeds
+**211307–211406**, for every population below. All four runs retain the same ten reward
+profiles, training seed **7**, 150-epoch scenario schedule and 50-case validation suite
+starting at **111257**. Rates are equal-weight means over the ten pilots.
 
-**Comparisons are matched within each row.** Different suites have different
-difficulty. For example, 56.0% and 57.97% describe the same selected-skill population
-on different cases. Those percentages do not form a continuous learning curve, and
-rates against simple and tactical opponents represent different evaluation conditions.
+| Population | Clean-win rate | Interpretation |
+| --- | --- | --- |
+| Original, LR 0.0003 | **28.2%** | Starting population |
+| Reduced LR 0.00003 | **36.8%** | +8.6 percentage points; retained |
+| Reduced LR + selected-skill probabilities | **50.0%** | +13.2 percentage points; retained |
+| Separate parameter heads per skill | **42.5%** | −7.5 percentage points versus selected-skill baseline; not retained |
+
+The terminal +250 clean-win bonus trial completed only six pilots. Their matched
+development comparison was **51.5% → 49.83%**; this subset must not be compared with
+the ten-pilot population means as if the composition were unchanged.
+
+These cases were originally stored as `test_episodes.json`. Once their results informed
+experimental choices, they became a **development benchmark**. They are separate from
+both training flights and checkpoint-selection validation, and are not an untouched
+final test. Simple and tactical rates also represent different opponent conditions.
 The original weight-sweep and relative-weight populations had validation-only results
 and different reward setups.
+
+### Recorded training and validation results
+
+The learning-curve slide uses saved epoch records, without running new flights. Training
+return is recorded on 75 fresh scenarios per epoch; validation return is recorded on
+the fixed 50-case suite at epoch 1, every fifth epoch and the final epoch. Own validation
+reward selects each pilot's checkpoint. Curves compare matching reward profiles across
+runs; own reward is unsuitable for ranking pilots with different coefficients.
+
+[learning_curves.csv](data/learning_curves.csv) provides all 6,000 recorded pilot-epochs
+from the four complete populations, including training return, validation return when
+measured, best validation return and actor/critic losses.
+[development_summary.csv](data/development_summary.csv) provides selected epochs,
+checkpoint hashes, recorded validation benchmark returns, survival and elimination,
+and shared development outcomes for all 40 models. The historical validation records
+do not contain joint clean-win counts; separate survival and elimination rates are
+insufficient to reconstruct them.
+
+### Historical confirmation evaluations
+
+These completed evaluations are preserved as supplementary evidence, not used as the
+main cross-experiment progress table. Each row paired its baseline and candidate on
+the same cases, but the suites differ between rows.
+
+| Intervention | Cases / pilot and seed | Clean wins before → after |
+| --- | --- | --- |
+| Reduced learning rate | 100, 420000 | 44.5% → 54.4% |
+| Selected-skill probabilities | 100, 620000 | 42.4% → 56.0% |
+| Separate parameter heads per skill | 300, 820000 | 57.97% → 50.70% |
+
+These suites, including the tactical confirmation reported above, have already been
+inspected. They cannot become untouched final tests again. Ongoing development should
+use recorded training/validation outputs and fixed development cases. **Final testing
+is reserved until model, reward and training choices are frozen**, using unused cases
+shared across all final candidates. The completed experiment plans and results remain
+historical records; this reporting change does not rerun or modify those experiments.
 
 ## Training and evaluation methodology
 
@@ -108,8 +153,9 @@ and different reward setups.
    every fifth epoch and the end. The checkpoint with the highest own validation reward
    is selected. For tactical fine-tuning, the unmodified initial checkpoint is also eligible. All 150 epochs
    run, even if the selected checkpoint comes from an earlier epoch.
-7. **Comparative evaluation.** All pilots are assessed using common outcomes on held-out cases.
-   Tactical has a 300-case before/after assessment and a separate 100-case confirmation.
+7. **Comparative evaluation.** Simple-opponent development uses the same fixed cases
+   across experiments, alongside recorded training and validation outputs. The completed
+   tactical experiment used a 300-case before/after assessment and a separate 100-case confirmation.
    Neither selects checkpoints. Fine-tuning starts from each pilot's actor **and critic**
    weights with a fresh Adam optimizer; original checkpoints are preserved.
 
@@ -222,7 +268,12 @@ recorded fine-tuning settings rather than changing 04 or 05's training cells.
 ## Evidence and reproducibility
 
 - [results.json](data/results.json): settings, both tactical suites, all ten reward profiles,
-  selected epochs, checkpoint hashes, validation curves and historical comparisons.
+  selected epochs, checkpoint hashes, learning curves, the shared development comparison
+  and historical confirmation results.
+- [learning_curves.csv](data/learning_curves.csv): 6,000 recorded epochs from four simple-opponent
+  populations; missing validation values indicate epochs without validation.
+- [development_summary.csv](data/development_summary.csv): 40 model summaries with
+  checkpoint-selection validation statistics and shared development outcomes.
 - [paired_outcomes.csv](data/paired_outcomes.csv): **4,000 paired rows** = (300 + 100)
   cases × 10 pilots. Each row records before/after outcomes for the same seed and pilot.
 - [pilot_outcomes.csv](data/pilot_outcomes.csv): per-pilot before/after rates for both

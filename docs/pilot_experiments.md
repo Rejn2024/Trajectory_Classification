@@ -13,6 +13,40 @@ The default is `selected_skill_parameters`; choose `skill_conditioned_parameters
 `clean_win_bonus` or `lower_learning_rate` to revisit other comparisons.
 Save the notebook after refreshing to keep its outputs.
 
+## Development comparison protocol
+
+Use recorded training and validation outputs, together with the fixed shared development
+benchmark, for ongoing comparisons. All four complete simple-opponent populations below
+use the same ten reward profiles, training seed 7 and scenario schedule, validation seed
+111257 (50 cases), and development seeds 211307–211406 (100 cases per pilot).
+
+| Population | Shared development clean-win rate |
+| --- | --- |
+| Original | **28.2%** |
+| Reduced learning rate | **36.8%** |
+| Reduced LR + selected-skill probabilities | **50.0%** |
+| Separate parameter heads per skill, not retained | **42.5%** |
+
+The six completed bonus-trial pilots scored 49.83% against their matched six-pilot
+baseline's 51.5%; this is a subset comparison, not a full-population result.
+
+The shared benchmark is stored in the historical `test_episodes.json` files. It is
+distinct from training and checkpoint-selection validation, and is considered development
+data because it has informed experimental choices. Recorded validation files contain
+reward, survival and elimination measurements, but no joint clean-win count.
+
+The [portable report](presentations/README.md) includes recorded learning curves and
+downloadable validation/development summaries. The comparison notebook shows training,
+validation and shared development results by default. Its optional historical confirmation
+section is controlled by `SHOW_HISTORICAL_CONFIRMATION`; existing reports below preserve
+the completed experiments' original evaluation plans.
+
+Reserve a final test for the end of experimentation, after model, reward and training
+choices are frozen. Evaluate final candidates on the same unused cases. Previously
+inspected confirmation suites cannot serve as untouched final tests or as a single
+cross-experiment progress series. This protocol update changes reporting; the completed
+plans and runner behaviour are preserved, and no new training or evaluation is launched.
+
 ## Completed experiment: tactical adaptation
 
 Completed **11 October 2026 at 09:16 BST**, after about 12 hours 14 minutes including

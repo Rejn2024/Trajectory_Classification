@@ -43,6 +43,11 @@ For the **branch presentation**, open the
 The PDF and self-contained HTML work without Jupyter, Python, model downloads or
 Git LFS. All ten tactical adaptations finished: separate confirmation clean wins
 improved **32.7% → 38.6%**, and survival **75.1% → 83.8%** on matched tactical cases.
+For progress across the simple-opponent experiments, the same 100-case development
+benchmark gives **28.2% → 36.8% → 50.0%** clean wins. The presentation includes
+recorded training and validation curves; previously inspected confirmation suites
+are supplementary evidence. Untouched final testing is reserved until experimental
+choices are frozen.
 
 Start with the [pilot experiment index](docs/pilot_experiments.md) to find the preserved
 populations, the current controlled experiment, reports and the local artifact archive.
