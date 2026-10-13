@@ -1,0 +1,180 @@
+{
+  "name": "tactical-episodes-v1",
+  "complete": true,
+  "episodes": 3000,
+  "created_utc": "2026-10-13T22:48:35.683485+00:00",
+  "files": {
+    "config.json": {
+      "bytes": 240040,
+      "sha256": "c198210e218297145bc8bb28c71c5fbfcff32a1365db3f1f071598a582b397d9"
+    },
+    "decisions/pilot_001.parquet": {
+      "bytes": 1737322,
+      "sha256": "ff25a3684c30b060c8910bde0749175b25319803f2ae65f101548c583217d9c0"
+    },
+    "decisions/pilot_002.parquet": {
+      "bytes": 1814713,
+      "sha256": "63d8e16111f48412ed8d2817da46e2f053c4df41f9c17f531279d68c1a278725"
+    },
+    "decisions/pilot_003.parquet": {
+      "bytes": 1760657,
+      "sha256": "f46ad3ddda32098ccee5557e328e983bf443d478c8e64d511b70068de88ac6c0"
+    },
+    "decisions/pilot_004.parquet": {
+      "bytes": 1755052,
+      "sha256": "20cfc1de157bf98f57661e8dfa5ba78ce4dc4ee44026ff5419448716284f66ed"
+    },
+    "decisions/pilot_005.parquet": {
+      "bytes": 1785662,
+      "sha256": "9eff93e80d6749139b006d8f183529ce02af798b7f46f7fc24fe8e239d7c1ddb"
+    },
+    "decisions/pilot_006.parquet": {
+      "bytes": 1776828,
+      "sha256": "2f23ae1c6a7dd7daff8358e32538b013ec44bd5c31caf29f6b8eb4d01c6f9ef0"
+    },
+    "decisions/pilot_007.parquet": {
+      "bytes": 1766306,
+      "sha256": "6a7b15eb49d4ac6c3a9ca6a0e41fb40732ded5ee95a28eadc604534d03808434"
+    },
+    "decisions/pilot_008.parquet": {
+      "bytes": 1742050,
+      "sha256": "552b4dfbf166bd16ecac665897821bd9df487299ca41f14e4c698297dce6fdd7"
+    },
+    "decisions/pilot_009.parquet": {
+      "bytes": 1806525,
+      "sha256": "4f2ace67c25f721b29bba509e869754fc040db4b2457e17ae25c24e7ff67bc6e"
+    },
+    "decisions/pilot_010.parquet": {
+      "bytes": 1764524,
+      "sha256": "e28f1739ce5298fa87063c057cc23816a16c5663c204ddb9cfa990d5937e31dd"
+    },
+    "episodes.parquet": {
+      "bytes": 66879,
+      "sha256": "a71eda4d2e093238396fd8ab4627c85a176caba447d8f42548b0f12bbccddf25"
+    },
+    "metrics.json": {
+      "bytes": 3275,
+      "sha256": "cf6af331a28d91cd4aa4995c44e1b6254ff0c0cfaad15884d36f136238293ef6"
+    },
+    "observations/pilot_001.parquet": {
+      "bytes": 32012872,
+      "sha256": "1e98f73d1277a93b3b5a6e8c4998970e3765f506b42ed1b8d8161652d8f9ef77"
+    },
+    "observations/pilot_002.parquet": {
+      "bytes": 34600454,
+      "sha256": "94c95dc4fcb411cc7d5157737e90646e04155cc0f410de57a178d065ee6dca43"
+    },
+    "observations/pilot_003.parquet": {
+      "bytes": 32686765,
+      "sha256": "a76b273007824c4c3339dc4e9549008fdbdb69004823041b402da7a94380cbc4"
+    },
+    "observations/pilot_004.parquet": {
+      "bytes": 33185061,
+      "sha256": "746a106b0fe8d67dac7817bdd84f1dcfc7ec6017a288ec2dbb71279cc17b8c13"
+    },
+    "observations/pilot_005.parquet": {
+      "bytes": 34772449,
+      "sha256": "b086b53a9fae83d40d39ae5ac5bedc2c9ee69fa1dc1d7e733c1b9466b8d92419"
+    },
+    "observations/pilot_006.parquet": {
+      "bytes": 34486051,
+      "sha256": "13906bf664c1dcf911540cb510c604de553776b8bc61a21c1935d9846acb8450"
+    },
+    "observations/pilot_007.parquet": {
+      "bytes": 33699512,
+      "sha256": "e7a83d582847166b94b7064448d8b6451604ee0629019868b436d7a0a9f9d1be"
+    },
+    "observations/pilot_008.parquet": {
+      "bytes": 33132226,
+      "sha256": "797861e6585027e26da02ccde0934f58f9f74f1b55ca35a40836ef6642e2166d"
+    },
+    "observations/pilot_009.parquet": {
+      "bytes": 34791957,
+      "sha256": "f15ad00feff946d3110df35669d72dd201ef064cfdef182c3f5bb1374bcdfd8f"
+    },
+    "observations/pilot_010.parquet": {
+      "bytes": 33783065,
+      "sha256": "8d74b64385eafe459ed62ceccbd18a7d65c38b2ed43664eb6bba53a05dd9adbb"
+    },
+    "README.md": {
+      "bytes": 10209,
+      "sha256": "5edbcd4258934d1d2c85ce308332b1f52173b45dcf60f1b6b2c3d03cafd216af"
+    },
+    "reproduction.zip": {
+      "bytes": 5674690,
+      "sha256": "6fe75768b94767d86158c98b6488425c2ef9bbd7a7421e17b45c916fffdcae00"
+    },
+    "schema.json": {
+      "bytes": 1235,
+      "sha256": "2719dc1ecbf38023dd2d3b13c43e38aeb26f4e551c3481c0b18cf6ea4f3ba5c3"
+    },
+    "tracks/pilot_001.parquet": {
+      "bytes": 26803778,
+      "sha256": "9853b9fd1d45130eaf4ebca66869cc79bcf5c5ca7ef0d2da7c95b4b6242f6ad4"
+    },
+    "tracks/pilot_002.parquet": {
+      "bytes": 28687208,
+      "sha256": "ddc5f6907975e2737da7b006a2bdae1bf706332f1edc6bd21a3b4b5bfeb5e551"
+    },
+    "tracks/pilot_003.parquet": {
+      "bytes": 27171705,
+      "sha256": "b3ed84ccc359c94b12f03dc086f177ae25e78ed01a33ef3a4d84271bf774802e"
+    },
+    "tracks/pilot_004.parquet": {
+      "bytes": 27072526,
+      "sha256": "3e69fb42fefe0ff979bcad6dc628262dc75943ef0df70c4e7bfd4b41c9ada6b7"
+    },
+    "tracks/pilot_005.parquet": {
+      "bytes": 28299282,
+      "sha256": "27918501a328ffd8aa233375d4594c639d494cb45a64ceaa0c1bb8426d1633f3"
+    },
+    "tracks/pilot_006.parquet": {
+      "bytes": 28005433,
+      "sha256": "49cd7df80c43c514795f052f451078c298b15eeac7fff78b64988efb60c27612"
+    },
+    "tracks/pilot_007.parquet": {
+      "bytes": 28116282,
+      "sha256": "0370c5dd1a412d0019355199146f7da2357a43c762341e5ad21426d76873893d"
+    },
+    "tracks/pilot_008.parquet": {
+      "bytes": 27173826,
+      "sha256": "27000d11ac05f7120ea0414f18ad6f36255f938c28d4b36f2a3443493ea4e3f0"
+    },
+    "tracks/pilot_009.parquet": {
+      "bytes": 28572591,
+      "sha256": "c27994e2f7a4150174a79d8fd83ab71845af86b10291d598f11eebb3cc27122d"
+    },
+    "tracks/pilot_010.parquet": {
+      "bytes": 27042314,
+      "sha256": "a7187cd4cccb7dfe6c9e41310c26b7a75655063bcd321e05e988a163b5148945"
+    }
+  },
+  "compressed_bytes": 637801324,
+  "software": {
+    "numpy": "2.5.3",
+    "pandas": "3.0.6",
+    "pyarrow": "25.0.1",
+    "torch": "2.14.1+cu130",
+    "jsbsim": "1.3.1",
+    "gymnasium": "1.4.0"
+  },
+  "source_experiment": "20261010T200223_142625Z_tactical",
+  "repository_commit_at_packaging": "8add284a84e584a5fcb822c5b7dd2f9cad245619",
+  "collector_file_hashes": {
+    "generate_tactical_corpus.py": "3c27bfe3d4410666f5716e118018ed228f80c7cbb6290a7d3ce1ca4b2f253e84",
+    "tactical_corpus_schema.py": "dff409b89163062c16dee08a294e6409e3d4a713075c8aca38a25aded9b2273a"
+  },
+  "packager_file_hashes": {
+    "generate_tactical_corpus.py": "8c4ace41e798b27024726b3ac8b2b096bc5d2846b4fb120c0e4aaa28ca6e61fe",
+    "tactical_corpus_schema.py": "dff409b89163062c16dee08a294e6409e3d4a713075c8aca38a25aded9b2273a"
+  },
+  "limitations": [
+    "Idealised exact tracks, not a sensor-noise or occlusion dataset.",
+    "300 matched scenarios produce 3000 encounters, not 3000 independent geometries.",
+    "Scripted tactical F16 targets only; no real-world generalisation claim.",
+    "Native spawn is approximately head-on with fixed initial speed; nominal scenario bearings/headings/speeds are not applied by this adapter.",
+    "Observation values retain the controller's existing fixed scaling; tracks provide physical units.",
+    "Do not use final outcomes, future observations or other pilots' matching cases as input during later forecasting evaluation.",
+    "Deterministic actions do not guarantee bitwise reproduction across hardware."
+  ]
+}

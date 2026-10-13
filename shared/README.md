@@ -7,8 +7,16 @@ Git host provides LFS and the repository has sufficient storage and download quo
 
 The root `.gitattributes` sends everything under `shared/` to LFS except Markdown,
 YAML, and the small JSON files named `manifest.json`, `config.json`, `metrics.json`,
-`summary.json`, and `label_map.json`. Keep those exceptions small. Bulk JSON/CSV logs,
+`summary.json`, `label_map.json`, and `schema.json`. Keep those exceptions small. Bulk JSON/CSV logs,
 model weights, Parquet, NumPy arrays, ACMI replays, and videos use LFS automatically.
+
+## Episode data and replays
+
+- [Tactical opponent episode dataset](corpora/tactical-episodes-v1/README.md):
+  3,000 encounters, 300 per trained pilot, with exact observation streams and
+  aircraft tracks. Compressed Parquet in Git LFS; preprocessing is left to the consumer.
+- [Tactical checkpoint replays](replays/tactical-checkpoints-v1/README.md):
+  20 curated ACMI recordings in a compressed archive, with an encounter index and checksums.
 
 ## Published populations
 
