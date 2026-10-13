@@ -62,3 +62,25 @@ def test_rejects_corrupt_or_misaligned_samples(failure):
         tracks.loc[2, "target_alive"] = False
     with pytest.raises(ValueError):
         schema.validate_episode(observations, tracks)
+
+
+def test_atomic_metadata_write_retries_temporary_windows_reader_lock(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[1] / "scripts"))
+    import generate_tactical_corpus as collector
+
+    original_replace = Path.replace
+    attempts = []
+
+    def temporarily_locked(path, target):
+        attempts.append(target)
+        if len(attempts) < 3:
+            raise PermissionError("reader has the progress file open")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", temporarily_locked)
+    monkeypatch.setattr(collector.time, "sleep", lambda _: None)
+    target = tmp_path / "progress.json"
+    collector.write(target, {"completed": 12})
+    assert collector.read(target) == {"completed": 12}
+    assert len(attempts) == 3
+    assert not target.with_suffix(".json.tmp").exists()

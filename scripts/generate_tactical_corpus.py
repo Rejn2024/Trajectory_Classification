@@ -46,7 +46,15 @@ def write(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(path.suffix + ".tmp")
     temp.write_text(json.dumps(data, indent=2, allow_nan=False) + "\n", encoding="utf-8")
-    temp.replace(path)
+    # Windows readers can briefly prevent atomic replacement of progress files.
+    for attempt in range(20):
+        try:
+            temp.replace(path)
+            break
+        except PermissionError:
+            if attempt == 19:
+                raise
+            time.sleep(0.05)
 
 
 def digest(path):
@@ -108,6 +116,13 @@ def prepare(args):
     }
     path = args.work / "config.json"
     if path.exists() and read(path) != config:
+        existing = read(path)
+        # Read-only packaging may use a newer exporter while preserving the
+        # original collector hashes and verifying every saved episode checksum.
+        if (args.command == "package" and
+                {k: v for k, v in existing.items() if k != "collector_hashes"} ==
+                {k: v for k, v in config.items() if k != "collector_hashes"}):
+            return existing
         raise ValueError("Existing corpus config differs; use a new work directory")
     write(path, config)
     return config
@@ -272,7 +287,10 @@ def collect(args, config):
             progress = {"completed": len(completed), "requested": len(tasks),
                         "failed": len(failures), "wall_seconds": round(time.perf_counter() - started, 1),
                         "updated_utc": datetime.now(timezone.utc).isoformat(), "failures": failures}
-            write(args.work / "progress.json", progress)
+            try:
+                write(args.work / "progress.json", progress)
+            except PermissionError:
+                print(f"Progress file busy; {len(completed)} episodes complete", flush=True)
             if (len(completed) + len(failures)) % 25 == 0 or failures or len(completed) == len(tasks):
                 print(json.dumps(progress), flush=True)
     if failures:
@@ -376,14 +394,16 @@ def package(args, config):
         "compressed_bytes": sum(v["bytes"] for v in files.values()),
         "software": {p: importlib.metadata.version(p) for p in
                      ("numpy", "pandas", "pyarrow", "torch", "jsbsim", "gymnasium")},
-        "source_experiment": args.job.name, "collector_commit": subprocess.check_output(
+        "source_experiment": args.job.name, "repository_commit_at_packaging": subprocess.check_output(
             ["git", "-c", f"safe.directory={ROOT.as_posix()}", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "collector_file_hashes": config["collector_hashes"],
+        "packager_file_hashes": {p.name: digest(p) for p in
+                                (Path(__file__), Path(__file__).with_name("tactical_corpus_schema.py"))},
         "limitations": ["Idealised exact tracks, not a sensor-noise or occlusion dataset.",
                         "300 matched scenarios produce 3000 encounters, not 3000 independent geometries.",
                         "Scripted tactical F16 targets only; no real-world generalisation claim.",
                         "Native spawn is approximately head-on with fixed initial speed; nominal scenario bearings/headings/speeds are not applied by this adapter.",
-                        "Observation values retain the controller's existing fixed scaling and clipping; tracks provide physical units.",
+                        "Observation values retain the controller's existing fixed scaling; tracks provide physical units.",
                         "Do not use final outcomes, future observations or other pilots' matching cases as input during later forecasting evaluation.",
                         "Deterministic actions do not guarantee bitwise reproduction across hardware."]})
     print(json.dumps(metrics, indent=2), flush=True)
@@ -391,7 +411,7 @@ def package(args, config):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("collect", "package", "verify"))
+    parser.add_argument("command", choices=("collect", "package", "verify", "status"))
     parser.add_argument("--job", type=Path, default=DEFAULT_JOB)
     parser.add_argument("--work", type=Path, default=DEFAULT_WORK)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -401,6 +421,13 @@ def main():
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
     parser.add_argument("--limit", type=int, help="Smoke collection of first N pilot/scenario pairs")
     args = parser.parse_args()
+    if args.command == "status":
+        completed = list((args.work / "episodes").glob("*/summary.json"))
+        config = read(args.work / "config.json")
+        print(json.dumps({"completed_on_disk": len(completed),
+                          "requested": len(config["pilots"]) * len(config["cases"]),
+                          "work_directory": str(args.work)}, indent=2))
+        return
     if args.command == "verify":
         manifest = read(args.output / "manifest.json")
         for relative, expected in manifest["files"].items():
