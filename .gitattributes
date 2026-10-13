@@ -11,3 +11,4 @@ shared/**/config.json !filter !diff !merge text
 shared/**/metrics.json !filter !diff !merge text
 shared/**/summary.json !filter !diff !merge text
 shared/**/label_map.json !filter !diff !merge text
+shared/**/schema.json !filter !diff !merge text
