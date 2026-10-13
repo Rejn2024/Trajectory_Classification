@@ -82,5 +82,6 @@ def test_atomic_metadata_write_retries_temporary_windows_reader_lock(tmp_path, m
     target = tmp_path / "progress.json"
     collector.write(target, {"completed": 12})
     assert collector.read(target) == {"completed": 12}
+    assert b"\r" not in target.read_bytes()
     assert len(attempts) == 3
     assert not target.with_suffix(".json.tmp").exists()

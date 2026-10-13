@@ -45,7 +45,8 @@ def write(path, data):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(path.suffix + ".tmp")
-    temp.write_text(json.dumps(data, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+    temp.write_text(json.dumps(data, indent=2, allow_nan=False) + "\n",
+                    encoding="utf-8", newline="\n")
     # Windows readers can briefly prevent atomic replacement of progress files.
     for attempt in range(20):
         try:

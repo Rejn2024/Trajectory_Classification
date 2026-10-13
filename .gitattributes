@@ -12,3 +12,9 @@ shared/**/metrics.json !filter !diff !merge text
 shared/**/summary.json !filter !diff !merge text
 shared/**/label_map.json !filter !diff !merge text
 shared/**/schema.json !filter !diff !merge text
+
+# Keep published metadata checksums stable across Windows and Unix checkouts.
+shared/corpora/tactical-episodes-v1/*.json text eol=lf
+shared/corpora/tactical-episodes-v1/*.md text eol=lf
+shared/replays/tactical-checkpoints-v1/*.json text eol=lf
+shared/replays/tactical-checkpoints-v1/*.md text eol=lf
