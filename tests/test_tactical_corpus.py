@@ -2,6 +2,7 @@
 
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -85,3 +86,59 @@ def test_atomic_metadata_write_retries_temporary_windows_reader_lock(tmp_path, m
     assert b"\r" not in target.read_bytes()
     assert len(attempts) == 3
     assert not target.with_suffix(".json.tmp").exists()
+
+
+@pytest.mark.parametrize("observer_id,target_id", [("A01", "B01"), ("B01", "A01")])
+def test_observer_frame_uses_correct_aircraft_and_missile_team(observer_id, target_id):
+    # Exercise the real compact extractor with distinct aircraft and missiles.
+    path = Path(__file__).parents[1] / "bvr_sim_source/bvr_sim/src_py/observation_space.py"
+    compact_spec = importlib.util.spec_from_file_location("compact_observation", path)
+    compact_module = importlib.util.module_from_spec(compact_spec)
+    compact_spec.loader.exec_module(compact_module)
+
+    def aircraft(uid, color, position, velocity, heading):
+        return SimpleNamespace(uid=uid, color=color, is_alive=True, partners=[],
+                               position=np.array(position, dtype=float),
+                               velocity=np.array(velocity, dtype=float),
+                               get_speed=lambda: float(np.linalg.norm(velocity)),
+                               get_altitude=lambda: position[2], get_heading=lambda: heading)
+
+    learned = aircraft("A01", "Red", [100, 300, 5000], [200, 100, 20], 0.4)
+    tactical = aircraft("B01", "Blue", [8000, -6000, 4000], [-300, -20, -10], 2.0)
+    learned.enemies, tactical.enemies = [tactical], [learned]
+    red_missile = SimpleNamespace(color="Red", is_alive=True, target=tactical,
+                                  position=np.array([400, 600, 5100]), velocity=np.array([700, 50, 10]))
+    blue_missile = SimpleNamespace(color="Blue", is_alive=True, target=learned,
+                                   position=np.array([7000, -5000, 3900]), velocity=np.array([-800, 0, 0]))
+    sim = SimpleNamespace(agents={"A01": learned, "B01": tactical},
+                          missiles={"red": red_missile, "blue": blue_missile},
+                          obs_manager=compact_module.CompactObsSpace())
+    observer, target = sim.agents[observer_id], sim.agents[target_id]
+    own_missile = red_missile if observer_id == "A01" else blue_missile
+    hostile_missile = blue_missile if observer_id == "A01" else red_missile
+    frame = schema.observer_frame(sim, observer_id, target_id)
+    assert frame.dtype == np.float32
+    np.testing.assert_allclose(frame[:3], observer.position / [50000, 50000, 10000])
+    np.testing.assert_allclose(frame[9:12], (target.position - observer.position) / [50000, 50000, 10000])
+    np.testing.assert_allclose(frame[19:22], (own_missile.position - observer.position) / [50000, 50000, 10000])
+    np.testing.assert_allclose(frame[47:], [(observer.get_speed() / 400) ** 2,
+                                         observer.get_altitude() / 12000,
+                                         (target.get_speed() / 400) ** 2,
+                                         target.get_altitude() / 12000])
+    assert frame[18] == 1
+    hostile_missile.is_alive = False
+    assert schema.observer_frame(sim, observer_id, target_id)[18] == 0
+    target.is_alive = False
+    assert not schema.observer_frame(sim, observer_id, target_id)[9:19].any()
+    observer.is_alive = False
+    assert not schema.observer_frame(sim, observer_id, target_id)[:47].any()
+
+
+def test_geometry_validation_rejects_inverted_target_displacement():
+    observations, tracks = tables()
+    tracks["observer_x"], tracks["target_x"] = 1000.0, 11000.0
+    observations["obs_00"], observations["obs_09"], observations["obs_15"] = 0.02, 0.2, 0.2
+    schema.validate_observer_geometry(observations, tracks)
+    observations["obs_09"] = -0.2
+    with pytest.raises(ValueError, match="Observer geometry"):
+        schema.validate_observer_geometry(observations, tracks)

@@ -26,8 +26,10 @@ from tactical_corpus_schema import (
     DT,
     KEYS,
     OBSERVATION_COLUMNS,
+    observer_frame,
     reconstruct_policy_history,
     validate_episode,
+    validate_observer_geometry,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +37,12 @@ DEFAULT_JOB = ROOT / "artifacts/rl_pilot_experiments/20261010T200223_142625Z_tac
 DEFAULT_WORK = ROOT / "artifacts/tactical_episode_data_v1"
 DEFAULT_OUTPUT = ROOT / "shared/corpora/tactical-episodes-v1"
 PARTS = ("observations", "tracks", "decisions")
+TACTICAL_WORK = ROOT / "artifacts/trained_pilot_episode_data_v1"
+TACTICAL_OUTPUT = ROOT / "shared/corpora/trained-pilot-episodes-v1"
+
+
+def parts_for(config):
+    return ("observations", "tracks", "target_decisions") if config["observer_id"] == "B01" else PARTS
 
 
 def read(path):
@@ -115,6 +123,13 @@ def prepare(args):
         "collector_hashes": {p.name: digest(p) for p in
                              (Path(__file__), Path(__file__).with_name("tactical_corpus_schema.py"))},
     }
+    if args.perspective == "tactical":
+        config.update(
+            schema_version="trained-pilot-episodes-v1", observer_id="B01", target_id="A01",
+            observer_policy="tactical", target_policy="trained_pilot",
+            observation_model="B01 compact simulator observation plus observer-first energy features; idealised tracks",
+            decision_role="Privileged target action log; not an observer input",
+        )
     path = args.work / "config.json"
     if path.exists() and read(path) != config:
         existing = read(path)
@@ -126,13 +141,22 @@ def prepare(args):
             return existing
         raise ValueError("Existing corpus config differs; use a new work directory")
     write(path, config)
+    if args.perspective == "tactical":
+        # Keep the actual collection scripts alongside the run for reproduction.
+        collector_dir = args.work / "collector"
+        collector_dir.mkdir(exist_ok=True)
+        for name, expected in config["collector_hashes"].items():
+            source_path = Path(__file__).with_name(name)
+            if digest(source_path) != expected:
+                raise ValueError("Collector changed while preparing the run")
+            (collector_dir / name).write_bytes(source_path.read_bytes())
     return config
 
 
 _WORKER = {}
 
 
-def initialize_worker(job, device):
+def initialize_worker(job, device, observer_id="A01", target_id="B01"):
     os.environ["OMP_NUM_THREADS"] = "1"
     os.environ["MKL_NUM_THREADS"] = "1"
     job = Path(job)
@@ -148,7 +172,8 @@ def initialize_worker(job, device):
     torch.set_float32_matmul_precision("high")
     if device == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA requested but unavailable")
-    _WORKER.update(job=job, device=device, models={}, loader=load_trained_pilot)
+    _WORKER.update(job=job, device=device, models={}, loader=load_trained_pilot,
+                   observer_id=observer_id, target_id=target_id)
 
 
 def collect_one(task):
@@ -160,12 +185,17 @@ def collect_one(task):
 
     case, pilot, work = task
     pilot_id = pilot["pilot_id"]
+    observer_id, target_id = _WORKER["observer_id"], _WORKER["target_id"]
+    tactical_view = observer_id == "B01"
     episode_id = f"{pilot_id}_{case['scenario_group']}"
     directory = Path(work) / "episodes" / episode_id
     directory.mkdir(parents=True, exist_ok=True)
     finished = directory / "summary.json"
     if finished.exists():
         result = read(finished)
+        if (result.get("observer_id", "A01") != observer_id or
+                result.get("target_id", "B01") != target_id):
+            raise ValueError(f"Resume perspective mismatch: {episode_id}")
         for part, expected in result["files"].items():
             if digest(directory / f"{part}.parquet") != expected:
                 raise ValueError(f"Resume file mismatch: {episode_id}/{part}")
@@ -181,13 +211,13 @@ def collect_one(task):
     random.seed(case["seed"])
     np.random.seed(case["seed"])
     torch.manual_seed(case["seed"])
-    records, decisions, observed_frames = [], [], []
+    records, decisions, observed_frames, tactical_frames = [], [], [], []
 
     class RecordingBackend(BVRJSBSimBackend):
         def snapshot(self):
             row = {"episode_id": episode_id, "step": self.env.current_step,
                    "time_s": round(self.env.current_step * self.env.dt, 8)}
-            for role, uid in (("observer", "A01"), ("target", "B01")):
+            for role, uid in (("observer", observer_id), ("target", target_id)):
                 aircraft = self.env.agents[uid]
                 for key, value in zip(("x", "y", "z", "vx", "vy", "vz"),
                                       [*aircraft.position, *aircraft.velocity], strict=True):
@@ -195,6 +225,8 @@ def collect_one(task):
                 row[f"{role}_alive"] = bool(aircraft.is_alive)
                 row[f"{role}_launches"] = len(aircraft.launched_missiles)
             records.append(row)
+            if tactical_view:
+                tactical_frames.append(observer_frame(self.env, observer_id, target_id))
 
         def reset(self, seed):
             result = super().reset(seed)
@@ -233,18 +265,29 @@ def collect_one(task):
                     decisions.append({"episode_id": episode_id, "step": step,
                                       "time_s": round(step * DT, 8), "skill": skill,
                                       "parameters_json": json.dumps(parameters, sort_keys=True)})
+                    if tactical_view:
+                        decisions[-1]["aircraft_id"] = target_id
                     observation, terminated, truncated, info = env.step(skill, parameters)
                     if terminated or truncated:
                         break
+                if tactical_view:
+                    observer = env.backend.env.agents[observer_id]
+                    target = env.backend.env.agents[target_id]
+                    observer_eliminated_target = not target.is_alive and any(
+                        missile.is_success and missile.target is target
+                        for missile in observer.launched_missiles)
             finally:
                 env.close()
     if info["red_policy"] != "tactical":
         raise ValueError("Wrong opponent controller")
     tracks = pd.DataFrame(records)
     observations = pd.concat([tracks[list(KEYS)], pd.DataFrame(
-        np.asarray(observed_frames, dtype=np.float32), columns=OBSERVATION_COLUMNS)], axis=1)
+        np.asarray(tactical_frames if tactical_view else observed_frames, dtype=np.float32),
+        columns=OBSERVATION_COLUMNS)], axis=1)
     validate_episode(observations, tracks)
-    tables = {"observations": observations, "tracks": tracks, "decisions": pd.DataFrame(decisions)}
+    validate_observer_geometry(observations, tracks)
+    decision_part = "target_decisions" if tactical_view else "decisions"
+    tables = {"observations": observations, "tracks": tracks, decision_part: pd.DataFrame(decisions)}
     for name, frame in tables.items():
         parquet(frame, directory / f"{name}.parquet")
     survived, eliminated = bool(info["blue_alive"]), bool(info["opponent_eliminated"])
@@ -265,6 +308,15 @@ def collect_one(task):
         "wall_seconds": round(time.perf_counter() - started, 3),
         "files": {name: digest(directory / f"{name}.parquet") for name in tables},
     }
+    if tactical_view:
+        result.update(observer_id=observer_id, target_id=target_id,
+                      observer_survived=bool(tracks.observer_alive.iloc[-1]),
+                      observer_eliminated_target=bool(observer_eliminated_target),
+                      observer_geometry_verified=True)
+        result["target_survived"] = result.pop("survived")
+        result["target_eliminated_observer"] = result.pop("eliminated")
+        result["observer_destroyed"] = result.pop("target_destroyed")
+        result["target_outcome"] = result.pop("outcome")
     write(finished, result)
     return result
 
@@ -276,7 +328,8 @@ def collect(args, config):
     started = time.perf_counter()
     completed, failures = [], []
     with ProcessPoolExecutor(max_workers=args.workers, initializer=initialize_worker,
-                             initargs=(str(args.job), args.device)) as pool:
+                             initargs=(str(args.job), args.device,
+                                       config["observer_id"], config["target_id"])) as pool:
         pending = {pool.submit(collect_one, task): task for task in tasks}
         for future in as_completed(pending):
             task = pending[future]
@@ -300,6 +353,7 @@ def collect(args, config):
 
 def package(args, config):
     output = args.output
+    tactical_view = config["observer_id"] == "B01"
     if (output / "manifest.json").exists():
         raise ValueError("Publication already exists; validate instead of overwriting")
     rows, all_initial = [], {}
@@ -314,13 +368,16 @@ def package(args, config):
                 if (summary["checkpoint_sha256"] != pilot["checkpoint_sha256"] or
                         summary["seed"] != case["seed"] or not summary["policy_history_verified"]):
                     raise ValueError(f"Episode provenance mismatch: {episode_id}")
+                if (summary.get("observer_id", "A01") != config["observer_id"] or
+                        summary.get("target_id", "B01") != config["target_id"]):
+                    raise ValueError(f"Episode perspective mismatch: {episode_id}")
                 initial = summary["initial_state"]
                 if (case["scenario_group"] in all_initial and
                         initial != all_initial[case["scenario_group"]]):
                     raise ValueError("Matched scenario spawned different initial states")
                 all_initial[case["scenario_group"]] = initial
                 frames = {}
-                for part in PARTS:
+                for part in parts_for(config):
                     path = directory / f"{part}.parquet"
                     if digest(path) != summary["files"][part]:
                         raise ValueError(f"Corrupt episode: {path}")
@@ -333,6 +390,9 @@ def package(args, config):
                                                         compression_level=6)
                     writers[part].write_table(table)
                 validate_episode(frames["observations"], frames["tracks"])
+                validate_observer_geometry(frames["observations"], frames["tracks"])
+                if tactical_view and set(frames["target_decisions"].aircraft_id) != {config["target_id"]}:
+                    raise ValueError("Target decisions have the wrong aircraft identity")
                 if len(frames["observations"]) != summary["frames"]:
                     raise ValueError("Frame count mismatch")
                 rows.append({k: v for k, v in summary.items() if k not in ("files", "initial_state")})
@@ -349,27 +409,39 @@ def package(args, config):
     write(output / "config.json", config)
     write(output / "schema.json", {
         "observation_columns": list(OBSERVATION_COLUMNS), "key_columns": list(KEYS),
-        "observation_definition": "Exact float32 frame returned by BluePilotEnvironment._frame",
+        "observation_definition": (config["observation_model"] if tactical_view else
+                                   "Exact float32 frame returned by BluePilotEnvironment._frame"),
         "coordinate_frame": "Simulator tracks use North/West/Up in metres and metres per second.",
         "processing": "No forecast targets, manoeuvre labels, windows or split assignments.",
         "group_key": "scenario_group in episodes.parquet; keep matched scenarios together in later splits",
-        "target_id": "B01", "observer_id": "A01",
+        "target_id": config["target_id"], "observer_id": config["observer_id"],
+        "decisions_role": "privileged target actions" if tactical_view else "observer actions",
+        "outcome_perspective": "target (learned pilot)" if tactical_view else "observer (learned pilot)",
     })
     by_pilot = {}
     for pilot_id, frame in episodes.groupby("pilot_id"):
         by_pilot[pilot_id] = {"episodes": len(frame), "frames": int(frame.frames.sum()),
-                              "outcomes": frame.outcome.value_counts().to_dict(),
+                              "outcomes": frame["target_outcome" if tactical_view else "outcome"].value_counts().to_dict(),
                               "mean_duration_s": float(frame.duration_s.mean())}
     metrics = {"episodes": len(episodes), "scenario_groups": len(config["cases"]),
                "frames": int(episodes.frames.sum()), "simulated_hours": float(episodes.duration_s.sum() / 3600),
                "by_pilot": by_pilot,
                "checks": ["every episode file SHA-256", "checkpoint and source provenance",
-                          "every policy decision input matches recorded observation history",
+                          "every learned-policy decision input matches its captured history",
+                          "observer geometry independently agrees with physical tracks",
                           "finite observations and states, aligned regular timestamps",
                           "identical initial states for each matched scenario"]}
+    if tactical_view:
+        metrics["outcome_perspective"] = "target (learned pilot A01)"
     write(output / "metrics.json", metrics)
     with zipfile.ZipFile(output / "reproduction.zip", "w", zipfile.ZIP_DEFLATED,
                          compresslevel=9) as archive:
+        if tactical_view:
+            for name, expected_hash in config["collector_hashes"].items():
+                path = args.work / "collector" / name
+                if digest(path) != expected_hash:
+                    raise ValueError(f"Collection script changed: {name}")
+                archive.write(path, f"scripts/{name}")
         for relative, expected_hash in config["source_hashes"].items():
             path = args.job / "source" / relative
             if digest(path) != expected_hash:
@@ -390,7 +462,7 @@ def package(args, config):
     if any(v["bytes"] >= 1_000_000_000 for v in files.values()):
         raise ValueError("Shard exceeds conservative 1 GB publication cap")
     write(output / "manifest.json", {
-        "name": "tactical-episodes-v1", "complete": True, "episodes": expected,
+        "name": config["schema_version"], "complete": True, "episodes": expected,
         "created_utc": datetime.now(timezone.utc).isoformat(), "files": files,
         "compressed_bytes": sum(v["bytes"] for v in files.values()),
         "software": {p: importlib.metadata.version(p) for p in
@@ -402,7 +474,8 @@ def package(args, config):
                                 (Path(__file__), Path(__file__).with_name("tactical_corpus_schema.py"))},
         "limitations": ["Idealised exact tracks, not a sensor-noise or occlusion dataset.",
                         "300 matched scenarios produce 3000 encounters, not 3000 independent geometries.",
-                        "Scripted tactical F16 targets only; no real-world generalisation claim.",
+                        ("Ten frozen learned F16 target policies observed by one scripted tactical controller; no real-world generalisation claim."
+                         if tactical_view else "Scripted tactical F16 targets only; no real-world generalisation claim."),
                         "Native spawn is approximately head-on with fixed initial speed; nominal scenario bearings/headings/speeds are not applied by this adapter.",
                         "Observation values retain the controller's existing fixed scaling; tracks provide physical units.",
                         "Do not use final outcomes, future observations or other pilots' matching cases as input during later forecasting evaluation.",
@@ -413,15 +486,19 @@ def package(args, config):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("collect", "package", "verify", "status"))
+    parser.add_argument("--perspective", choices=("learned", "tactical"), default="learned",
+                        help="Recording observer; the learned aircraft remains A01 in both modes")
     parser.add_argument("--job", type=Path, default=DEFAULT_JOB)
-    parser.add_argument("--work", type=Path, default=DEFAULT_WORK)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--work", type=Path)
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--episodes-per-pilot", type=int, default=300)
     parser.add_argument("--seed", type=int, default=3000000)
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
     parser.add_argument("--limit", type=int, help="Smoke collection of first N pilot/scenario pairs")
     args = parser.parse_args()
+    args.work = args.work or (TACTICAL_WORK if args.perspective == "tactical" else DEFAULT_WORK)
+    args.output = args.output or (TACTICAL_OUTPUT if args.perspective == "tactical" else DEFAULT_OUTPUT)
     if args.command == "status":
         completed = list((args.work / "episodes").glob("*/summary.json"))
         config = read(args.work / "config.json")
