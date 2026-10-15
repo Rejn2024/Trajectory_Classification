@@ -1,0 +1,127 @@
+{
+  "episodes": 3000,
+  "scenario_groups": 300,
+  "frames": 2555165,
+  "simulated_hours": 70.89347222222223,
+  "by_pilot": {
+    "pilot_001": {
+      "episodes": 300,
+      "frames": 247817,
+      "outcomes": {
+        "survived_without_elimination": 137,
+        "clean_win": 123,
+        "loss_without_elimination": 25,
+        "mutual_destruction": 15
+      },
+      "mean_duration_s": 82.50566666666666
+    },
+    "pilot_002": {
+      "episodes": 300,
+      "frames": 263814,
+      "outcomes": {
+        "survived_without_elimination": 154,
+        "clean_win": 112,
+        "loss_without_elimination": 18,
+        "mutual_destruction": 16
+      },
+      "mean_duration_s": 87.83800000000001
+    },
+    "pilot_003": {
+      "episodes": 300,
+      "frames": 251007,
+      "outcomes": {
+        "survived_without_elimination": 141,
+        "clean_win": 112,
+        "loss_without_elimination": 26,
+        "mutual_destruction": 21
+      },
+      "mean_duration_s": 83.56899999999999
+    },
+    "pilot_004": {
+      "episodes": 300,
+      "frames": 250761,
+      "outcomes": {
+        "survived_without_elimination": 131,
+        "clean_win": 129,
+        "loss_without_elimination": 26,
+        "mutual_destruction": 14
+      },
+      "mean_duration_s": 83.487
+    },
+    "pilot_005": {
+      "episodes": 300,
+      "frames": 258733,
+      "outcomes": {
+        "survived_without_elimination": 148,
+        "clean_win": 121,
+        "mutual_destruction": 16,
+        "loss_without_elimination": 15
+      },
+      "mean_duration_s": 86.14433333333335
+    },
+    "pilot_006": {
+      "episodes": 300,
+      "frames": 257327,
+      "outcomes": {
+        "survived_without_elimination": 149,
+        "clean_win": 119,
+        "loss_without_elimination": 17,
+        "mutual_destruction": 15
+      },
+      "mean_duration_s": 85.67566666666667
+    },
+    "pilot_007": {
+      "episodes": 300,
+      "frames": 260503,
+      "outcomes": {
+        "survived_without_elimination": 147,
+        "clean_win": 121,
+        "mutual_destruction": 18,
+        "loss_without_elimination": 14
+      },
+      "mean_duration_s": 86.73433333333332
+    },
+    "pilot_008": {
+      "episodes": 300,
+      "frames": 252311,
+      "outcomes": {
+        "survived_without_elimination": 141,
+        "clean_win": 116,
+        "loss_without_elimination": 27,
+        "mutual_destruction": 16
+      },
+      "mean_duration_s": 84.00366666666666
+    },
+    "pilot_009": {
+      "episodes": 300,
+      "frames": 262833,
+      "outcomes": {
+        "survived_without_elimination": 150,
+        "clean_win": 119,
+        "mutual_destruction": 18,
+        "loss_without_elimination": 13
+      },
+      "mean_duration_s": 87.511
+    },
+    "pilot_010": {
+      "episodes": 300,
+      "frames": 250059,
+      "outcomes": {
+        "survived_without_elimination": 135,
+        "clean_win": 121,
+        "loss_without_elimination": 23,
+        "mutual_destruction": 21
+      },
+      "mean_duration_s": 83.253
+    }
+  },
+  "checks": [
+    "every episode file SHA-256",
+    "checkpoint and source provenance",
+    "every learned-policy decision input matches its captured history",
+    "observer geometry independently agrees with physical tracks",
+    "finite observations and states, aligned regular timestamps",
+    "identical initial states for each matched scenario"
+  ],
+  "outcome_perspective": "target (learned pilot A01)"
+}

@@ -1,0 +1,180 @@
+{
+  "name": "trained-pilot-episodes-v1",
+  "complete": true,
+  "episodes": 3000,
+  "created_utc": "2026-10-15T13:22:25.219921+00:00",
+  "files": {
+    "config.json": {
+      "bytes": 240173,
+      "sha256": "098f8e0189ae513ea7c3d72f43d031516b0e9d262d9fcf699a230a6c4893b3dd"
+    },
+    "episodes.parquet": {
+      "bytes": 68824,
+      "sha256": "c5ba06235eb03ad63120c88efa89b90480cb5c3aab12bd3997eb54dd6b09e6da"
+    },
+    "metrics.json": {
+      "bytes": 3397,
+      "sha256": "07dad2d831bcd73172e9f3e12f3b77f03e3c0fb3f8a8a8cffd1e004aed51fa06"
+    },
+    "observations/pilot_001.parquet": {
+      "bytes": 34896486,
+      "sha256": "bca4908475f03ea0fb52e2cf761bfe5d7949a16fbd52ce89aae761c60b6e62e3"
+    },
+    "observations/pilot_002.parquet": {
+      "bytes": 36826836,
+      "sha256": "fe40a33bf7aa1f295bf3a64cb4a6478544a545881dc491a2e1a8414b3e082146"
+    },
+    "observations/pilot_003.parquet": {
+      "bytes": 35335779,
+      "sha256": "2369ce277bb83ba133062c387279c9d46ed1343ae220cbba77faf8b5a06b0e99"
+    },
+    "observations/pilot_004.parquet": {
+      "bytes": 34480748,
+      "sha256": "6dd642265ed59368e5aa57c0b9e591ab9bc3f29f3886fd79ef3344611b3147bd"
+    },
+    "observations/pilot_005.parquet": {
+      "bytes": 36146256,
+      "sha256": "26355e651966e8fe50795b56a6a1637539cbfcb14875c1fa97cb0215b9967ee9"
+    },
+    "observations/pilot_006.parquet": {
+      "bytes": 35999768,
+      "sha256": "a07f4d00d3cfe04edecb1641ff3b00a661fbe73677507b4dc3531b52c53b2f0b"
+    },
+    "observations/pilot_007.parquet": {
+      "bytes": 36667529,
+      "sha256": "182eb5bb671e5b1073a734c2be7b9abafef7da9dc1f1c8c3af1744a4c86a0927"
+    },
+    "observations/pilot_008.parquet": {
+      "bytes": 35037326,
+      "sha256": "cb4acf99d35ae6e62ddd742953381d2a66e6f4c9294ad34be5377da7132fdad1"
+    },
+    "observations/pilot_009.parquet": {
+      "bytes": 36525918,
+      "sha256": "4e5c387a677892c6ebfe2f068b1fda8da318cf12c1a594ecbc57a6bbdfc93667"
+    },
+    "observations/pilot_010.parquet": {
+      "bytes": 34335084,
+      "sha256": "f36f798d2919e932c2a2eb7e79784b63a6002455efa59280af1222a65b34f1aa"
+    },
+    "README.md": {
+      "bytes": 9568,
+      "sha256": "b24a6363252b1a883f9db6b4df51c113cc6f42e8fc5a34ff99b0ae139ad9abcb"
+    },
+    "reproduction.zip": {
+      "bytes": 5684794,
+      "sha256": "ca592273338d0cd9c45e543de24fda752045de090f6f6dbd23d319c5e44993f1"
+    },
+    "schema.json": {
+      "bytes": 1363,
+      "sha256": "180a1e4e6e1ca318beebd31c87753f336540faeb2510b9305aaae52fd19f58ca"
+    },
+    "target_decisions/pilot_001.parquet": {
+      "bytes": 1789165,
+      "sha256": "8cd3e6794b7c879e9cb3dacc84e4946d4938df085ccb96d4b032348f9a18949a"
+    },
+    "target_decisions/pilot_002.parquet": {
+      "bytes": 1866626,
+      "sha256": "62f2e8269fa85f1c02485dc19dbb20aadeb7179eeb94f84f3061060a359c311a"
+    },
+    "target_decisions/pilot_003.parquet": {
+      "bytes": 1812468,
+      "sha256": "0398a3dec34bf8cf18a4de6696d07fbc28086f06639d00bfdb69de4100f8185f"
+    },
+    "target_decisions/pilot_004.parquet": {
+      "bytes": 1806929,
+      "sha256": "6c9af183a79b2847d478be1e2b4f8919b506825a0851fa0f4934469a3400e2aa"
+    },
+    "target_decisions/pilot_005.parquet": {
+      "bytes": 1837540,
+      "sha256": "472965d604b34310813f7337a755c04826b11443c240c982f408b650cac7663c"
+    },
+    "target_decisions/pilot_006.parquet": {
+      "bytes": 1828725,
+      "sha256": "32f6a4cd44dcc413f6a965988c95733686013e4baf70e788921bd233575964d3"
+    },
+    "target_decisions/pilot_007.parquet": {
+      "bytes": 1818211,
+      "sha256": "4cc8ac883e7618bbfdffbb54c6a9faa11a541d6717b0940b79a637abafcb70d1"
+    },
+    "target_decisions/pilot_008.parquet": {
+      "bytes": 1793908,
+      "sha256": "df590bcdbd15d1f3ec15327eb50625a26971824cb6d31fdba4c7d56e431e516f"
+    },
+    "target_decisions/pilot_009.parquet": {
+      "bytes": 1858466,
+      "sha256": "623ee64f956d4957c6474e38ea0011e43fd38aee4fe306ab94277c42289718f1"
+    },
+    "target_decisions/pilot_010.parquet": {
+      "bytes": 1816360,
+      "sha256": "d0a714327ecb24013ff984fb48c29081da7d562e7bb23a6908ff45fe0ed6818e"
+    },
+    "tracks/pilot_001.parquet": {
+      "bytes": 26803778,
+      "sha256": "75ecde35eaf8f0356c73aee7fcee0b5e5fa24d4b3200ec8a893434f09038d4a4"
+    },
+    "tracks/pilot_002.parquet": {
+      "bytes": 28687208,
+      "sha256": "0b9fb8957a438ce9171b4845d2c26998502dbbc4ba31a0ecc416f8d61c9e598c"
+    },
+    "tracks/pilot_003.parquet": {
+      "bytes": 27171705,
+      "sha256": "a58586791c7995ca12bd05ab08f1b3caf4c9695823ded6289f1f4269d5ef22ab"
+    },
+    "tracks/pilot_004.parquet": {
+      "bytes": 27072526,
+      "sha256": "aa3349961cc74d54018f1a8660f1df3a24b28cb2fc37b36af3a196d80ab42a8d"
+    },
+    "tracks/pilot_005.parquet": {
+      "bytes": 28299282,
+      "sha256": "390c14ea35c6a7c521c0051309a55d73c70737c3b3738b2bfaca5da54a327b5a"
+    },
+    "tracks/pilot_006.parquet": {
+      "bytes": 28005432,
+      "sha256": "3c4036209b6c013fe1fb768bc5ee3d06c6a6d98765e0624dd2023e8fc83ae6d0"
+    },
+    "tracks/pilot_007.parquet": {
+      "bytes": 28116282,
+      "sha256": "f7308fb8a414e3bb85a3ac947395cbfdd255d43186ed1dd93c66c70d29fb2b4a"
+    },
+    "tracks/pilot_008.parquet": {
+      "bytes": 27173826,
+      "sha256": "468dd39aca98c839b695496c2fbbcaf3beab1ef789ea0d77b79d8a9a5b9e6ea1"
+    },
+    "tracks/pilot_009.parquet": {
+      "bytes": 28572591,
+      "sha256": "af316c3dd3c60ad391f9f60555c24bdad2ed0270cfedc617577fc3b11b8f7662"
+    },
+    "tracks/pilot_010.parquet": {
+      "bytes": 27042314,
+      "sha256": "9cafb322d19fae8d5373f079ec982bded5fdef0fd20f3e2fa8c9846e69c20085"
+    }
+  },
+  "compressed_bytes": 657433191,
+  "software": {
+    "numpy": "2.5.3",
+    "pandas": "3.0.6",
+    "pyarrow": "25.0.1",
+    "torch": "2.14.1+cu130",
+    "jsbsim": "1.3.1",
+    "gymnasium": "1.4.0"
+  },
+  "source_experiment": "20261010T200223_142625Z_tactical",
+  "repository_commit_at_packaging": "29c3b43f96577b785f1a4587b3b309eafa97041b",
+  "collector_file_hashes": {
+    "generate_tactical_corpus.py": "0d92be233c15bb27db922f66c68cccc691379b0ea9d91cc4bc22e3f0582431dd",
+    "tactical_corpus_schema.py": "f338e7f671452771c673abdac68757c97c0181f6075b6e5ddb8872e1ec031ce8"
+  },
+  "packager_file_hashes": {
+    "generate_tactical_corpus.py": "0d92be233c15bb27db922f66c68cccc691379b0ea9d91cc4bc22e3f0582431dd",
+    "tactical_corpus_schema.py": "f338e7f671452771c673abdac68757c97c0181f6075b6e5ddb8872e1ec031ce8"
+  },
+  "limitations": [
+    "Idealised exact tracks, not a sensor-noise or occlusion dataset.",
+    "300 matched scenarios produce 3000 encounters, not 3000 independent geometries.",
+    "Ten frozen learned F16 target policies observed by one scripted tactical controller; no real-world generalisation claim.",
+    "Native spawn is approximately head-on with fixed initial speed; nominal scenario bearings/headings/speeds are not applied by this adapter.",
+    "Observation values retain the controller's existing fixed scaling; tracks provide physical units.",
+    "Do not use final outcomes, future observations or other pilots' matching cases as input during later forecasting evaluation.",
+    "Deterministic actions do not guarantee bitwise reproduction across hardware."
+  ]
+}

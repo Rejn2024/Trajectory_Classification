@@ -12,6 +12,10 @@ model weights, Parquet, NumPy arrays, ACMI replays, and videos use LFS automatic
 
 ## Episode data and replays
 
+- [Trained pilot episode dataset](corpora/trained-pilot-episodes-v1/README.md):
+  3,000 encounters recording the scripted tactical aircraft's perspective, for
+  forecasting the ten trained pilots. Raw observation streams and physical tracks;
+  target action logs are separate from observer inputs.
 - [Tactical opponent episode dataset](corpora/tactical-episodes-v1/README.md):
   3,000 encounters, 300 per trained pilot, with exact observation streams and
   aircraft tracks. Compressed Parquet in Git LFS; preprocessing is left to the consumer.
