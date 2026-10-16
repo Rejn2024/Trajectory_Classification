@@ -1,21 +1,47 @@
-# Population PPO and tactical adaptation
+# From multi-pilot training to motion forecasting
 
 **Report formats:** [PDF slide deck](presentation.pdf) · [offline browser deck](presentation.html).
-Download either file from the `multi-pilot-training` branch and open it locally.
+Download either file from the `forecasting` branch and open it locally.
 The PDF provides a standalone slide deck. For HTML, use GitHub's **Download raw file** button;
 GitHub shows its source rather than hosting the slideshow. Both files are standalone:
 no Jupyter, Python, network connection, GPU, model weights or Git LFS are required.
 In HTML, use arrow keys; **N** toggles supplementary notes and **F** enters fullscreen.
 
-The deck contains **16 slides**. Three opening slides establish the pipeline before
-the results: the roles of RL, BVR Sim and JSBSim; the observation, decision, simulation,
-reward and PPO update loop; and training, validation, checkpoint selection and common
-evaluation. The simple-opponent results table follows on slide 4. Slides 1–13 cover
-the methodology and principal results; slides 14–16 cover observed behaviour,
-limitations and supporting evidence. The report
-is generated from existing files without additional training, simulations or evaluation flights.
+**Flight demonstrations:** [Three native Tacview MP4 replays](../../shared/demonstrators/tactical-checkpoints-v1/README.md)
+show selected tactical-adapted pilots against the scripted tactical opponent.
+Pilots 005 and 010 share the same starting scenario; pilot 003 illustrates a
+different contested encounter. The videos are downloadable presentation assets
+and play without Tacview. Their README describes the outcomes and selection scope.
+
+**Supplementary figures:** [Pareto comparisons and validity assessment](pareto/README.md)
+provide PNGs, vector PDFs and an offline gallery for the complete simple-opponent
+experiments, the partial bonus trial and tactical adaptation. They compare survival
+and elimination, with clean-win rates shown separately by colour. This is an
+empirical frontier among evaluated pilots; it does not establish global optimality
+or replace the joint clean-win objective.
+
+The deck contains **22 slides**. Slide 1 establishes multi-pilot training as the
+upstream preparation and data-generation stage for forecasting. Slides 2–4 explain
+the RL/BVR Sim/JSBSim interface and training pipeline. Slides 5–16 retain the pilot
+experiments, tactical adaptation, observed behaviour and evaluation limitations.
+Slides 17–21 introduce the forecasting dataset, illustrate an actual prediction,
+report population and per-pilot validation errors, and distinguish motion forecasts
+from named manoeuvres. Slide 22 lists the supporting evidence.
+
+[Individual slide images](figures/README.md) provide the new introduction and five
+forecasting slides as PNGs for reuse in another presentation. The PDF, HTML and
+images are generated from saved results without additional training, simulation,
+model inference or evaluation flights. The forecast test partition remains unused.
 
 ## Executive summary
+
+The project objective is to forecast aircraft movement from one-sided observations.
+Multi-pilot reinforcement learning prepares the flight-generating policies: it is
+an upstream pre-processing and dataset-generation stage. The selected policies
+subsequently generate new recorded encounters with their weights frozen. In the
+forecasting corpus, the scripted tactical aircraft is the observer and the learned
+pilot is the prediction target. Supervised forecasting then learns from those
+observations, using actual future position and velocity as targets.
 
 The single-pilot PPO workflow was extended to ten independent pilots. Each has its
 own reward coefficients and checkpoint, while sharing the same aircraft, skills
@@ -285,6 +311,105 @@ retention, evaluating broader geometries and opponent policies, and repeating tr
 seeds. Population opponents/self-play are another design option, but were not used
 here. These investigations are outside the scope of the reported experiments.
 
+## Initial motion forecasting results
+
+The source corpus is [trained-pilot-episodes-v1](../../shared/corpora/trained-pilot-episodes-v1/README.md):
+**300 matched starting scenarios × ten frozen tactical-adapted pilots = 3,000 episodes**.
+These are separate dataset-generation encounters, not episodes collected while
+updating the pilots. Observer **B01** is the scripted tactical F-16; target **A01**
+is a trained F-16. Forecasting predicts A01 from B01's observation interface.
+
+| Partition | Starting scenario groups | Episodes per pilot | Total episodes |
+| --- | ---: | ---: | ---: |
+| Training | 210 | 210 | 2,100 |
+| Validation | 45 | 45 | 450 |
+| Reserved final test | 45 | 45 | 450 |
+
+Whole scenario groups stay in one partition across all ten pilots. The same
+starting scenario therefore cannot cross from training into validation through
+a different pilot. These splits assess new scenarios for the known population;
+they do not test generalisation to an unseen pilot.
+
+One shared **Transformer** and one shared **GRU** each learn across all ten pilots.
+The five-second input sequence contains observed states at 10 Hz. Acceleration
+features require another half-second of preceding observations. Each model
+predicts three-dimensional position and velocity at **1, 2 and 5 seconds** from
+that same history. Coordinates use world North/West/Up axes; all future states,
+private target skills and pilot identities are excluded from inputs. The models
+learn corrections to constant-velocity extrapolation. Unlike the earlier pilot
+training, this stage uses a supervised regression loss without PPO or a critic.
+
+### Population validation errors
+
+Position error is the distance between the predicted and actual future locations.
+Velocity error is the magnitude of the difference between velocity vectors, so it
+includes differences in both speed and direction. Each metric averages valid
+forecast errors within an episode, then weights the 450 episodes equally. Lower
+values are better. An error of 19 metres is not a flight distance, an error on each
+coordinate or a guaranteed bound. It has no direct percentage-accuracy equivalent.
+
+| Method | Position 1 s (m) | Position 2 s (m) | Position 5 s (m) | Velocity 1 s (m/s) | Velocity 2 s (m/s) | Velocity 5 s (m/s) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Constant velocity | 9.15 | 36.18 | 221.46 | 17.91 | 35.71 | 86.97 |
+| Constant acceleration | 0.87 | 5.23 | 63.94 | 2.18 | 7.03 | 35.64 |
+| GRU | 0.44 | 1.93 | 20.65 | 0.91 | 2.40 | 12.11 |
+| Transformer | 0.48 | 2.02 | 19.09 | 0.98 | 2.37 | 10.94 |
+
+The Transformer reduces five-second mean position error by approximately **70%**
+relative to constant acceleration. GRU has slightly smaller short-horizon position
+errors; Transformer has smaller five-second position and velocity errors for all
+ten pilots. These are development validation comparisons from one split and
+training seed. They do not establish universal superiority of one architecture.
+
+### Position tolerances and interpretation
+
+Tolerance rates make the physical errors easier to assess. The radius is a
+three-dimensional distance around the actual future location. The proportion
+within the radius is calculated within each episode and then averaged equally
+over episodes, matching the episode weighting used for the mean errors.
+
+| Forecast horizon and position tolerance | Transformer | GRU |
+| --- | ---: | ---: |
+| 1 s: within 1 m | 89.5% | 91.3% |
+| 2 s: within 5 m | 92.1% | 92.7% |
+| 5 s: within 10 m | 48.7% | 44.9% |
+| 5 s: within 25 m | 80.0% | 77.1% |
+| 5 s: within 50 m | 92.1% | 91.3% |
+
+These thresholds are explanatory examples, not operational acceptance criteria.
+They expose the error tail: a 19.09 m mean does not imply that every prediction
+falls within 19.09 m. Future labels unavailable after an episode ends or the target
+dies are excluded separately at each horizon.
+
+Slide 18 displays an actual saved validation prediction from pilot 004 at 71 s.
+It is selected deterministically as the eligible five-second window nearest the
+pooled median Transformer position error, approximately **8.08 m**. This individual
+window illustrates the geometry of error; it is not the episode-weighted population
+mean. The physical track is shown for assessment only and was not supplied as a
+future input to the model. The endpoint detail shows horizontal error; the reported
+distance also includes the vertical component.
+
+### Variation across pilots and behavioural interpretation
+
+Slide 20 shows five-second position and velocity errors for every pilot under
+both forecasting models. Pilot 001 is easiest to predict; pilots 002, 005, 006
+and 009 have larger errors. Predictability is distinct from combat effectiveness
+or aggression, and error alone cannot establish the underlying behavioural cause.
+The [complete metrics](data/forecasting/metrics.csv) include every pilot, horizon,
+quantity and reference method, plus additional error-distribution summaries.
+
+The current outputs describe motion rather than the internal choice among 33
+skills. A later interpretation layer could derive turning direction, climbing,
+descending and acceleration from predicted movement, using explicit thresholds
+and comparison with actual future movement. That layer has not been implemented
+or evaluated. Internal catalogue skills describe intent, and different skills
+can produce similar observable trajectories. Forecasting those skill labels
+would therefore require a separate classification target and evaluation.
+
+The current evidence uses idealised simulator tracks. Realistic sensor noise,
+track loss, unseen pilot policies and calibrated uncertainty remain untested.
+The final test partition is reserved until development choices are fixed.
+
 ## Notebook and module reference
 
 | File | Role |
@@ -294,6 +419,8 @@ here. These investigations are outside the scope of the reported experiments.
 | [05 comparison](../../notebooks/05_compare_population_runs.ipynb) | Read-only report; defaults to the completed selected-skill comparison |
 | [06](../../notebooks/06_train_multiple_pilots.ipynb) | Preserved hybrid evade/pursue/eliminate reward alternative |
 | [07](../../notebooks/07_tactical_adaptation.ipynb) | Read-only completed tactical report; embedded outputs are published |
+| `notebooks/08_motion_forecasting.ipynb` (local development file) | Supervised forecasting configuration, validation tables and plots; not included in this presentation publication |
+| `docs/motion_forecasting.md` (local development file) | Forecasting implementation guide; the portable results and methodology are documented above |
 | [multi_pilot.py](../../bvr_behavior_prediction/rl/multi_pilot.py) | Population orchestration, persistence, initialization and checkpoint selection |
 | [pilot.py](../../bvr_behavior_prediction/rl/pilot.py) | Transformer actor/critic and selected-skill action probabilities |
 | [trainer.py](../../bvr_behavior_prediction/rl/trainer.py) | Rollouts, advantages, PPO updates, batching and diagnostics |
@@ -324,10 +451,19 @@ recorded fine-tuning settings rather than changing 04 or 05's training cells.
   suites, provided in CSV format (rates are fractions, e.g. 0.44 means 44%).
 - [source_hashes.json](data/source_hashes.json): SHA-256 of input reports used for the export.
 - [checksums.json](checksums.json): checksums for the portable package files.
+- [Forecast metrics](data/forecasting/metrics.csv): saved validation errors for both
+  models, both constant-motion references, every pilot and all three horizons.
+- [Forecast summary](data/forecasting/summary.json): partitions, run settings,
+  checkpoint summaries, episode-weighted tolerance rates and source checksums.
+- [Forecast example](data/forecasting/example.json): observed-history context,
+  actual future track and saved model outputs for the reproducibly selected example.
 - [Exporter](../../scripts/build_pilot_presentation.py): `--collect` audits existing
   local results, verifies pairing, recomputes confidence intervals and writes this
-  package. Without `--collect`, it renders from committed data. Neither mode imports
-  training code, loads weights or runs simulation.
+  package. `--collect-forecast` packages the saved forecasting results and checks
+  their episode-weighted means against saved predictions. Without either option,
+  it renders from the portable data only. No mode imports training code, loads
+  weights, performs neural inference or runs simulation. Forecast slide rendering
+  is implemented in [presentation_forecasting.py](../../scripts/presentation_forecasting.py).
 
 Local full artifacts remain under the two directories recorded in `data/results.json`:
 the selected-skill recovery population and the tactical adaptation job.

@@ -1,0 +1,214 @@
+{
+  "corpus": "shared/corpora/trained-pilot-episodes-v1",
+  "observer": "B01: scripted tactical F-16",
+  "target": "A01: trained F-16",
+  "counts": {
+    "train": {
+      "episodes": 2100,
+      "scenario_groups": 210,
+      "samples": 147718,
+      "valid_by_horizon": [
+        147718,
+        146191,
+        141544
+      ]
+    },
+    "validation": {
+      "episodes": 450,
+      "scenario_groups": 45,
+      "samples": 31029,
+      "valid_by_horizon": [
+        31029,
+        30693,
+        29685
+      ]
+    },
+    "test": {
+      "episodes": 450,
+      "scenario_groups": 45,
+      "samples": 32457,
+      "valid_by_horizon": [
+        32457,
+        32099,
+        31025
+      ]
+    }
+  },
+  "split_seed": 1729,
+  "test_evaluated": false,
+  "metric": "Mean 3D error within episodes, then equal episode weight",
+  "tolerance_metric": "Fraction within the stated 3D radius per episode, then equal episode weight",
+  "tolerances": [
+    {
+      "model": "transformer",
+      "horizon_s": 1,
+      "position_tolerance_m": 1,
+      "episode_mean_fraction": 0.8953686008706414
+    },
+    {
+      "model": "transformer",
+      "horizon_s": 2,
+      "position_tolerance_m": 5,
+      "episode_mean_fraction": 0.9209945085372808
+    },
+    {
+      "model": "transformer",
+      "horizon_s": 5,
+      "position_tolerance_m": 10,
+      "episode_mean_fraction": 0.4874350072147075
+    },
+    {
+      "model": "transformer",
+      "horizon_s": 5,
+      "position_tolerance_m": 25,
+      "episode_mean_fraction": 0.800184004471567
+    },
+    {
+      "model": "transformer",
+      "horizon_s": 5,
+      "position_tolerance_m": 50,
+      "episode_mean_fraction": 0.9210932003865249
+    },
+    {
+      "model": "gru",
+      "horizon_s": 1,
+      "position_tolerance_m": 1,
+      "episode_mean_fraction": 0.9128960900647637
+    },
+    {
+      "model": "gru",
+      "horizon_s": 2,
+      "position_tolerance_m": 5,
+      "episode_mean_fraction": 0.9273346961513691
+    },
+    {
+      "model": "gru",
+      "horizon_s": 5,
+      "position_tolerance_m": 10,
+      "episode_mean_fraction": 0.44944165926513
+    },
+    {
+      "model": "gru",
+      "horizon_s": 5,
+      "position_tolerance_m": 25,
+      "episode_mean_fraction": 0.7713857382166263
+    },
+    {
+      "model": "gru",
+      "horizon_s": 5,
+      "position_tolerance_m": 50,
+      "episode_mean_fraction": 0.912894952889951
+    }
+  ],
+  "runs": {
+    "transformer": {
+      "model": {
+        "architecture": "transformer",
+        "input_size": 54,
+        "history_steps": 51,
+        "width": 128,
+        "layers": 2,
+        "heads": 4,
+        "dropout": 0.1
+      },
+      "training": {
+        "seed": 42,
+        "device": "cuda",
+        "cpu_threads": 4,
+        "epochs": 30,
+        "patience": 7,
+        "min_delta": 0.001,
+        "batch_size": 1024,
+        "evaluation_batch_size": 2048,
+        "learning_rate": 0.0003,
+        "weight_decay": 0.01,
+        "gradient_clip": 1.0,
+        "model": {
+          "width": 128,
+          "layers": 2,
+          "heads": 4,
+          "dropout": 0.1
+        }
+      },
+      "parameters": 429202,
+      "selection": "Mean validation episode-macro error ratio to constant velocity across 3 horizons and position/velocity",
+      "summary": {
+        "status": "early_stopped",
+        "epochs_completed": 29,
+        "best_epoch": 22,
+        "validation_score": 0.07360507880946728,
+        "test_evaluated": false,
+        "elapsed_seconds": 65.56806230009533,
+        "best_checkpoint_sha256": "87a85e068a5c6f2ee222e5de99b063311f72c77fce6ccf18759829be6c869ce9"
+      }
+    },
+    "gru": {
+      "model": {
+        "architecture": "gru",
+        "input_size": 54,
+        "history_steps": 51,
+        "width": 128,
+        "layers": 2,
+        "heads": 4,
+        "dropout": 0.1
+      },
+      "training": {
+        "seed": 42,
+        "device": "cuda",
+        "cpu_threads": 4,
+        "epochs": 30,
+        "patience": 7,
+        "min_delta": 0.001,
+        "batch_size": 1024,
+        "evaluation_batch_size": 2048,
+        "learning_rate": 0.0003,
+        "weight_decay": 0.01,
+        "gradient_clip": 1.0,
+        "model": {
+          "width": 128,
+          "layers": 2,
+          "heads": 4,
+          "dropout": 0.1
+        }
+      },
+      "parameters": 224274,
+      "selection": "Mean validation episode-macro error ratio to constant velocity across 3 horizons and position/velocity",
+      "summary": {
+        "status": "completed",
+        "epochs_completed": 30,
+        "best_epoch": 28,
+        "validation_score": 0.07530449152099256,
+        "test_evaluated": false,
+        "elapsed_seconds": 24.21650179999415,
+        "best_checkpoint_sha256": "0897d6232f72c41d7d00faac8179850ce20dde48e96e64c7911cec93f32316f4"
+      }
+    }
+  },
+  "source_sha256": {
+    "artifacts/motion_forecasting/data_v1/data_manifest.json": "555ffdbcf801844597c3c2591a812bf5cd67f15e61ee84955254624e9981e975",
+    "shared/corpora/trained-pilot-episodes-v1/config.json": "098f8e0189ae513ea7c3d72f43d031516b0e9d262d9fcf699a230a6c4893b3dd",
+    "shared/corpora/trained-pilot-episodes-v1/manifest.json": "66e4a2e09ce3d8cf085cbca8c818ab4adbb4adaebaf47284fb3e845bb1e049e0",
+    "artifacts/motion_forecasting/data_v1/split_assignments.csv": "e8f9c7ab71cdf6761aea6ee13416cdde1d9e841515e131c66abe1a539d9a5183",
+    "artifacts/motion_forecasting/initial_v1/validation_comparison.csv": "34d415180412167c07734e7ba0b762f8e890be439ac252a84f88a0287e5eb787",
+    "artifacts/motion_forecasting/initial_v1/transformer/run.json": "da46bd04d85866c13fd722b195641e90c1345674dae20d7f6f11c169ed97a891",
+    "artifacts/motion_forecasting/initial_v1/transformer/summary.json": "bdc7d99c42f5e0ce58804894cfb6c0fd349b54b9f84271028f7601852161e1f9",
+    "artifacts/motion_forecasting/initial_v1/transformer/validation_predictions.npz": "4458bd1d013ca522641d9d4ffe997d298275993020fe3208a07d40276b74df46",
+    "artifacts/motion_forecasting/initial_v1/transformer/validation_samples.parquet": "c70119e2d3383bc626b1332f8340e181efc900ba8fcba663ebf03c98b5b03bca",
+    "artifacts/motion_forecasting/initial_v1/gru/run.json": "439e18e62ad54ce34bffba936916c77c2f79598e4bd85bfa66de6f7378640139",
+    "artifacts/motion_forecasting/initial_v1/gru/summary.json": "052d5d3b496e010307e8dda98f5ccb83f57aa2a849d7fc8aec6746503b9957eb",
+    "artifacts/motion_forecasting/initial_v1/gru/validation_predictions.npz": "ed806324066a1a76c2b9f63ebfef8de6830767e384f725d8e613e15d3f14222f",
+    "artifacts/motion_forecasting/initial_v1/gru/validation_samples.parquet": "c70119e2d3383bc626b1332f8340e181efc900ba8fcba663ebf03c98b5b03bca",
+    "shared/corpora/trained-pilot-episodes-v1/tracks/pilot_004.parquet": "aa3349961cc74d54018f1a8660f1df3a24b28cb2fc37b36af3a196d80ab42a8d"
+  },
+  "prepared_file_sha256": {
+    "anchors.npy": "07752774af26bf5e2ad81a70e7cdc787f3113d0caac95301cb57ad189d9f370d",
+    "constant_acceleration.npy": "c22904e8926694f0f91e4ca1d3999d38ad3ffe7b8003d89a46b1322a1f20f06b",
+    "features.npy": "d13e3aa5a82cf5e878900980ae02f2ffa65098981caf5653b09a2ee064874ec7",
+    "residuals.npy": "5b1336ecf2824297ca210e19a564964e31eb06ec53fb07cc40af0e1585273408",
+    "samples.parquet": "b26cd83529c99120e7964bf3093d2f4525e7d16f97bdc76ad122d4fc33402038",
+    "scaling.json": "012b227b6ec0c74fe4d8a6c2b837270c26865e188cfd75bc3a330a910a48fa00",
+    "scenario_splits.json": "5452c044ef1ec5643fcd836a8e2412a924cf2116f03cb1a371af4208849af854",
+    "split_assignments.csv": "e8f9c7ab71cdf6761aea6ee13416cdde1d9e841515e131c66abe1a539d9a5183",
+    "valid.npy": "314f3b6a69d1322a2841be55542c57a274722e482726bd528e1d7d0d1e900b4e"
+  }
+}
