@@ -13,7 +13,7 @@ The learned observer is **A01**, shown as **Red** by the native simulator. The s
 
 These encounters were selected for visual interest from an earlier assessment. They are separate from the 3,000 fresh forecasting episodes and do not form an unbiased performance sample. All 20 reproduced their archived outcome category; trajectories can differ slightly with inference hardware and batching.
 
-The ACMI 2.1 headers, timestamps, finite coordinates, aircraft identities, checksums and ZIP integrity have been checked. Visual playback in the Tacview GUI has not been inspected.
+The ACMI 2.1 headers, timestamps, finite coordinates, aircraft identities, checksums and ZIP integrity have been checked. Three selected encounters have also been rendered and inspected in native Tacview; their [MP4 demonstrations](../../demonstrators/tactical-checkpoints-v1/README.md) can be played without Tacview. This does not constitute visual inspection of all twenty recordings.
 
 | Pilot | Selection | Seed | Duration s | Outcome |
 | --- | --- | ---: | ---: | --- |

@@ -12,6 +12,10 @@ model weights, Parquet, NumPy arrays, ACMI replays, and videos use LFS automatic
 
 ## Episode data and replays
 
+- [Tacview tactical demonstration videos](demonstrators/tactical-checkpoints-v1/README.md):
+  three native 3D MP4s from selected tactical-adapted pilot encounters, with an
+  offline comparison page. Pilots 005 and 010 share a starting scenario; pilot 003
+  illustrates a separate contested encounter. These are curated demonstrations.
 - [Trained pilot episode dataset](corpora/trained-pilot-episodes-v1/README.md):
   3,000 encounters recording the scripted tactical aircraft's perspective, for
   forecasting the ten trained pilots. Raw observation streams and physical tracks;

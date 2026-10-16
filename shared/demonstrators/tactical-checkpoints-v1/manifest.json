@@ -1,0 +1,101 @@
+[
+  {
+    "video": "pilot_003_contested_seed_1120286.mp4",
+    "sha256": "290aa43baa1e4e0c3613930c75b75b8b6e6913c3aaf8d8dc5db5f1bce9cae617",
+    "bytes": 10421075,
+    "source_acmi": "artifacts\\tactical_checkpoint_replays\\replays\\pilot_003\\pilot_003_contested_seed_1120286.txt.acmi",
+    "source_acmi_sha256": "3890b5b93a89e37c46b7bd24e0cd2800771a4dfcbc0b7cc43466a6bb948e0ee9",
+    "summary_sha256": "2bf42659c70316426839e4a196ee9ac4020a04275a831b4b7f5381dcdf362002",
+    "checkpoint_sha256": "caeaefe2137e580379c3d01ec95ec65496513ae55d4da1a31c8543c6b556d875",
+    "pilot": "pilot_003",
+    "scenario_seed": 1120286,
+    "outcome": "survived_without_elimination",
+    "frames": 3600,
+    "fps": 30,
+    "duration_seconds": 120.0,
+    "resolution": [
+      1280,
+      720
+    ],
+    "renderer": "Tacview 1.9.5 native 3D window",
+    "capture": "Windows Graphics Capture API with per-frame rendered marker verification",
+    "camera": {
+      "mode": "free_oblique_engagement",
+      "yaw_degrees": 35,
+      "pitch_degrees": -40,
+      "distance": "1.45 times aircraft separation, minimum 16 km; midpoint of aircraft positions",
+      "field_of_view_degrees": 50,
+      "aircraft_display_scale": "camera distance / 400; positions and attitudes unchanged"
+    },
+    "display_copy_changes": "Radar and LockedTarget properties omitted to hide sensor graphics; source ACMI unchanged.",
+    "captions": "Most recent logged skill at or before replay time; supplementary top-down plot from source ACMI aircraft tracks.",
+    "audio": false,
+    "playback_speed": 1
+  },
+  {
+    "video": "pilot_005_clean_win_seed_1120142.mp4",
+    "sha256": "ef6ecfa4cc223f34847cab37413e34b56c6efd1675b074c995b85575f71ff05e",
+    "bytes": 8404716,
+    "source_acmi": "artifacts\\tactical_checkpoint_replays\\replays\\pilot_005\\pilot_005_clean_win_seed_1120142.txt.acmi",
+    "source_acmi_sha256": "b3546ea22036f82bddf45ea4944ea0065430399d875321644bfe6e54a3500d47",
+    "summary_sha256": "cc2902473f17b3ee56c6d3733748c22bf5f6d39dd907d32ab0523d53c82fe675",
+    "checkpoint_sha256": "5791be7ae3e90ec8f247d7370b4d006f6bd32b300db25fa27bf807b21eaa74f8",
+    "pilot": "pilot_005",
+    "scenario_seed": 1120142,
+    "outcome": "surviving_elimination",
+    "frames": 3549,
+    "fps": 30,
+    "duration_seconds": 118.3,
+    "resolution": [
+      1280,
+      720
+    ],
+    "renderer": "Tacview 1.9.5 native 3D window",
+    "capture": "Windows Graphics Capture API with per-frame rendered marker verification",
+    "camera": {
+      "mode": "free_oblique_engagement",
+      "yaw_degrees": 35,
+      "pitch_degrees": -40,
+      "distance": "1.45 times aircraft separation, minimum 16 km; midpoint of aircraft positions",
+      "field_of_view_degrees": 50,
+      "aircraft_display_scale": "camera distance / 400; positions and attitudes unchanged"
+    },
+    "display_copy_changes": "Radar and LockedTarget properties omitted to hide sensor graphics; source ACMI unchanged.",
+    "captions": "Most recent logged skill at or before replay time; supplementary top-down plot from source ACMI aircraft tracks.",
+    "audio": false,
+    "playback_speed": 1
+  },
+  {
+    "video": "pilot_010_clean_win_seed_1120142.mp4",
+    "sha256": "1688927a79d777f607ea2bcb7636839c76f141a54f5fbbf30ee392c3334045a5",
+    "bytes": 9255386,
+    "source_acmi": "artifacts\\tactical_checkpoint_replays\\replays\\pilot_010\\pilot_010_clean_win_seed_1120142.txt.acmi",
+    "source_acmi_sha256": "d2faf78b9fcce2c0ee7f7edad268be2ccc4fdff4f21b3282348ae032e0955565",
+    "summary_sha256": "a35a8097d79a1d3e5db2e27a238acc8a5b8904950ffec12d24d8685cf2203e4b",
+    "checkpoint_sha256": "76ad0fbef45e0bfcf039919a90aced8f346bcf0e841f49cdfed195d66cab9ca2",
+    "pilot": "pilot_010",
+    "scenario_seed": 1120142,
+    "outcome": "surviving_elimination",
+    "frames": 3396,
+    "fps": 30,
+    "duration_seconds": 113.2,
+    "resolution": [
+      1280,
+      720
+    ],
+    "renderer": "Tacview 1.9.5 native 3D window",
+    "capture": "Windows Graphics Capture API with per-frame rendered marker verification",
+    "camera": {
+      "mode": "free_oblique_engagement",
+      "yaw_degrees": 35,
+      "pitch_degrees": -40,
+      "distance": "1.45 times aircraft separation, minimum 16 km; midpoint of aircraft positions",
+      "field_of_view_degrees": 50,
+      "aircraft_display_scale": "camera distance / 400; positions and attitudes unchanged"
+    },
+    "display_copy_changes": "Radar and LockedTarget properties omitted to hide sensor graphics; source ACMI unchanged.",
+    "captions": "Most recent logged skill at or before replay time; supplementary top-down plot from source ACMI aircraft tracks.",
+    "audio": false,
+    "playback_speed": 1
+  }
+]

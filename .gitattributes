@@ -20,3 +20,8 @@ shared/corpora/trained-pilot-episodes-v1/*.json text eol=lf
 shared/corpora/trained-pilot-episodes-v1/*.md text eol=lf
 shared/replays/tactical-checkpoints-v1/*.json text eol=lf
 shared/replays/tactical-checkpoints-v1/*.md text eol=lf
+
+# Keep the small offline video player and its provenance directly readable.
+shared/demonstrators/tactical-checkpoints-v1/index.html !filter !diff !merge text eol=lf
+shared/demonstrators/tactical-checkpoints-v1/*.json !filter !diff !merge text eol=lf
+shared/demonstrators/tactical-checkpoints-v1/*.md text eol=lf

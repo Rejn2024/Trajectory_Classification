@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tactical encounters · Tacview replays</title>
+<style>
+  :root { color-scheme:dark; font:16px/1.55 system-ui,sans-serif; background:#071522; color:#e6edf4; }
+  body { max-width:1600px; margin:auto; padding:32px; }
+  h1 { font-size:clamp(24px,3vw,38px); margin:0 0 12px; }
+  h2 { font-size:23px; margin:32px 0 12px; }
+  h3 { font-size:18px; margin:0 0 10px; }
+  p { max-width:1000px; color:#bacbdb; }
+  .pair { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  article { border:1px solid #264052; border-radius:12px; background:#0d2030; padding:18px; }
+  article p { margin-bottom:0; }
+  video { width:100%; display:block; border-radius:6px; background:#000; }
+  button { border:1px solid #49718b; background:#193c52; color:white; border-radius:6px; padding:10px 16px; cursor:pointer; font:inherit; }
+  .controls { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:0 0 16px; }
+  input { width:min(500px,60vw); }
+  a { color:#89c9f5; }
+  .single { max-width:1000px; }
+  footer { margin-top:36px; color:#98afc1; font-size:14px; }
+  @media(max-width:850px) { .pair { grid-template-columns:1fr; } body { padding:18px; } }
+</style>
+<h1>Tactical encounters</h1>
+<p>Three native Tacview 3D recordings from selected trained-pilot checkpoints against the scripted tactical F-16. The oblique camera frames both aircraft while they are alive. Aircraft models are enlarged for visibility; their recorded positions and attitudes are preserved.</p>
+<h2>Same starting scenario · pilots 005 and 010</h2>
+<p>Scenario seed 1120142. These examples show different manoeuvre choices under the same starting conditions. The descriptions apply to these recordings, rather than defining fixed pilot personalities.</p>
+<div class="controls">
+  <button id="start">Play both from start</button>
+  <button id="pause">Pause both</button>
+  <label for="seek">Replay time</label><input id="seek" type="range" min="0" max="118.2667" step="0.1" value="0"><output id="time">0.0 s</output>
+</div>
+<div class="pair">
+  <article>
+    <h3>Pilot 005 · mixed pursuit and defence</h3>
+    <video id="a" controls preload="metadata" src="pilot_005_clean_win_seed_1120142.mp4"></video>
+    <p>Frequent extension, lag pursuit, beaming and cranking. Opponent eliminated; the trained pilot survived the recorded episode.</p>
+    <a href="pilot_005_clean_win_seed_1120142.mp4" download>Download MP4</a>
+  </article>
+  <article>
+    <h3>Pilot 010 · frequent turns away</h3>
+    <video id="b" controls preload="metadata" src="pilot_010_clean_win_seed_1120142.mp4"></video>
+    <p>Frequent turn-cold and extend commands. Opponent eliminated; the trained pilot survived the recorded episode.</p>
+    <a href="pilot_010_clean_win_seed_1120142.mp4" download>Download MP4</a>
+  </article>
+</div>
+<h2>Different scenario · pilot 003</h2>
+<article class="single">
+  <h3>Pilot 003 · repeated recommitment</h3>
+  <video controls preload="metadata" src="pilot_003_contested_seed_1120286.mp4"></video>
+  <p>Scenario seed 1120286. Recommitment, lead pursuit and cranking during a contested encounter. Both aircraft survived the recording. Its starting conditions differ from the paired comparison above.</p>
+  <a href="pilot_003_contested_seed_1120286.mp4" download>Download MP4</a>
+</article>
+<footer>
+  Silent H.264 MP4s · 1280 × 720 · 30 frames/s · 1× replay speed.<br>
+  These selected demonstrations are not an unbiased performance sample. “Last logged command” displays the latest command entry at or before the shown replay time.<br>
+  <a href="manifest.json">Recording provenance and checksums</a>
+</footer>
+<script>
+const a = document.getElementById('a'), b = document.getElementById('b');
+const seek = document.getElementById('seek'), time = document.getElementById('time');
+const clampTime = (video, t) => Math.min(t, Number.isFinite(video.duration) ? Math.max(0, video.duration - 0.034) : t);
+document.getElementById('start').onclick = () => {
+  a.currentTime = b.currentTime = 0;
+  Promise.allSettled([a.play(), b.play()]);
+};
+document.getElementById('pause').onclick = () => { a.pause(); b.pause(); };
+seek.oninput = () => {
+  const t = Number(seek.value);
+  a.currentTime = clampTime(a, t); b.currentTime = clampTime(b, t);
+  time.textContent = t.toFixed(1) + ' s';
+};
+a.ontimeupdate = () => {
+  if (document.activeElement !== seek) seek.value = a.currentTime;
+  time.textContent = a.currentTime.toFixed(1) + ' s';
+  if (!a.paused && !b.paused && Math.abs(b.currentTime - a.currentTime) > 0.2)
+    b.currentTime = clampTime(b, a.currentTime);
+};
+</script>
+</html>
