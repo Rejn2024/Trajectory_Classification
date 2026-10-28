@@ -1,5 +1,12 @@
 # Notebooks
 
+For future catalogue selections, open
+[09_skill_forecasting.ipynb](09_skill_forecasting.ipynb). **Run All reads saved
+development results and demonstrates observation-only inference.** It shows
+exact +1/+2/+5-second labels, class support, frequency baselines, per-pilot and
+changed/unchanged metrics, and confusion matrices. Training controls default to
+off. See the [skill-forecasting guide](../docs/skill_forecasting.md).
+
 For position and velocity forecasting, open
 [08_motion_forecasting.ipynb](08_motion_forecasting.ipynb). **Run All reads saved
 validation results and demonstrates checkpoint inference; it does not retrain or

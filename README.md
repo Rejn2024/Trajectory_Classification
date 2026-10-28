@@ -24,6 +24,15 @@ from bvr_sim.agents.skill_manager import SkillManager
 See `configs/` for the initial F-16 experiment and `examples/train_pipeline.py` for
 an end-to-end training skeleton.
 
+## Trained pilot skill forecasting
+
+[Notebook 09](notebooks/09_skill_forecasting.ipynb) forecasts the trained pilot's
+selected catalogue labels at **+1, +2 and +5 seconds** from tactical observer B01's
+history. It preserves grouped scenario splits and the reserved test set, and
+reports class support, frequency baselines and GRU/transformer validation metrics.
+See the [skill-forecasting guide](docs/skill_forecasting.md). Catalogue selections
+need not represent physically distinct manoeuvres.
+
 ## Trained pilot motion forecasting
 
 [Notebook 08](notebooks/08_motion_forecasting.ipynb) reports position and velocity
