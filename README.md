@@ -24,6 +24,15 @@ from bvr_sim.agents.skill_manager import SkillManager
 See `configs/` for the initial F-16 experiment and `examples/train_pipeline.py` for
 an end-to-end training skeleton.
 
+## Trained pilot motion forecasting
+
+[Notebook 08](notebooks/08_motion_forecasting.ipynb) reports position and velocity
+forecasts at **1, 2 and 5 seconds** from the scripted tactical aircraft's perspective.
+The first experiment compares a transformer and GRU with two kinematic baselines,
+using complete matched scenario groups for partitioning and a reserved final test.
+See the [forecasting guide](docs/motion_forecasting.md) for results, architecture,
+data preparation, training commands and checkpoint inference.
+
 ## Sharing training results and flight datasets
 
 Publish selected model checkpoints, training results, and flight corpora under
