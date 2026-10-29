@@ -26,6 +26,11 @@ an end-to-end training skeleton.
 
 ## Trained pilot skill forecasting
 
+[Notebook 10](notebooks/10_skill_forecasting_improvements.ipynb) reports the
+subsequent improvement study: causal encounter geometry, longer observation
+histories, training-only grouped model selection and fixed model averaging.
+See the [improvement guide](docs/skill_forecasting_improvements.md).
+
 [Notebook 09](notebooks/09_skill_forecasting.ipynb) forecasts the trained pilot's
 selected catalogue labels at **+1, +2 and +5 seconds** from tactical observer B01's
 history. It preserves grouped scenario splits and the reserved test set, and

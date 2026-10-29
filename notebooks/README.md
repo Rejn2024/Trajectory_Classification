@@ -1,5 +1,11 @@
 # Notebooks
 
+For the skill-forecasting improvement study, open
+[10_skill_forecasting_improvements.ipynb](10_skill_forecasting_improvements.ipynb).
+**Run All reads saved results and demonstrates inference.** It compares the
+frozen ensemble with the preserved initial models, including scenario-group
+uncertainty intervals. See the [improvement guide](../docs/skill_forecasting_improvements.md).
+
 For future catalogue selections, open
 [09_skill_forecasting.ipynb](09_skill_forecasting.ipynb). **Run All reads saved
 development results and demonstrates observation-only inference.** It shows
