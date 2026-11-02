@@ -1,5 +1,10 @@
 # From multi-pilot training to motion forecasting
 
+**New forecasting insights:** [13-slide PDF/HTML deck](forecasting_insights/README.md)
+covers motion and skill forecasts from tactical observer B01's view of the trained
+pilots, including the improved ensemble, per-pilot gains and validation limits.
+The original 22-slide presentation below is retained.
+
 **Report formats:** [PDF slide deck](presentation.pdf) · [offline browser deck](presentation.html).
 Download either file from the `forecasting` branch and open it locally.
 The PDF provides a standalone slide deck. For HTML, use GitHub's **Download raw file** button;

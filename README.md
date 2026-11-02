@@ -26,6 +26,11 @@ an end-to-end training skeleton.
 
 ## Trained pilot skill forecasting
 
+[Forecasting insights slides](docs/presentations/forecasting_insights/README.md)
+summarize motion and skill results from tactical observer B01's view of the ten
+trained pilots. The standalone PDF and HTML include accuracy improvements,
+per-pilot comparisons, uncertainty intervals and the limits of the evidence.
+
 [Notebook 10](notebooks/10_skill_forecasting_improvements.ipynb) reports the
 subsequent improvement study: causal encounter geometry, longer observation
 histories, training-only grouped model selection and fixed model averaging.
