@@ -1,5 +1,9 @@
 # Forecasting trained pilots from a tactical observer's view
 
+For the expanded original-versus-improved catalogue analysis, use the
+[21-slide skills comparison and full metric report](../skills_catalogue/README.md).
+This earlier 13-slide deck remains the combined motion/skills overview.
+
 **13 slides, evidence snapshot 2 November 2026.**
 
 [PDF slides](forecasting_insights.pdf) · [Offline HTML slides](index.html) ·

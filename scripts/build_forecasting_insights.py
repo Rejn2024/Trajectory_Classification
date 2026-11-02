@@ -480,13 +480,14 @@ def render(dest):
     export(dest, slides, evidence)
 
 
-def export(dest, slides, evidence):
+def export(dest, slides, evidence, *, stem="forecasting_insights", deck_title=TITLE,
+           short_title="Forecasting insights", check_name="forecasting_insights"):
     figures = dest / "figures"
     figures.mkdir(parents=True, exist_ok=True)
     sections, notes, thumbnails, overflow = [], [], [], []
-    metadata = {"Title": TITLE, "Author": "Trajectory Classification project",
+    metadata = {"Title": deck_title, "Author": "Trajectory Classification project",
                 "CreationDate": None, "ModDate": None}
-    with PdfPages(dest / "forecasting_insights.pdf", metadata=metadata) as pdf:
+    with PdfPages(dest / f"{stem}.pdf", metadata=metadata) as pdf:
         for index, (fig, title, note) in enumerate(slides, 1):
             fig.canvas.draw()
             renderer = fig.canvas.get_renderer()
@@ -532,10 +533,11 @@ if(['ArrowLeft','PageUp'].includes(e.key)){e.preventDefault();show(index-1)}
 if(e.key==='Home')show(0);if(e.key==='End')show(slides.length-1);if(e.key.toLowerCase()==='n')toggleNotes();if(e.key.toLowerCase()==='f')fullscreen()});
 show((parseInt(location.hash.slice(1))||1)-1);
 </script></body></html>"""
+    markup = markup.replace("<title>Forecasting insights</title>", f"<title>{html.escape(short_title)}</title>")
     (dest / "index.html").write_text(markup, encoding="utf-8", newline="\n")
-    (dest / "speaker_notes.md").write_text("# Forecasting insights: speaker notes\n\n" + "\n".join(notes),
+    (dest / "speaker_notes.md").write_text(f"# {short_title}: speaker notes\n\n" + "\n".join(notes),
                                           encoding="utf-8", newline="\n")
-    check_dir = ROOT / "artifacts/checks/forecasting_insights"
+    check_dir = ROOT / "artifacts/checks" / check_name
     check_dir.mkdir(parents=True, exist_ok=True)
     sheet = Image.new("RGB", (1500, math.ceil(len(thumbnails) / 3) * 282), BG)
     for i, png in enumerate(thumbnails):

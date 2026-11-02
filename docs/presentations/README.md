@@ -1,5 +1,9 @@
 # From multi-pilot training to motion forecasting
 
+**Detailed skills catalogue comparison:** [21-slide deck and full metric report](skills_catalogue/README.md)
+compares the original experiments and improved ensemble at every horizon, including
+class-level results, confusion matrices, calibration and corrections/regressions.
+
 **New forecasting insights:** [13-slide PDF/HTML deck](forecasting_insights/README.md)
 covers motion and skill forecasts from tactical observer B01's view of the trained
 pilots, including the improved ensemble, per-pilot gains and validation limits.

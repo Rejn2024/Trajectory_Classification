@@ -1,0 +1,534 @@
+{
+  "snapshot_date": "2026-11-02",
+  "revision": "Expanded catalogue comparison",
+  "source_commit": "3aed3de54a6b88753f0de06407e34dd8558e558a",
+  "classes": [
+    "abort_support",
+    "accelerate_to_speed",
+    "beam_missile_left",
+    "beam_missile_right",
+    "beam_target_left",
+    "beam_target_right",
+    "climb_to_altitude",
+    "commit",
+    "crank_target_left",
+    "crank_target_right",
+    "decelerate_to_speed",
+    "defensive_reversal",
+    "descend_to_altitude",
+    "dive_defense",
+    "drag_missile",
+    "extend",
+    "lag_pursuit",
+    "last_ditch_break",
+    "launch",
+    "lead_pursuit",
+    "lock_target",
+    "maintain_heading",
+    "notch_left",
+    "notch_right",
+    "preemptive_crank",
+    "pursue_target",
+    "recommit",
+    "search",
+    "secondary_shot",
+    "short_range_attack",
+    "support_missile",
+    "turn_cold",
+    "turn_to_heading"
+  ],
+  "counts": {
+    "train": {
+      "episodes": 2100,
+      "scenario_groups": 210,
+      "samples": 146690,
+      "valid_by_horizon": [
+        146690,
+        145163,
+        140516
+      ]
+    },
+    "validation": {
+      "episodes": 450,
+      "scenario_groups": 45,
+      "samples": 30802,
+      "valid_by_horizon": [
+        30802,
+        30466,
+        29458
+      ]
+    },
+    "test": {
+      "episodes": 450,
+      "scenario_groups": 45,
+      "samples": 0,
+      "valid_by_horizon": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "original_runs": {
+    "gru": {
+      "model": {
+        "architecture": "gru",
+        "num_classes": 33,
+        "history_steps": 51,
+        "input_size": 54,
+        "width": 128,
+        "layers": 2,
+        "heads": 4,
+        "dropout": 0.1
+      },
+      "training": {
+        "seed": 42,
+        "device": "cuda",
+        "cpu_threads": 4,
+        "epochs": 30,
+        "patience": 7,
+        "min_delta": 0.001,
+        "batch_size": 1024,
+        "evaluation_batch_size": 2048,
+        "learning_rate": 0.0003,
+        "weight_decay": 0.01,
+        "gradient_clip": 1.0,
+        "class_weighting": "none",
+        "max_class_weight": 5.0,
+        "model": {
+          "width": 128,
+          "layers": 2,
+          "heads": 4,
+          "dropout": 0.1
+        }
+      },
+      "parameters": 234723,
+      "selection": "Mean unweighted validation negative log-likelihood across horizons (lower is better)",
+      "summary": {
+        "status": "early_stopped",
+        "epochs_completed": 22,
+        "best_epoch": 15,
+        "validation_nll": 1.2912455797195435,
+        "test_evaluated": false,
+        "elapsed_seconds": 31.114268100005575,
+        "best_checkpoint_sha256": "e1a8c64b2f6a84476488835e4d567af65a7a226186877a4961c46315d1c3c60c"
+      }
+    },
+    "transformer": {
+      "model": {
+        "architecture": "transformer",
+        "num_classes": 33,
+        "history_steps": 51,
+        "input_size": 54,
+        "width": 128,
+        "layers": 2,
+        "heads": 4,
+        "dropout": 0.1
+      },
+      "training": {
+        "seed": 42,
+        "device": "cuda",
+        "cpu_threads": 4,
+        "epochs": 30,
+        "patience": 7,
+        "min_delta": 0.001,
+        "batch_size": 1024,
+        "evaluation_batch_size": 2048,
+        "learning_rate": 0.0003,
+        "weight_decay": 0.01,
+        "gradient_clip": 1.0,
+        "class_weighting": "none",
+        "max_class_weight": 5.0,
+        "model": {
+          "width": 128,
+          "layers": 2,
+          "heads": 4,
+          "dropout": 0.1
+        }
+      },
+      "parameters": 439651,
+      "selection": "Mean unweighted validation negative log-likelihood across horizons (lower is better)",
+      "summary": {
+        "status": "early_stopped",
+        "epochs_completed": 27,
+        "best_epoch": 20,
+        "validation_nll": 1.2493577003479004,
+        "test_evaluated": false,
+        "elapsed_seconds": 58.62281109998003,
+        "best_checkpoint_sha256": "1839043210d087c96d49bb31eda50804c207e8c695952a70280923831a1eda09"
+      }
+    }
+  },
+  "components": [
+    {
+      "candidate": "history20_mlp_accuracy",
+      "epochs": 46,
+      "temperature": 1.4654122285172617,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "settings": {
+        "architecture": "mlp",
+        "features": "geometry",
+        "history_seconds": 20,
+        "recent_stride": 5,
+        "width": 256,
+        "layers": 3,
+        "dropout": 0.2,
+        "smoothing": 0.02,
+        "weight_decay": 0.03,
+        "auxiliary_weight": 0,
+        "checkpoint_metric": "accuracy",
+        "calibrate": true
+      }
+    },
+    {
+      "candidate": "history20_mlp_wide_accuracy",
+      "epochs": 32,
+      "temperature": 1.401350272421892,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "settings": {
+        "architecture": "mlp",
+        "features": "geometry",
+        "history_seconds": 20,
+        "recent_stride": 5,
+        "width": 512,
+        "layers": 3,
+        "dropout": 0.3,
+        "smoothing": 0.03,
+        "weight_decay": 0.05,
+        "auxiliary_weight": 0,
+        "checkpoint_metric": "accuracy",
+        "calibrate": true
+      }
+    },
+    {
+      "candidate": "history20_mlp_smooth_accuracy",
+      "epochs": 40,
+      "temperature": 1.1691098930819268,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "settings": {
+        "architecture": "mlp",
+        "features": "geometry",
+        "history_seconds": 20,
+        "recent_stride": 5,
+        "width": 256,
+        "layers": 3,
+        "dropout": 0.3,
+        "smoothing": 0.08,
+        "weight_decay": 0.05,
+        "auxiliary_weight": 0,
+        "checkpoint_metric": "accuracy",
+        "calibrate": true
+      }
+    },
+    {
+      "candidate": "history60_mlp_accuracy",
+      "epochs": 40,
+      "temperature": 1.423756914204838,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "settings": {
+        "architecture": "mlp",
+        "features": "geometry",
+        "history_seconds": 60,
+        "recent_stride": 5,
+        "width": 256,
+        "layers": 3,
+        "dropout": 0.2,
+        "smoothing": 0.02,
+        "weight_decay": 0.03,
+        "auxiliary_weight": 0,
+        "checkpoint_metric": "accuracy",
+        "calibrate": true
+      }
+    }
+  ],
+  "runtime_check": {
+    "notebook_code_cells_executed": [
+      1,
+      3,
+      5,
+      7,
+      9,
+      11,
+      13
+    ],
+    "figures": [
+      "figure_1.png",
+      "figure_2.png",
+      "figure_3.png"
+    ],
+    "observation_only_cpu_inference": true,
+    "streaming_feature_parity": [
+      {
+        "origin_step": 60,
+        "history_s": 20,
+        "maximum_feature_difference": 0.0
+      },
+      {
+        "origin_step": 60,
+        "history_s": 60,
+        "maximum_feature_difference": 0.0
+      },
+      {
+        "origin_step": 200,
+        "history_s": 20,
+        "maximum_feature_difference": 0.0
+      },
+      {
+        "origin_step": 200,
+        "history_s": 60,
+        "maximum_feature_difference": 0.0
+      },
+      {
+        "origin_step": 650,
+        "history_s": 20,
+        "maximum_feature_difference": 0.0
+      },
+      {
+        "origin_step": 650,
+        "history_s": 60,
+        "maximum_feature_difference": 0.0
+      }
+    ],
+    "cpu_threads": 4,
+    "warmup_calls": 5,
+    "timed_calls": 30,
+    "median_inference_ms": 20.318700015195645,
+    "p95_inference_ms": 22.049935006361917,
+    "total_parameters": 28977060,
+    "checkpoint_bytes": 116116044,
+    "test_evaluated": false
+  },
+  "verification": {
+    "members": [
+      {
+        "member": "history20_mlp_accuracy_s42",
+        "probabilities_exact": true,
+        "checkpoint_hash_matches": true
+      },
+      {
+        "member": "history20_mlp_accuracy_s43",
+        "probabilities_exact": true,
+        "checkpoint_hash_matches": true
+      },
+      {
+        "member": "history20_mlp_accuracy_s44",
+        "probabilities_exact": true,
+        "checkpoint_hash_matches": true
+      },
+      {
+        "member": "history20_mlp_wide_accuracy_s42",
+        "probabilities_exact": true,
+        "checkpoint_hash_matches": true
+      },
+      {
+        "member": "history20_mlp_wide_accuracy_s43",
+        "probabilities_exact": true,
+        "checkpoint_hash_matches": true
+      },
+      {
+        "member": "history20_mlp_wide_accuracy_s44",
+        "probabilities_exact": true,
+        "checkpoint_hash_matches": true
+      },
+      {
+        "member": "history20_mlp_smooth_accuracy_s42",
+        "probabilities_exact": true,
+        "checkpoint_hash_matches": true
+      },
+      {
+        "member": "history20_mlp_smooth_accuracy_s43",
+        "probabilities_exact": true,
+        "checkpoint_hash_matches": true
+      },
+      {
+        "member": "history20_mlp_smooth_accuracy_s44",
+        "probabilities_exact": true,
+        "checkpoint_hash_matches": true
+      },
+      {
+        "member": "history60_mlp_accuracy_s42",
+        "probabilities_exact": true,
+        "checkpoint_hash_matches": true
+      },
+      {
+        "member": "history60_mlp_accuracy_s43",
+        "probabilities_exact": true,
+        "checkpoint_hash_matches": true
+      },
+      {
+        "member": "history60_mlp_accuracy_s44",
+        "probabilities_exact": true,
+        "checkpoint_hash_matches": true
+      }
+    ],
+    "ensemble_probabilities_exact": true,
+    "original_artifacts_unchanged": true,
+    "matched_validation_origins": true,
+    "test_evaluated": false
+  },
+  "internal_selection": [
+    {
+      "name": "accuracy_all",
+      "mean_accuracy": 0.6098165836511267,
+      "nll": 1.2580587267875671,
+      "macro_f1": 0.3284792568780878
+    },
+    {
+      "name": "control",
+      "mean_accuracy": 0.5162513976995318,
+      "nll": 1.35994154214859,
+      "macro_f1": 0.2191575180228192
+    },
+    {
+      "name": "long_pair",
+      "mean_accuracy": 0.6095981056918609,
+      "nll": 1.2807077765464783,
+      "macro_f1": 0.33164258168956934
+    }
+  ],
+  "probability_metric_contract": "Multiclass Brier is sum over all 33 classes, range 0..2. ECE uses ten fixed equal-width top-label confidence bins; 1.0 belongs to the final bin.",
+  "analysis_contract": "Descriptive analysis of saved validation probabilities; no refitting, calibration changes, model selection or test evaluation.",
+  "source_sha256": {
+    "shared/corpora/trained-pilot-episodes-v1/config.json": "098f8e0189ae513ea7c3d72f43d031516b0e9d262d9fcf699a230a6c4893b3dd",
+    "artifacts/skill_forecasting/data_v1/data_manifest.json": "9ee1ba26a6908c083ee629b5c68404dc7f4ff383aa7ab7e808c8cda12d7fe2d5",
+    "artifacts/skill_forecasting/improvement_v3/frozen_selection.json": "88221eb8ba76e5b77c27138367227a69409b0d3734129d53a0801d876a707a3c",
+    "artifacts/skill_forecasting/improvement_v3/protocol.json": "295c96d61a08b17aeb3e67c080dfe29e71a6d660dacb5dc7b6982f167ce9a046",
+    "artifacts/skill_forecasting/improvement_v3/ensemble_protocol.json": "eb2024ebad8451cd66c70ef0aaa21d5b3187cbf5b1ff2c100a232352ee92fd8c",
+    "bvr_behavior_prediction/__init__.py": "078c11047c3c28432920bf09b1537b0e8ff10fc2b7fe2576d07d25518b04477f",
+    "scripts/train_skill_forecaster.py": "70cceba1df8bf0a737546b8fd26342e9e6e1465c687cc9b791e2440f018f1b57",
+    "configs/training/skill_forecasting.json": "30450306f0c51ca0b8a794c9019317836deb2175516b836ce56e13d25ffacbac",
+    "bvr_behavior_prediction/forecasting/__init__.py": "10874e83ad527c485f39732498796650b2508a8768da5b83c153ae6b3bd39e1c",
+    "bvr_behavior_prediction/forecasting/data.py": "f8a6cbffcb047cba18a724aad9c9f9ba7308e44861621e1a0bedd6c70dde31cb",
+    "bvr_behavior_prediction/forecasting/evaluation.py": "c2307bbd047ce0505341ac16b900b7b3e41d1be9281802f788ae8dc2fc5a2635",
+    "bvr_behavior_prediction/forecasting/inference.py": "3707a3e675f9fbbd18edb608c0d3cc317d35b658e460060079e087bcd09793bd",
+    "bvr_behavior_prediction/forecasting/models.py": "50bbc21aba51802977f66d9af87b32b54adf262108b4c689d4e650452f029bb4",
+    "bvr_behavior_prediction/forecasting/train.py": "0f64dbfab6903a582d41cc5886cd07e0fe4da2bc766122ef64745a0a1dc8ada1",
+    "bvr_behavior_prediction/skill_forecasting/__init__.py": "c0171da18492c251ef426b0e1d4e56c8780fa5c3173073b7bab57ac65dff4ceb",
+    "bvr_behavior_prediction/skill_forecasting/data.py": "2f0d85eedc647cc109a0f81097daba44514b5ca68c2858fa63943322ccaa4c9d",
+    "bvr_behavior_prediction/skill_forecasting/evaluation.py": "3cd079631df4122700c3bf062bff90e00369518979a4bc68a091e751cc8da038",
+    "bvr_behavior_prediction/skill_forecasting/improved_features.py": "9e5decc9beba17637b78b3d90e8f5bdaba4c65b4d77426b53a4a9bbf69dbe6e6",
+    "bvr_behavior_prediction/skill_forecasting/improved_models.py": "e18b1e350aa1da5b4e77220e6da72f98fd135531e7733c90adb93a04cb500a00",
+    "bvr_behavior_prediction/skill_forecasting/improvement.py": "e557809860757300bb5600e0a3a46b463e1ef71d3f3a5275ca51f6576944df64",
+    "bvr_behavior_prediction/skill_forecasting/inference.py": "06ef294f552cd8735613c9da6ea7b47360f16db66bb940b82c546c12f19cc98f",
+    "bvr_behavior_prediction/skill_forecasting/models.py": "59fd9d68f550b04b14414d787e864e665b0c3c08ba99e89ebfbdd5323b4ae83f",
+    "bvr_behavior_prediction/skill_forecasting/temperature.py": "738d2c1375e5ac5bd3c8b108d1cbab98c01f755438e43f66ff7bc4a1f9363625",
+    "bvr_behavior_prediction/skill_forecasting/train.py": "54a41af152cb7a4c2815d3986060d4392b8a8c4125b7f9aa3a7e0bce84ce6f01",
+    "scripts/improve_skill_forecaster.py": "b407c1e1909a0ac1665f5b969a6ea44b66e3ba42a9a9a8f6690043cb7f0fc588",
+    "bvr_behavior_prediction/skill_forecasting/ensemble_search.py": "09d31a3328e06180f62f2558fed9b7db110c8607bf0b1df5b9f08e61aeb59e16",
+    "scripts/ensemble_skill_forecaster.py": "2711abf5be8f01487a869066e3fc9282b6dd552fc84483919e2780e2133e14a6",
+    "artifacts/skill_forecasting/improvement_v3/verification.json": "04d12a75eea82d939666a8c29223a56d5b1557b63eb3921b81e81495d6fbe302",
+    "artifacts/skill_forecasting/improvement_v3/preserved_initial_hashes.json": "df5e8dde27af5fc854875e66ca737a1ed0457c58b91b2af45a658cdd93b33901",
+    "artifacts/skill_forecasting/initial_v1/comparison.csv": "05ccec496c3de9d3ae3074a89898e26eb5274e903b4f20f6088a59485c30f79b",
+    "artifacts/skill_forecasting/initial_v1/report.html": "5e710ed5bec93389c3b40fb8b8bfedb71dffdff78f5050aca9ed3ad16a8207e1",
+    "artifacts/skill_forecasting/initial_v1/gru/best.pt": "e1a8c64b2f6a84476488835e4d567af65a7a226186877a4961c46315d1c3c60c",
+    "artifacts/skill_forecasting/initial_v1/gru/confusion_1s.csv": "32e9aaee1457173fe95c7b54f374b5fe31beaf8681976c5d9a47a96aaa5adc2d",
+    "artifacts/skill_forecasting/initial_v1/gru/confusion_2s.csv": "5148f2869c4df1937c65dff1899088da93c26f7efbf3c932d43dece1e244202d",
+    "artifacts/skill_forecasting/initial_v1/gru/confusion_5s.csv": "91bef5c3196a6ea48a045a910a5bb2f5e80fc6f7507e81673c1ddf121a225312",
+    "artifacts/skill_forecasting/initial_v1/gru/confusion_matrices.npz": "1b71d30aca8dbe3dd1183d6067fe1f29ca602b6efbd3434fa442a78d4af97ad1",
+    "artifacts/skill_forecasting/initial_v1/gru/history.csv": "ce1bdcbe758ed8452bbcdb8aa737bd338e01c6b0db6c80c4d2fb9ecd8da21682",
+    "artifacts/skill_forecasting/initial_v1/gru/last.pt": "503d94c8f237aec70ffadfa0343f58de09005fca30dd4a9a3db481e5879f3383",
+    "artifacts/skill_forecasting/initial_v1/gru/per_class_metrics.csv": "dcf3a3d31a7de8f2bcfd5d494c03a172a69f9940916c0d7a608677df897239c9",
+    "artifacts/skill_forecasting/initial_v1/gru/progress.json": "d9ad0f7131fc9a39f162e1f121f30c878466e50b148ffde601fac5373876620f",
+    "artifacts/skill_forecasting/initial_v1/gru/run.json": "e9ace02081896f5b91e268ff490d0a4a6849edfd09ce3ac675dc578c5b4c9f04",
+    "artifacts/skill_forecasting/initial_v1/gru/runtime_note.json": "b4ddfc56b42e75be95a6511dcc39eadffc924f93b67c4359a70ddd027c5e443f",
+    "artifacts/skill_forecasting/initial_v1/gru/summary.json": "d9ad0f7131fc9a39f162e1f121f30c878466e50b148ffde601fac5373876620f",
+    "artifacts/skill_forecasting/initial_v1/gru/validation_metrics.csv": "82ecaffe3687c2ce2817f9f223df22e0872a998df43246e8277e7eb2ea4a1793",
+    "artifacts/skill_forecasting/initial_v1/gru/validation_probabilities.npy": "4f916e4fb2f5c7d5551711d9962e2d39453da617d18a43722fd6cd6b78f72b13",
+    "artifacts/skill_forecasting/initial_v1/gru/validation_samples.parquet": "8f1ac6fc5c41723d4bdd52e46e23634f639d8fdf4ae52a4ceb0a071d60335d42",
+    "artifacts/skill_forecasting/initial_v1/gru/verification.json": "084610f5d278044874f36fd80c81fff79c0a1976948cfe7a6b9441ce48c2e8dc",
+    "artifacts/skill_forecasting/initial_v1/notebook_check/execution.log": "455099c5dab806a1c80c5debaa1b920bfcc726fa52bbd9863aead6629d80930e",
+    "artifacts/skill_forecasting/initial_v1/notebook_check/figure_1.png": "3be5dca58a59975a7cbc4aae780dac39b5c33af11673ee2ed2245696b4227fb5",
+    "artifacts/skill_forecasting/initial_v1/notebook_check/figure_2.png": "8ca0bf544d932086fd5a8de7ef71ec2ae9c6883805a18f5009d06c09c3934e27",
+    "artifacts/skill_forecasting/initial_v1/notebook_check/figure_3.png": "1004f4da6aa5730abcde3b7a3c66ffc95278a20ba7bd4269c9be1ee421fa39d5",
+    "artifacts/skill_forecasting/initial_v1/notebook_check/figure_4.png": "9fd18981835916c7851ab14e1857fbcd6bf5c1e7d08fabd93c4dc59d43402a47",
+    "artifacts/skill_forecasting/initial_v1/training_frequency/baseline.json": "95974a2cc342254aa0a3bf8c211447b37444faead104d0b4f92e36f877699b20",
+    "artifacts/skill_forecasting/initial_v1/training_frequency/confusion_1s.csv": "ee7a5082ba2a0c113eb4a6bffa57e0e733bccb946260a9cf902226be1d2b8337",
+    "artifacts/skill_forecasting/initial_v1/training_frequency/confusion_2s.csv": "1a6a6a83ee2618fc5c44d1500c81beb4a88003b2d5f905d007ce0c620bbe779f",
+    "artifacts/skill_forecasting/initial_v1/training_frequency/confusion_5s.csv": "1db8057a1b62d74d19799be60b73b6e722d7e0b307bd21d3d174474b8a7d99a9",
+    "artifacts/skill_forecasting/initial_v1/training_frequency/confusion_matrices.npz": "148194b18548521b1eaad1d590c5f17e90b44af3e15c0809301d4ddb85373223",
+    "artifacts/skill_forecasting/initial_v1/training_frequency/per_class_metrics.csv": "2ec09d5e796c6426967ed198b230a8f19f424c250089cfc13c9ef81d4117a839",
+    "artifacts/skill_forecasting/initial_v1/training_frequency/validation_metrics.csv": "75a72354bb36666e8fd55554bbc6e7a40fa29c9f2ee5ff11d202da52f2b72dc2",
+    "artifacts/skill_forecasting/initial_v1/transformer/best.pt": "1839043210d087c96d49bb31eda50804c207e8c695952a70280923831a1eda09",
+    "artifacts/skill_forecasting/initial_v1/transformer/confusion_1s.csv": "2fedcb3df5bfc6d8d0e9fd0025347097f6453342e5a089ad9cc9aff028cde958",
+    "artifacts/skill_forecasting/initial_v1/transformer/confusion_2s.csv": "16e2fd3427cce6c96e881b8581820f850855667c6f73f294294fe4a18f7bdb13",
+    "artifacts/skill_forecasting/initial_v1/transformer/confusion_5s.csv": "0a2d6ed847e718070b2921d52750346e60045faf29ce692a6b9bc9bc2989e7d7",
+    "artifacts/skill_forecasting/initial_v1/transformer/confusion_matrices.npz": "19f95305b14bb11984e9d6d0ffbe20e09752e228204aaf7de69f996d8e1c6b54",
+    "artifacts/skill_forecasting/initial_v1/transformer/history.csv": "80b690d1759c1fb4a97bfbf7a31f067958d7e0531c007f3c84725fb2c84c3476",
+    "artifacts/skill_forecasting/initial_v1/transformer/last.pt": "f95ba1835d3d1c5ab2869f13e13a04b5a1110b11771269018e9b3efa93913f38",
+    "artifacts/skill_forecasting/initial_v1/transformer/per_class_metrics.csv": "17dcfc1915c7ef0126d4f1feacffe3b6b5f8f7103f25ecfc327751089b596a19",
+    "artifacts/skill_forecasting/initial_v1/transformer/progress.json": "5adde7028be80ac389a6c46db7d1cac84ad022d2930fa0f20ab63c1041524b3c",
+    "artifacts/skill_forecasting/initial_v1/transformer/run.json": "f3b3c9ba8031d5c21b0f93d725dd907e5d15671236cb0e9b9d3f28308f7a3ea7",
+    "artifacts/skill_forecasting/initial_v1/transformer/summary.json": "5adde7028be80ac389a6c46db7d1cac84ad022d2930fa0f20ab63c1041524b3c",
+    "artifacts/skill_forecasting/initial_v1/transformer/validation_metrics.csv": "4cfc8492d3b0579026c90bb413a0249ddf8fa84462c46320200b4619784e7ed2",
+    "artifacts/skill_forecasting/initial_v1/transformer/validation_probabilities.npy": "d2b6bb52e8fb59a7695e5720739773030a302ef51291f8bb7e23878bbf608416",
+    "artifacts/skill_forecasting/initial_v1/transformer/validation_samples.parquet": "8f1ac6fc5c41723d4bdd52e46e23634f639d8fdf4ae52a4ceb0a071d60335d42",
+    "artifacts/skill_forecasting/initial_v1/transformer/verification.json": "084610f5d278044874f36fd80c81fff79c0a1976948cfe7a6b9441ce48c2e8dc",
+    "artifacts/skill_forecasting/initial_v1/gru/source/bvr_behavior_prediction/__init__.py": "078c11047c3c28432920bf09b1537b0e8ff10fc2b7fe2576d07d25518b04477f",
+    "artifacts/skill_forecasting/initial_v1/gru/source/scripts/train_skill_forecaster.py": "70cceba1df8bf0a737546b8fd26342e9e6e1465c687cc9b791e2440f018f1b57",
+    "artifacts/skill_forecasting/initial_v1/gru/source/bvr_behavior_prediction/forecasting/data.py": "f8a6cbffcb047cba18a724aad9c9f9ba7308e44861621e1a0bedd6c70dde31cb",
+    "artifacts/skill_forecasting/initial_v1/gru/source/bvr_behavior_prediction/forecasting/evaluation.py": "c2307bbd047ce0505341ac16b900b7b3e41d1be9281802f788ae8dc2fc5a2635",
+    "artifacts/skill_forecasting/initial_v1/gru/source/bvr_behavior_prediction/forecasting/inference.py": "3707a3e675f9fbbd18edb608c0d3cc317d35b658e460060079e087bcd09793bd",
+    "artifacts/skill_forecasting/initial_v1/gru/source/bvr_behavior_prediction/forecasting/models.py": "50bbc21aba51802977f66d9af87b32b54adf262108b4c689d4e650452f029bb4",
+    "artifacts/skill_forecasting/initial_v1/gru/source/bvr_behavior_prediction/forecasting/train.py": "0f64dbfab6903a582d41cc5886cd07e0fe4da2bc766122ef64745a0a1dc8ada1",
+    "artifacts/skill_forecasting/initial_v1/gru/source/bvr_behavior_prediction/forecasting/__init__.py": "10874e83ad527c485f39732498796650b2508a8768da5b83c153ae6b3bd39e1c",
+    "artifacts/skill_forecasting/initial_v1/gru/source/bvr_behavior_prediction/skill_forecasting/data.py": "2f0d85eedc647cc109a0f81097daba44514b5ca68c2858fa63943322ccaa4c9d",
+    "artifacts/skill_forecasting/initial_v1/gru/source/bvr_behavior_prediction/skill_forecasting/evaluation.py": "3cd079631df4122700c3bf062bff90e00369518979a4bc68a091e751cc8da038",
+    "artifacts/skill_forecasting/initial_v1/gru/source/bvr_behavior_prediction/skill_forecasting/inference.py": "06ef294f552cd8735613c9da6ea7b47360f16db66bb940b82c546c12f19cc98f",
+    "artifacts/skill_forecasting/initial_v1/gru/source/bvr_behavior_prediction/skill_forecasting/models.py": "59fd9d68f550b04b14414d787e864e665b0c3c08ba99e89ebfbdd5323b4ae83f",
+    "artifacts/skill_forecasting/initial_v1/gru/source/bvr_behavior_prediction/skill_forecasting/train.py": "54a41af152cb7a4c2815d3986060d4392b8a8c4125b7f9aa3a7e0bce84ce6f01",
+    "artifacts/skill_forecasting/initial_v1/gru/source/bvr_behavior_prediction/skill_forecasting/__init__.py": "c0171da18492c251ef426b0e1d4e56c8780fa5c3173073b7bab57ac65dff4ceb",
+    "artifacts/skill_forecasting/initial_v1/gru/source/configs/training/skill_forecasting.json": "30450306f0c51ca0b8a794c9019317836deb2175516b836ce56e13d25ffacbac",
+    "artifacts/skill_forecasting/initial_v1/transformer/source/bvr_behavior_prediction/__init__.py": "078c11047c3c28432920bf09b1537b0e8ff10fc2b7fe2576d07d25518b04477f",
+    "artifacts/skill_forecasting/initial_v1/transformer/source/scripts/train_skill_forecaster.py": "70cceba1df8bf0a737546b8fd26342e9e6e1465c687cc9b791e2440f018f1b57",
+    "artifacts/skill_forecasting/initial_v1/transformer/source/bvr_behavior_prediction/forecasting/data.py": "f8a6cbffcb047cba18a724aad9c9f9ba7308e44861621e1a0bedd6c70dde31cb",
+    "artifacts/skill_forecasting/initial_v1/transformer/source/bvr_behavior_prediction/forecasting/evaluation.py": "c2307bbd047ce0505341ac16b900b7b3e41d1be9281802f788ae8dc2fc5a2635",
+    "artifacts/skill_forecasting/initial_v1/transformer/source/bvr_behavior_prediction/forecasting/inference.py": "3707a3e675f9fbbd18edb608c0d3cc317d35b658e460060079e087bcd09793bd",
+    "artifacts/skill_forecasting/initial_v1/transformer/source/bvr_behavior_prediction/forecasting/models.py": "50bbc21aba51802977f66d9af87b32b54adf262108b4c689d4e650452f029bb4",
+    "artifacts/skill_forecasting/initial_v1/transformer/source/bvr_behavior_prediction/forecasting/train.py": "0f64dbfab6903a582d41cc5886cd07e0fe4da2bc766122ef64745a0a1dc8ada1",
+    "artifacts/skill_forecasting/initial_v1/transformer/source/bvr_behavior_prediction/forecasting/__init__.py": "10874e83ad527c485f39732498796650b2508a8768da5b83c153ae6b3bd39e1c",
+    "artifacts/skill_forecasting/initial_v1/transformer/source/bvr_behavior_prediction/skill_forecasting/data.py": "2f0d85eedc647cc109a0f81097daba44514b5ca68c2858fa63943322ccaa4c9d",
+    "artifacts/skill_forecasting/initial_v1/transformer/source/bvr_behavior_prediction/skill_forecasting/evaluation.py": "3cd079631df4122700c3bf062bff90e00369518979a4bc68a091e751cc8da038",
+    "artifacts/skill_forecasting/initial_v1/transformer/source/bvr_behavior_prediction/skill_forecasting/inference.py": "06ef294f552cd8735613c9da6ea7b47360f16db66bb940b82c546c12f19cc98f",
+    "artifacts/skill_forecasting/initial_v1/transformer/source/bvr_behavior_prediction/skill_forecasting/models.py": "59fd9d68f550b04b14414d787e864e665b0c3c08ba99e89ebfbdd5323b4ae83f",
+    "artifacts/skill_forecasting/initial_v1/transformer/source/bvr_behavior_prediction/skill_forecasting/train.py": "54a41af152cb7a4c2815d3986060d4392b8a8c4125b7f9aa3a7e0bce84ce6f01",
+    "artifacts/skill_forecasting/initial_v1/transformer/source/bvr_behavior_prediction/skill_forecasting/__init__.py": "c0171da18492c251ef426b0e1d4e56c8780fa5c3173073b7bab57ac65dff4ceb",
+    "artifacts/skill_forecasting/initial_v1/transformer/source/configs/training/skill_forecasting.json": "30450306f0c51ca0b8a794c9019317836deb2175516b836ce56e13d25ffacbac",
+    "artifacts/skill_forecasting/improvement_v3/normalization_audit.json": "3898915710490bf31e7d40a75f40931d199b03462b791be609f50996370a8d47",
+    "artifacts/skill_forecasting/improvement_v3/full_window_audit.json": "850b9f1b638338a157ff0b83523d9a4f116074b26a41720470d2327ac1538376",
+    "artifacts/skill_forecasting/improvement_v3/notebook_check/verification.json": "300a923bf6ac22a441fecd32e5273aef458764a8594abbe4a25bad42ebc63400",
+    "artifacts/skill_forecasting/improvement_v3/validation/ensemble/validation_metrics.csv": "b79a2c53fda42f7d5ab80a69e2d2745d188ffe931783ea119acb459c81b494bd",
+    "artifacts/skill_forecasting/improvement_v3/paired_scenario_bootstrap.csv": "58ac661d2c6a44c844b067b884637081bfe1440b4e4f6ad75d05b02a2d2a28ca",
+    "artifacts/skill_forecasting/improvement_v3/ensemble_confirmation.csv": "b29deefa706050231e1c24d887df60e2d03268d09da18c3e5ec26f4ec505f7e7",
+    "artifacts/motion_forecasting/initial_v1/validation_comparison.csv": "34d415180412167c07734e7ba0b762f8e890be439ac252a84f88a0287e5eb787",
+    "artifacts/motion_forecasting/initial_v1/transformer/summary.json": "bdc7d99c42f5e0ce58804894cfb6c0fd349b54b9f84271028f7601852161e1f9",
+    "artifacts/motion_forecasting/initial_v1/gru/summary.json": "052d5d3b496e010307e8dda98f5ccb83f57aa2a849d7fc8aec6746503b9957eb",
+    "artifacts/skill_forecasting/data_v1/samples.parquet": "9964f92822ddbdd4d7d16f311d47c60d9b336af58721b2a7b76cbc6c51370875",
+    "artifacts/skill_forecasting/data_v1/targets.npy": "01834155919b5061172d33d8c698c70ebb9e7d7b497e4b9f2a53e4183f470c17",
+    "artifacts/skill_forecasting/improvement_v3/validation/ensemble/per_class_metrics.csv": "f198ab8c78cad31c75e17604a38b26f27444e370556f68f451a3bc85ed055c7b",
+    "artifacts/skill_forecasting/improvement_v3/validation/ensemble/validation_probabilities.npy": "f06e1a910028ff8218a49c36f0fdb67a80f51bce1f13f2ef42ff469abc7294e6",
+    "artifacts/skill_forecasting/improvement_v3/validation/ensemble/validation_samples.parquet": "8f1ac6fc5c41723d4bdd52e46e23634f639d8fdf4ae52a4ceb0a071d60335d42",
+    "artifacts/skill_forecasting/improvement_v3/validation/ensemble/confusion_1s.csv": "0b88ddc9f4efdc25da6cd1ce48753c906f369129fcac07b807556e86b328b977",
+    "artifacts/skill_forecasting/improvement_v3/validation/ensemble/confusion_2s.csv": "6251bbd5aa30678965dad44bccd6002dc61c686ea2b6033c4bda04bc76c3be62",
+    "artifacts/skill_forecasting/improvement_v3/validation/ensemble/confusion_5s.csv": "233393e2a4a22453d109816c0c4e3070e87d4ff873bc3d5c4f515c71890b1a96",
+    "docs/presentations/forecasting_insights/data/scenario_intervals.csv": "2fdfc77926ea12c126861352b3f1f315a822e6eac79bbaaa8e9d72f8ebe8bdf4",
+    "docs/presentations/forecasting_insights/data/internal_confirmation.csv": "9c765441c159b7964d4c004b00b424b4bf91bc47c31724d884ae037a1e080cc0",
+    "artifacts/skill_forecasting/improvement_v2/search_results.csv": "0977f2bb37d64da406a107ee741a3b398cc96a3d5cced76364005c64879296ee"
+  },
+  "test_evaluated": false
+}

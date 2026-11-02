@@ -26,6 +26,11 @@ an end-to-end training skeleton.
 
 ## Trained pilot skill forecasting
 
+[Detailed skills catalogue comparison](docs/presentations/skills_catalogue/README.md)
+provides 21 slides and full tables comparing the original frequency, GRU and
+transformer experiments with the improved ensemble: accuracy, class-level F1,
+probability quality, corrections/regressions and development trade-offs.
+
 [Forecasting insights slides](docs/presentations/forecasting_insights/README.md)
 summarize motion and skill results from tactical observer B01's view of the ten
 trained pilots. The standalone PDF and HTML include accuracy improvements,
