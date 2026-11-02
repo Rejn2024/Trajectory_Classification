@@ -17,6 +17,11 @@ from skill_catalogue_evidence import (
     load,
     write_comparison,
 )
+from skill_catalogue_learning import (
+    append_learning_report,
+    append_learning_slides,
+    collect_learning,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEST = ROOT / "docs/presentations/skills_catalogue"
@@ -1001,6 +1006,8 @@ def render(dest):
         "training artifacts and earlier presentations remain preserved. Future work is proposed, not completed.",
     )
 
+    append_learning_slides(dest, page, finish, words, chart, table)
+    append_learning_report(dest)
     export(
         dest,
         slides,
@@ -1020,9 +1027,16 @@ def main():
         help="Audit saved local predictions and package derived evidence.",
     )
     parser.add_argument("--output", type=Path, default=DEST)
+    parser.add_argument(
+        "--collect-learning",
+        action="store_true",
+        help="Package recorded learning histories without rereading saved predictions.",
+    )
     args = parser.parse_args()
     if args.collect:
         collect(args.output)
+    if args.collect or args.collect_learning:
+        collect_learning(args.output)
     render(args.output)
 
 

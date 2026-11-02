@@ -1,10 +1,10 @@
 # Skills catalogue forecasting: original experiments versus improved ensemble
 
-**21 slides dedicated to the catalogue task**, supported by a complete metric
+**26 slides dedicated to the catalogue task**, supported by a complete metric
 comparison and reproducible evidence from the experiments performed so far.
 
 **Full slide pack on GitHub:**
-[Download the 21-page PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf)
+[Download the 26-page PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf)
 · [Open its GitHub file page](https://github.com/Rejn2024/Trajectory_Classification/blob/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf).
 This is the complete presentation on the `forecasting` branch.
 
@@ -103,6 +103,29 @@ architecture improvement.
 | 16–17 | Brier, calibration error and reliability diagrams |
 | 18–19 | Successful and unsuccessful development choices, selection procedure and cost |
 | 20–21 | Scenario uncertainty, limitations and conclusions |
+| 22 | Training and validation returns for all ten RL pilots used in the corpus |
+| 23 | Original GRU / transformer training and validation learning curves |
+| 24–25 | Both internal MLP splits and all twelve fixed-epoch final refits |
+| 26 | Temporal MLP explained as a 3D history array flattened into a 2D table |
+
+The original slides 1–21 retain their numbering, including the per-label F1
+comparison on slide 13. The new curve slides distinguish **RL episode return**
+from **supervised forecasting loss**. All ten RL checkpoint hashes match the
+policies used to generate this corpus.
+
+**Per-pilot forecasting curves were not logged each epoch.** Forecast models
+pool all ten pilots; their saved learning curves are population-wide. Final
+per-pilot validation metrics are available on slide 11. Final ensemble refits
+record only training objectives because their epoch budgets were fixed in advance.
+The internal stopping-set curves are shown separately. Label smoothing and
+training-mode dropout mean the plotted training and validation losses are not
+strictly comparable; curves alone cannot establish absence of leakage.
+
+For the temporal MLP, each forecast origin becomes one ordinary feature row:
+`[speed(t-2), range(t-2), speed(t-1), range(t-1), speed(t), range(t)]` in the toy
+example. The actual 20-second model flattens 26 timestamps × (91 features + one
+validity flag) into **2,392 columns**. The 60-second version uses **6,072 columns**.
+The future skill labels belong in the target table, not those input columns.
 
 ## Limits of the evidence
 
@@ -123,7 +146,8 @@ paired-error analyses are descriptive and have not been used to retune anything.
 The `data/` directory contains all four models' per-horizon, per-pilot and cohort
 metrics; all 33 classes' precision/recall/F1 at every horizon; ungrouped confusion
 counts; reliability bins and their sample counts; paired corrections/regressions;
-internal experiment results; and scenario intervals. Source SHA-256 hashes record
+internal experiment results; scenario intervals; and recorded learning histories
+for ten RL pilots and 22 forecaster runs. Source SHA-256 hashes record
 the fixed original artifacts. The collector independently reproduces all twelve
 model/horizon scorecards and confusion matrices from the saved probabilities.
 
@@ -131,12 +155,15 @@ model/horizon scorecards and confusion matrices from the saved probabilities.
 # Rebuild from committed evidence; no original checkpoints or dataset needed.
 .venv\Scripts\python.exe -X utf8 scripts/build_skill_catalogue_presentation.py
 
+# Package only the existing epoch logs, without rereading prediction arrays.
+.venv\Scripts\python.exe -X utf8 scripts/build_skill_catalogue_presentation.py --collect-learning
+
 # Deliberately audit the local saved predictions and regenerate the evidence bundle.
 .venv\Scripts\python.exe -X utf8 scripts/build_skill_catalogue_presentation.py --collect
 ```
 
-Both commands use the project's existing plotting/data dependencies. The first
-reads only the portable bundle. The second reads fixed validation predictions,
+All commands use the project's existing plotting/data dependencies. The default
+reads only the portable bundle. The full collector reads fixed validation predictions,
 never runs model inference and never reads test targets. Unit checks cover the
 new metric formulas and paired-error accounting. All text is normalized to LF
 for stable Git checksums. The original data, predictions and model weights remain

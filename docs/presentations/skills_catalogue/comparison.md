@@ -222,3 +222,66 @@ The final four-variant mixture averaged 60.98% internal accuracy versus 60.96% f
 The paired 95% bootstrap intervals use 5,000 resamples of 45 complete scenario groups. All pilots and overlapping windows in a group stay together. The original validation set informed the initial experiments, and the internal search was adaptive. These are development intervals, not a correction for all historical selection or a final test. The reserved test is untouched. No new model, temperature or mixture weight was fitted for this expanded analysis.
 
 The original GRU training process exited with code 1 after writing results; independent fresh-process reloads subsequently reproduced all saved probabilities exactly. This documented runtime event is retained in the initial experiment guide. All experiments use idealised simulator tracks from the same ten known pilots; sensor noise and unseen policies remain untested.
+
+## Learning curves and what was actually logged
+
+Slides 22–26 extend the original 21 slides without renumbering them.
+
+| Slide | Evidence | Meaning / limit |
+| --- | --- | --- |
+| 22 | Ten RL pilots' tactical-adaptation histories | Training and validation episode return, not skill-forecast accuracy. Checkpoints match the corpus. |
+| 23 | Original GRU and transformer histories | Population-pooled training cross-entropy and outer development-validation NLL. Selected epochs 15 / 20. |
+| 24 | Four MLP variants on both internal partitions | Training objective and stopping-set NLL; stars use accuracy-selected epochs. |
+| 25 | All twelve final refits | Training objective only; epoch budgets fixed before outer validation. |
+| 26 | Temporal MLP worked example | The time/feature dimensions are flattened into one ordinary feature row. |
+
+RL return is higher-is-better; forecasting loss/NLL is lower-is-better. RL training
+and validation use different cases and action selection. Pilots have different
+reward scales, so their returns cannot rank competence. Validation points are
+only plotted at actual evaluation epochs; no missing evaluation is fabricated.
+
+The forecasters pool all ten pilots. **Per-pilot forecasting losses or accuracies
+were not saved each epoch.** Final per-pilot validation scores exist (slide 11),
+but are not learning curves. Full per-pilot curves require a new, separately
+logged experiment; the existing artifacts cannot supply them.
+
+Original training losses are recorded during updates with dropout; validation
+NLL is computed after each epoch with dropout disabled. For the improved MLPs,
+training also uses label smoothing while validation NLL does not. Do not interpret
+the vertical gap as a pure generalisation gap. Internal checkpoint selection used
+accuracy, so stars need not coincide with NLL minima. Final refits have no validation
+callbacks and no validation curves. A declining training loss alone does not prove
+generalisation, and learning curves cannot prove absence of information leakage.
+
+The portable CSVs contain every recorded epoch for the plotted runs, including
+internal stopping accuracy. `learning_evidence.json` records source hashes and
+the original selected epochs. Plotting performed no fitting, inference, checkpoint
+selection, or reserved-test evaluation.
+
+## Temporal MLP for someone used to 2D tables
+
+An ordinary table has shape **[examples, features]**. A history-window dataset is
+conveniently stored as **[examples, timestamps, features per timestamp]**. For the
+MLP, the latter two axes are flattened: each lag gets its own feature columns.
+
+For example, speed/range at three times becomes one row:
+`[speed(t-2), range(t-2), speed(t-1), range(t-1), speed(t), range(t)]`.
+The model can learn changes by comparing values in these fixed columns.
+
+| Model history | Stored observations | Add a validity flag per time | Actual 2D MLP input |
+| --- | --- | --- | --- |
+| 20 s | N × 26 × 91 | N × 26 × 92 | N × 2,392 |
+| 60 s | N × 66 × 91 | N × 66 × 92 | N × 6,072 |
+
+The most recent five seconds use half-second spacing, while older observations
+use one-second spacing. A validity flag distinguishes real observations from
+padding when an episode is younger than the history window. Values are normalised
+using training data only. N can denote the full dataset or a mini-batch.
+
+**Feed forward** means the row passes through dense hidden layers to outputs,
+without recurrent state. **Temporal** describes the ordered past observations
+used as input. The network emits 99 scores, reshaped into three distributions
+over 33 skills, for +1 / +2 / +5 seconds. Its three future labels are targets y;
+they are not input features X. Twelve separately trained members' calibrated
+probabilities are averaged for the final ensemble. Scenario-group splits keep
+overlapping windows from the same encounter on the same side of the split.
