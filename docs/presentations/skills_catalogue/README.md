@@ -3,6 +3,11 @@
 **21 slides dedicated to the catalogue task**, supported by a complete metric
 comparison and reproducible evidence from the experiments performed so far.
 
+**Full slide pack on GitHub:**
+[Download the 21-page PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf)
+· [Open its GitHub file page](https://github.com/Rejn2024/Trajectory_Classification/blob/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf).
+This is the complete presentation on the `forecasting` branch.
+
 [PDF slides](skills_catalogue.pdf) · [Offline HTML slides](index.html) ·
 [Full comparison and metric definitions](comparison.md) ·
 [Speaker notes](speaker_notes.md) · [Individual slide images](figures/)

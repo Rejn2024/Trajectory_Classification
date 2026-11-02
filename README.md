@@ -1,5 +1,10 @@
 # BVR behaviour prediction
 
+**Latest slide pack — 21-slide skills catalogue comparison:**
+[Download the full PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf)
+· [View the PDF on GitHub](https://github.com/Rejn2024/Trajectory_Classification/blob/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf).
+Published on the `forecasting` branch.
+
 An implementation of the revised project plan for target-centric F-16 manoeuvre
 recognition, tactical-transition forecasting, and BVR Sim native-action forecasting.
 
