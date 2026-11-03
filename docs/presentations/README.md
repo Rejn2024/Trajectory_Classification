@@ -1,10 +1,10 @@
 # From multi-pilot training to motion forecasting
 
 **Latest full slide pack:**
-[Download the 26-page skills catalogue PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf)
+[Download the 41-page skills catalogue PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf)
 from the `forecasting` branch.
 
-**Detailed skills catalogue comparison:** [26-slide deck and full metric report](skills_catalogue/README.md)
+**Detailed skills catalogue comparison:** [41-slide deck, study guide and full metric report](skills_catalogue/README.md)
 compares the original experiments and improved ensemble at every horizon, including
 class-level results, confusion matrices, calibration and corrections/regressions.
 

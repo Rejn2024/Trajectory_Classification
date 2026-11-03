@@ -1,15 +1,16 @@
 # Skills catalogue forecasting: original experiments versus improved ensemble
 
-**26 slides dedicated to the catalogue task**, supported by a complete metric
+**41 slides dedicated to the catalogue task**, supported by a complete metric
 comparison and reproducible evidence from the experiments performed so far.
 
 **Full slide pack on GitHub:**
-[Download the 26-page PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf)
+[Download the 41-page PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf)
 · [Open its GitHub file page](https://github.com/Rejn2024/Trajectory_Classification/blob/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf).
 This is the complete presentation on the `forecasting` branch.
 
 [PDF slides](skills_catalogue.pdf) · [Offline HTML slides](index.html) ·
 [Full comparison and metric definitions](comparison.md) ·
+[Study guide: architecture, experiments and interpretation](study_guide.md) ·
 [Speaker notes](speaker_notes.md) · [Individual slide images](figures/)
 
 Download the PDF, or download the HTML as a raw file and open it locally.
@@ -87,7 +88,9 @@ initial candidates as well as the selected result. These experiments change
 several factors together and do not isolate the effect of every change.
 
 A smaller fixed mixture had nearly identical internal accuracy (**60.96% versus
-60.98%**). The evidence does not establish that twelve final models are necessary.
+60.98%**), comparing two versus four variants with **one seed each**. A comparison
+of the corresponding six- versus twelve-member final refits remains proposed.
+The evidence does not establish that twelve final models are necessary.
 The larger history and compute budget are explicit trade-offs, not a free
 architecture improvement.
 
@@ -107,9 +110,15 @@ architecture improvement.
 | 23 | Original GRU / transformer training and validation learning curves |
 | 24–25 | Both internal MLP splits and all twelve fixed-epoch final refits |
 | 26 | Temporal MLP explained as a 3D history array flattened into a 2D table |
+| 27–29 | Separate pilot/forecaster learning problems, exact MLP computation and ensemble variants |
+| 30–31 | All 36 recorded fit timers and the chronology of successful and failed experiments |
+| 32–35 | Every pilot and horizon, paired uncertainty, conditional confidence, pilot × skill recall and support |
+| 36–38 | Common-origin horizons, elapsed-time composition, repeated-label runs and transitions |
+| 39–41 | Catalogue observability, reporting structure and ranked proposed experiments |
 
-The original slides 1–21 retain their numbering, including the per-label F1
-comparison on slide 13. The new curve slides distinguish **RL episode return**
+Slides 1–26 retain their numbering and metric values, including the per-label F1
+comparison on slide 13. Slide 19 clarifies that internal mixtures used one seed
+per variant. The curve slides distinguish **RL episode return**
 from **supervised forecasting loss**. All ten RL checkpoint hashes match the
 policies used to generate this corpus.
 
@@ -126,6 +135,37 @@ For the temporal MLP, each forecast origin becomes one ordinary feature row:
 example. The actual 20-second model flattens 26 timestamps × (91 features + one
 validity flag) into **2,392 columns**. The 60-second version uses **6,072 columns**.
 The future skill labels belong in the target table, not those input columns.
+
+## Deeper review: 3 November 2026
+
+The [study guide](study_guide.md) explains the architecture, objectives, timing
+boundaries, experimental decisions and interpretation of the new breakdowns. A
+suggested reading order is included for working through the material as a lesson.
+
+- The MLP has **three residual blocks and eight linear layers overall**. It is
+  separate from the frozen RL actor–critic controlling each aircraft.
+- **36 completed fits** have saved timers totalling **31.67 minutes**; the twelve
+  final refits account for **15.42 minutes**. These are summed fit-stage timers,
+  not total project wall time or the cost of simulation/data preparation.
+- At +5 seconds, ensemble accuracy ranges **46.08%–75.60%** across pilots. Every
+  point estimate improves, but pointwise scenario-bootstrap intervals for some
+  pilot gains include zero. Different label mixtures and reward profiles do not
+  justify treating forecast accuracy as pilot competence.
+- The same ensemble scores **63.48%** when origins count equally, **60.85%** when
+  encounters count equally, and **63.34%** when pilots count equally. The primary
+  metric remains the original pooled-origin definition.
+- Later-origin +5-second accuracy rises **57.39% → 64.39% → 65.96%**, while the
+  cohorts shrink from 450 to 225 encounters and have fewer endpoint changes.
+  This does not isolate the benefit of longer observation history.
+- Full validation decisions repeat a label across **91.77%** of adjacent one-second
+  pairs. The 3,104 completed runs have median **5 s** and p90 **16 s**; 450 final
+  runs are censored and excluded from those conditional duration summaries.
+
+The review adds descriptive analysis of fixed predictions and validation-only
+decision streams. It performs **no fitting, model inference, checkpoint changes,
+new calibration, or reserved-test evaluation**. Proposed experiments remain
+clearly distinguished from completed evidence. Numerical tests cover whole-group
+resampling, metric weighting, missing decisions and duration censoring.
 
 ## Limits of the evidence
 
@@ -147,7 +187,9 @@ The `data/` directory contains all four models' per-horizon, per-pilot and cohor
 metrics; all 33 classes' precision/recall/F1 at every horizon; ungrouped confusion
 counts; reliability bins and their sample counts; paired corrections/regressions;
 internal experiment results; scenario intervals; and recorded learning histories
-for ten RL pilots and 22 forecaster runs. Source SHA-256 hashes record
+for ten RL pilots and 22 forecaster runs. The review adds a 36-fit timing inventory,
+per-pilot/per-skill metrics, paired pilot intervals, alternative averaging, and
+temporal tables from 450 validation decision row groups. Source SHA-256 hashes record
 the fixed original artifacts. The collector independently reproduces all twelve
 model/horizon scorecards and confusion matrices from the saved probabilities.
 
@@ -157,6 +199,9 @@ model/horizon scorecards and confusion matrices from the saved probabilities.
 
 # Package only the existing epoch logs, without rereading prediction arrays.
 .venv\Scripts\python.exe -X utf8 scripts/build_skill_catalogue_presentation.py --collect-learning
+
+# Audit saved runs/predictions and decode only validation decision row groups.
+.venv\Scripts\python.exe -X utf8 scripts/build_skill_catalogue_presentation.py --collect-review
 
 # Deliberately audit the local saved predictions and regenerate the evidence bundle.
 .venv\Scripts\python.exe -X utf8 scripts/build_skill_catalogue_presentation.py --collect

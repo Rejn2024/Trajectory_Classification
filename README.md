@@ -1,6 +1,6 @@
 # BVR behaviour prediction
 
-**Latest slide pack — 26-slide skills catalogue comparison:**
+**Latest slide pack — 41-slide skills catalogue comparison:**
 [Download the full PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf)
 · [View the PDF on GitHub](https://github.com/Rejn2024/Trajectory_Classification/blob/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf).
 Published on the `forecasting` branch.
@@ -32,7 +32,7 @@ an end-to-end training skeleton.
 ## Trained pilot skill forecasting
 
 [Detailed skills catalogue comparison](docs/presentations/skills_catalogue/README.md)
-provides 26 slides and full tables comparing the original frequency, GRU and
+provides 41 slides and full tables comparing the original frequency, GRU and
 transformer experiments with the improved ensemble: accuracy, class-level F1,
 probability quality, corrections/regressions and development trade-offs.
 

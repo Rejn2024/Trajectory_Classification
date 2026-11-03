@@ -9,6 +9,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from build_forecasting_insights import BG, BLUE, FG, GOLD, GREY, MUTED, TEAL, export
+from skill_catalogue_architecture import append_architecture_slides
 from skill_catalogue_evidence import (
     HORIZONS,
     LABELS,
@@ -21,6 +22,12 @@ from skill_catalogue_learning import (
     append_learning_report,
     append_learning_slides,
     collect_learning,
+)
+from skill_catalogue_review import (
+    append_review_intro,
+    append_review_slides,
+    collect_review,
+    write_study_guide,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -900,8 +907,8 @@ def render(dest):
         f,
         0.56,
         0.29,
-        "A SMALLER ALTERNATIVE IS STILL PLAUSIBLE",
-        "Internal accuracy: 60.96% vs 60.98%.\nSix versus twelve models was not decisive.",
+        "SMALLER MIXTURES REMAIN PLAUSIBLE",
+        "Internal accuracy: 60.96% vs 60.98%.\nTwo vs four variants; one seed each.",
         GOLD,
         18,
     )
@@ -911,7 +918,9 @@ def render(dest):
         "are 46, 32, 40, 40. No outer validation was used for their epoch count, temperature, weights or seeds. "
         "Total checkpoints are approximately 116 MB. A local warmed CPU check measured median 20.3 ms, four "
         "threads, 30 calls; no comparable original-model latency measurement is available. The source audit "
-        "does not establish zero overfitting, and near-equal internal alternatives should not be overinterpreted.",
+        "does not establish zero overfitting, and near-equal internal alternatives should not be overinterpreted. "
+        "The internal comparison used two versus four variants with one seed each. Comparing corresponding "
+        "six- versus twelve-member final refits remains proposed, not an already measured result.",
     )
 
     f = page(
@@ -1008,6 +1017,10 @@ def render(dest):
 
     append_learning_slides(dest, page, finish, words, chart, table)
     append_learning_report(dest)
+    append_review_intro(dest, page, finish, words, chart, table)
+    append_architecture_slides(dest, page, finish, words, chart, table)
+    append_review_slides(dest, page, finish, words, chart, table)
+    write_study_guide(dest)
     export(
         dest,
         slides,
@@ -1032,11 +1045,18 @@ def main():
         action="store_true",
         help="Package recorded learning histories without rereading saved predictions.",
     )
+    parser.add_argument(
+        "--collect-review",
+        action="store_true",
+        help="Audit architecture, saved predictions and validation-only temporal decisions.",
+    )
     args = parser.parse_args()
     if args.collect:
         collect(args.output)
     if args.collect or args.collect_learning:
         collect_learning(args.output)
+    if args.collect or args.collect_review:
+        collect_review(args.output)
     render(args.output)
 
 
