@@ -22,7 +22,12 @@ class ImprovedForecaster(nn.Module):
         super().__init__()
         self.architecture, self.num_classes = architecture, num_classes
         self.horizons = 4 if auxiliary else 3
-        if architecture in ("multiscale_mlp", "tcn", "gru"):
+        if architecture in ("temporal_transformer", "patch_transformer", "hybrid_transformer"):
+            from .transformer_models import TransformerForecaster
+
+            self.attention_model = TransformerForecaster(architecture, input_size, tokens, num_classes,
+                                                         width, layers, dropout, auxiliary)
+        elif architecture in ("multiscale_mlp", "tcn", "gru"):
             from .sequence_models import SequenceForecaster
 
             self.sequence = SequenceForecaster(architecture, input_size, tokens, num_classes,
@@ -56,6 +61,8 @@ class ImprovedForecaster(nn.Module):
 
     def forward(self, features, valid):
         features = features.masked_fill(~valid[:, :, None], 0)
+        if self.architecture in ("temporal_transformer", "patch_transformer", "hybrid_transformer"):
+            return self.attention_model(features, valid)
         if self.architecture in ("multiscale_mlp", "tcn", "gru"):
             return self.sequence(features, valid)
         if self.architecture == "legacy":

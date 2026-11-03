@@ -2,6 +2,7 @@
 
 import gc
 import json
+import math
 import random
 import shutil
 import time
@@ -175,6 +176,24 @@ def check_protocol(root, experiment):
     return protocol
 
 
+def training_schedule(optimizer, max_epochs, warmup_epochs=0, warmup_start_factor=0.1):
+    """A fixed epoch schedule; optional warmup never observes evaluation metrics."""
+    if not 0 <= warmup_epochs < max_epochs or not 0 < warmup_start_factor <= 1:
+        raise ValueError("Invalid warmup budget or start factor")
+    if not warmup_epochs:
+        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_epochs, eta_min=3e-5)
+
+    def factor(epoch, minimum):
+        if epoch < warmup_epochs:
+            return warmup_start_factor + (1 - warmup_start_factor) * epoch / warmup_epochs
+        fraction = min(1.0, (epoch - warmup_epochs) / (max_epochs - warmup_epochs))
+        return minimum + (1 - minimum) * (1 + math.cos(math.pi * fraction)) / 2
+
+    schedules = [lambda epoch, minimum=3e-5 / group["lr"]: factor(epoch, minimum)
+                 for group in optimizer.param_groups]
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, schedules)
+
+
 def fit_run(root, experiment, name, fold=0, seed=42, final_epochs=None, final_temperature=1.0):
     experiment = Path(experiment)
     protocol = check_protocol(root, experiment)
@@ -207,7 +226,8 @@ def fit_run(root, experiment, name, fold=0, seed=42, final_epochs=None, final_te
                                   weight_decay=candidate["weight_decay"], fused=True)
     # Fixed cosine schedule in every phase; final fits do not depend on outer-validation feedback.
     epochs = final_epochs if final else protocol["max_epochs"]
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=protocol["max_epochs"], eta_min=3e-5)
+    scheduler = training_schedule(optimizer, protocol["max_epochs"], protocol.get("warmup_epochs", 0),
+                                  protocol.get("warmup_start_factor", 0.1))
     generator = torch.Generator(device=data.device).manual_seed(seed)
     output.mkdir(parents=True)
     write_json(output / "run.json", {"candidate": candidate, "model": model_config, "seed": seed,
@@ -219,6 +239,7 @@ def fit_run(root, experiment, name, fold=0, seed=42, final_epochs=None, final_te
     started = time.perf_counter()
     for epoch in range(1, epochs + 1):
         model.train()
+        epoch_learning_rate = optimizer.param_groups[0]["lr"]
         order = fit_indices[torch.randperm(len(fit_indices), device=data.device, generator=generator)]
         total_loss = torch.zeros((), device=data.device)
         for batch in order.split(protocol["batch_size"]):
@@ -235,6 +256,8 @@ def fit_run(root, experiment, name, fold=0, seed=42, final_epochs=None, final_te
             total_loss += loss.detach() * len(batch)
         scheduler.step()
         row = {"epoch": epoch, "training_objective": float(total_loss.item() / len(order))}
+        if protocol.get("warmup_epochs", 0):
+            row["learning_rate"] = epoch_learning_rate
         if final:
             improved = epoch == epochs
         else:

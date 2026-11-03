@@ -33,3 +33,7 @@ bvr_behavior_prediction/skill_forecasting/sequence_models.py text eol=lf
 bvr_behavior_prediction/skill_forecasting/sequence_search.py text eol=lf
 scripts/sequence_skill_forecaster.py text eol=lf
 configs/training/skill_forecasting_sequence_search.json text eol=lf
+bvr_behavior_prediction/skill_forecasting/transformer_models.py text eol=lf
+bvr_behavior_prediction/skill_forecasting/transformer_search.py text eol=lf
+scripts/transformer_skill_forecaster.py text eol=lf
+configs/training/skill_forecasting_transformer_search.json text eol=lf

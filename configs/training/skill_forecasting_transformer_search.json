@@ -1,0 +1,169 @@
+{
+  "description": "v5 Transformer challenge against the preserved v4 15-member MLP/TCN ensemble; one predeclared all-Transformer primary challenger and optional secondary incumbent blend, frozen together before validation. Identical data, 33 labels, origins, horizons and grouped partitions.",
+  "candidates": {
+    "history20_pooled_transformer": {
+      "features": "geometry",
+      "recent_stride": 5,
+      "width": 192,
+      "layers": 3,
+      "dropout": 0.2,
+      "smoothing": 0.02,
+      "weight_decay": 0.03,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true,
+      "architecture": "transformer",
+      "history_seconds": 20
+    },
+    "history60_pooled_transformer": {
+      "features": "geometry",
+      "recent_stride": 5,
+      "width": 192,
+      "layers": 3,
+      "dropout": 0.2,
+      "smoothing": 0.02,
+      "weight_decay": 0.03,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true,
+      "architecture": "transformer",
+      "history_seconds": 60
+    },
+    "history20_temporal_transformer": {
+      "features": "geometry",
+      "recent_stride": 5,
+      "width": 192,
+      "layers": 3,
+      "dropout": 0.2,
+      "smoothing": 0.02,
+      "weight_decay": 0.03,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true,
+      "architecture": "temporal_transformer",
+      "history_seconds": 20
+    },
+    "history60_temporal_transformer": {
+      "features": "geometry",
+      "recent_stride": 5,
+      "width": 192,
+      "layers": 3,
+      "dropout": 0.2,
+      "smoothing": 0.02,
+      "weight_decay": 0.03,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true,
+      "architecture": "temporal_transformer",
+      "history_seconds": 60
+    },
+    "history20_patch_transformer": {
+      "features": "geometry",
+      "recent_stride": 5,
+      "width": 192,
+      "layers": 3,
+      "dropout": 0.2,
+      "smoothing": 0.02,
+      "weight_decay": 0.03,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true,
+      "architecture": "patch_transformer",
+      "history_seconds": 20
+    },
+    "history60_patch_transformer": {
+      "features": "geometry",
+      "recent_stride": 5,
+      "width": 192,
+      "layers": 3,
+      "dropout": 0.2,
+      "smoothing": 0.02,
+      "weight_decay": 0.03,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true,
+      "architecture": "patch_transformer",
+      "history_seconds": 60
+    },
+    "history20_hybrid_transformer": {
+      "features": "geometry",
+      "recent_stride": 5,
+      "width": 192,
+      "layers": 3,
+      "dropout": 0.25,
+      "smoothing": 0.03,
+      "weight_decay": 0.04,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true,
+      "architecture": "hybrid_transformer",
+      "history_seconds": 20
+    },
+    "history60_hybrid_transformer": {
+      "features": "geometry",
+      "recent_stride": 5,
+      "width": 192,
+      "layers": 3,
+      "dropout": 0.25,
+      "smoothing": 0.03,
+      "weight_decay": 0.04,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true,
+      "architecture": "hybrid_transformer",
+      "history_seconds": 60
+    }
+  },
+  "pure_candidates": [
+    "history20_pooled_transformer",
+    "history60_pooled_transformer",
+    "history20_temporal_transformer",
+    "history60_temporal_transformer",
+    "history20_patch_transformer",
+    "history60_patch_transformer"
+  ],
+  "hybrid_candidates": [
+    "history20_hybrid_transformer",
+    "history60_hybrid_transformer"
+  ],
+  "max_epochs": 60,
+  "patience": 10,
+  "min_delta": 0.001,
+  "learning_rate": 0.0003,
+  "batch_size": 1024,
+  "evaluation_batch_size": 2048,
+  "warmup_epochs": 4,
+  "warmup_start_factor": 0.1,
+  "split_seeds": [
+    271828,
+    314159
+  ],
+  "training_seeds": [
+    42,
+    43,
+    44
+  ],
+  "transformer_weights": [
+    0.25,
+    0.5,
+    0.75
+  ],
+  "guards": {
+    "maximum_nll_increase": 0.02,
+    "maximum_macro_f1_decrease": 0.01,
+    "maximum_horizon_accuracy_decrease": 0.003
+  },
+  "notes": [
+    "All eight candidates fixed before any new fit.",
+    "Screen by standalone mean three-horizon accuracy, with single-model quality guards descriptive; shortlist two pure Transformers and one architectural hybrid.",
+    "Full cached 15-member internal incumbent used at every stage; never use all-training final weights on internal selection groups.",
+    "Confirm three seeds in both folds, rank primary pure single-family or pure-pair ensembles by eligible mean accuracy; if no pure recipe passes quality guards, freeze highest accuracy with guard failures explicitly labelled.",
+    "Always evaluate the frozen primary Transformer-only challenger to answer the requested comparison; this is not automatic promotion of an inferior model.",
+    "Optional secondary blends use fixed weights .25/.5/.75 and must improve mean accuracy with quality guards in both folds.",
+    "Freeze primary and secondary together, then one validation invocation; do not choose a new winner using outer scores.",
+    "No noninferiority margin or equivalence claim from an interval crossing zero.",
+    "Existing validation has guided prior development; reserved test never prepared or evaluated.",
+    "Bidirectional attention is confined to already observed history at or before the forecast origin.",
+    "Patch model is a multivariate adaptation inspired by temporal patching, not a reproduction of channel-independent PatchTST."
+  ]
+}

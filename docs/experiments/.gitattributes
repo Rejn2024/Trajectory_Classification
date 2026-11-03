@@ -6,3 +6,5 @@
 # These copies retain the registered bytes, including original line endings.
 skill_forecasting_v4/data/frozen_protocol.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 skill_forecasting_v4/data/preserved_artifacts.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+skill_forecasting_v5_transformers/data/frozen_protocol.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+skill_forecasting_v5_transformers/data/preserved_artifacts.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
