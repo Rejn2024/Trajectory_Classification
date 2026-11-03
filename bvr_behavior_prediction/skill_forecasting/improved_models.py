@@ -22,7 +22,12 @@ class ImprovedForecaster(nn.Module):
         super().__init__()
         self.architecture, self.num_classes = architecture, num_classes
         self.horizons = 4 if auxiliary else 3
-        if architecture == "legacy":
+        if architecture in ("multiscale_mlp", "tcn", "gru"):
+            from .sequence_models import SequenceForecaster
+
+            self.sequence = SequenceForecaster(architecture, input_size, tokens, num_classes,
+                                               width, layers, dropout, auxiliary)
+        elif architecture == "legacy":
             if auxiliary:
                 raise ValueError("Legacy control has no auxiliary head")
             self.legacy = SkillForecaster(architecture="transformer", input_size=input_size,
@@ -51,6 +56,8 @@ class ImprovedForecaster(nn.Module):
 
     def forward(self, features, valid):
         features = features.masked_fill(~valid[:, :, None], 0)
+        if self.architecture in ("multiscale_mlp", "tcn", "gru"):
+            return self.sequence(features, valid)
         if self.architecture == "legacy":
             return self.legacy(features)
         if self.architecture == "mlp":

@@ -281,6 +281,8 @@ def fit_run(root, experiment, name, fold=0, seed=42, final_epochs=None, final_te
         summary["selection_metrics"] = quick_metrics(probabilities, data.targets[indices].cpu().numpy())
         np.save(output / "selection_probabilities.npy", probabilities)
         np.save(output / "selection_indices.npy", indices.cpu().numpy())
+        summary["selection_probability_sha256"] = sha256(output / "selection_probabilities.npy")
+        summary["selection_indices_sha256"] = sha256(output / "selection_indices.npy")
     write_json(output / "summary.json", summary)
     write_json(output / "progress.json", {"status": "completed", **summary})
     print(json.dumps(summary), flush=True)
