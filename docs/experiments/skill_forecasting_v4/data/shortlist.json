@@ -1,0 +1,27 @@
+{
+  "names": [
+    "history60_tcn",
+    "history20_mlp_deep"
+  ],
+  "selected_on": "Fold 0 original-training select groups only",
+  "screening_reference_members": 4,
+  "final_reference_members": 12,
+  "baseline_metrics": {
+    "accuracy": [
+      0.5992293564766467,
+      0.5951826517246398,
+      0.5783413606261288
+    ],
+    "mean_accuracy": 0.5909177896091385,
+    "macro_f1": [
+      0.34399856180861155,
+      0.3375083065728537,
+      0.3134417840975323
+    ],
+    "mean_macro_f1": 0.3316495508263325,
+    "nll": 1.3089141845703125
+  },
+  "protocol_sha256": "eff1c0661065bee665ac7ba8f224104fa325c2743c8ba7a33dbec252e1534035",
+  "outer_validation_evaluated": false,
+  "test_evaluated": false
+}

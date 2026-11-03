@@ -31,6 +31,12 @@ an end-to-end training skeleton.
 
 ## Trained pilot skill forecasting
 
+[Architecture experiment supplement (v4)](docs/experiments/skill_forecasting_v4/README.md)
+compares the new sequence-model search directly with the retained twelve-model
+ensemble, with a separate
+[five-page PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/forecasting/docs/experiments/skill_forecasting_v4/skill_forecasting_v4.pdf),
+complete candidate results, pilot and skill metrics, uncertainty and training cost.
+
 [Detailed skills catalogue comparison](docs/presentations/skills_catalogue/README.md)
 provides 41 slides and full tables comparing the original frequency, GRU and
 transformer experiments with the improved ensemble: accuracy, class-level F1,

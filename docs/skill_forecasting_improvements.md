@@ -1,5 +1,11 @@
 # Improving catalogue-selection forecasts
 
+This page records the frozen v2/v3 study. The subsequent
+[v4 architecture experiment](skill_forecasting_sequence_experiments.md) compares
+against its twelve-model ensemble. Replaying an older hash-registered run requires
+that run's saved `source/` snapshot; its source checks deliberately reject later
+code revisions. Existing checkpoints and measured results are preserved.
+
 This experiment preserves the original results in
 `artifacts/skill_forecasting/initial_v1/` and the original prepared data in
 `artifacts/skill_forecasting/data_v1/`. New runs are under

@@ -1,0 +1,85 @@
+{
+  "selection_sha256": "2dc546cd5393753566a063ddc9fb96b9e6cb5c29614e841e431b514f26014698",
+  "metrics": {
+    "accuracy": [
+      0.6709304590610999,
+      0.6662180791702226,
+      0.6486183719193428
+    ],
+    "mean_accuracy": 0.6619223033835552,
+    "macro_f1": [
+      0.4124685994239358,
+      0.4180194339080569,
+      0.3767434657674297
+    ],
+    "mean_macro_f1": 0.40241049969980747,
+    "nll": 1.0928617715835571
+  },
+  "baseline_metrics": {
+    "accuracy": [
+      0.6561586909940913,
+      0.6517101030657126,
+      0.6348020911127707
+    ],
+    "mean_accuracy": 0.6475569617241915,
+    "macro_f1": [
+      0.41202818210815,
+      0.4115459522453698,
+      0.36647806236011077
+    ],
+    "mean_macro_f1": 0.3966840655712102,
+    "nll": 1.1374015808105469
+  },
+  "new_members_only_metrics": {
+    "accuracy": [
+      0.6628465684046491,
+      0.6601129127552026,
+      0.6440695227102994
+    ],
+    "mean_accuracy": 0.6556763346233837,
+    "macro_f1": [
+      0.4075930259224707,
+      0.40354721774273766,
+      0.3662497841400265
+    ],
+    "mean_macro_f1": 0.392463342601745,
+    "nll": 1.1663652658462524
+  },
+  "mean_accuracy_gain": 0.01436534165936365,
+  "practical_gain_target_met": true,
+  "paired_intervals": [
+    {
+      "horizon_s": 1,
+      "accuracy_gain": 0.014771768067008636,
+      "lower_95": 0.009159922892926652,
+      "upper_95": 0.021137503503648365,
+      "scenario_groups": 45,
+      "bootstrap_draws": 5000
+    },
+    {
+      "horizon_s": 2,
+      "accuracy_gain": 0.014507976104509945,
+      "lower_95": 0.008899802364711098,
+      "upper_95": 0.020947444301981786,
+      "scenario_groups": 45,
+      "bootstrap_draws": 5000
+    },
+    {
+      "horizon_s": 5,
+      "accuracy_gain": 0.013816280806572068,
+      "lower_95": 0.00768868802640789,
+      "upper_95": 0.021090066383466412,
+      "scenario_groups": 45,
+      "bootstrap_draws": 5000
+    }
+  ],
+  "checkpoint_hashes": {
+    "refit\\history60_tcn_s42": "c274917bc58e62edc98e43eaa31d693903b2c36257596b7a4f4a155038e9a85d",
+    "refit\\history60_tcn_s43": "25330c1e9ef1630630d2d8ebb22180fb6e411af65a3a7e29d7ed4eb59ca17bd0",
+    "refit\\history60_tcn_s44": "9fdf105258c9bbe26e0f07af6215ff2b67049697e8a28ce044f04187509e2fdc"
+  },
+  "matched_validation_origins": true,
+  "outer_validation_evaluated": true,
+  "test_evaluated": false,
+  "validation_role": "Previously inspected development validation; not an untouched final test"
+}

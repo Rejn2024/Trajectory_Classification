@@ -1,0 +1,15 @@
+{
+  "preserved_artifacts_checked": 490,
+  "preserved_artifacts_unchanged": true,
+  "frozen_sources_checked": 25,
+  "frozen_sources_unchanged": true,
+  "archived_source_bytes_verified": true,
+  "frozen_protocol_export_matches_selection": true,
+  "internal_partitions_unchanged": true,
+  "validation_origins_matched": true,
+  "new_outer_validation_evaluated": true,
+  "reserved_test_evaluated": false,
+  "report_performed_training_or_inference": false,
+  "protocol_sha256": "eff1c0661065bee665ac7ba8f224104fa325c2743c8ba7a33dbec252e1534035",
+  "frozen_selection_sha256": "2dc546cd5393753566a063ddc9fb96b9e6cb5c29614e841e431b514f26014698"
+}

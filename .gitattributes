@@ -25,3 +25,11 @@ shared/replays/tactical-checkpoints-v1/*.md text eol=lf
 shared/demonstrators/tactical-checkpoints-v1/index.html !filter !diff !merge text eol=lf
 shared/demonstrators/tactical-checkpoints-v1/*.json !filter !diff !merge text eol=lf
 shared/demonstrators/tactical-checkpoints-v1/*.md text eol=lf
+
+# Preserve exact bytes of the new hash-registered experiment sources.
+bvr_behavior_prediction/skill_forecasting/improved_models.py text eol=lf
+bvr_behavior_prediction/skill_forecasting/improvement.py text eol=lf
+bvr_behavior_prediction/skill_forecasting/sequence_models.py text eol=lf
+bvr_behavior_prediction/skill_forecasting/sequence_search.py text eol=lf
+scripts/sequence_skill_forecaster.py text eol=lf
+configs/training/skill_forecasting_sequence_search.json text eol=lf
