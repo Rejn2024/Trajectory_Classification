@@ -1,0 +1,245 @@
+{
+  "data_directory": "C:\\Users\\jttur\\VSCodeProjects\\Trajectory_Classification\\artifacts\\skill_forecasting\\data_v1",
+  "data_manifest_sha256": "9ee1ba26a6908c083ee629b5c68404dc7f4ff383aa7ab7e808c8cda12d7fe2d5",
+  "candidates": {
+    "history20_pooled_transformer": {
+      "features": "geometry",
+      "recent_stride": 5,
+      "width": 192,
+      "layers": 3,
+      "dropout": 0.2,
+      "smoothing": 0.02,
+      "weight_decay": 0.03,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true,
+      "architecture": "transformer",
+      "history_seconds": 20
+    },
+    "history60_pooled_transformer": {
+      "features": "geometry",
+      "recent_stride": 5,
+      "width": 192,
+      "layers": 3,
+      "dropout": 0.2,
+      "smoothing": 0.02,
+      "weight_decay": 0.03,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true,
+      "architecture": "transformer",
+      "history_seconds": 60
+    },
+    "history20_temporal_transformer": {
+      "features": "geometry",
+      "recent_stride": 5,
+      "width": 192,
+      "layers": 3,
+      "dropout": 0.2,
+      "smoothing": 0.02,
+      "weight_decay": 0.03,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true,
+      "architecture": "temporal_transformer",
+      "history_seconds": 20
+    },
+    "history60_temporal_transformer": {
+      "features": "geometry",
+      "recent_stride": 5,
+      "width": 192,
+      "layers": 3,
+      "dropout": 0.2,
+      "smoothing": 0.02,
+      "weight_decay": 0.03,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true,
+      "architecture": "temporal_transformer",
+      "history_seconds": 60
+    },
+    "history20_patch_transformer": {
+      "features": "geometry",
+      "recent_stride": 5,
+      "width": 192,
+      "layers": 3,
+      "dropout": 0.2,
+      "smoothing": 0.02,
+      "weight_decay": 0.03,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true,
+      "architecture": "patch_transformer",
+      "history_seconds": 20
+    },
+    "history60_patch_transformer": {
+      "features": "geometry",
+      "recent_stride": 5,
+      "width": 192,
+      "layers": 3,
+      "dropout": 0.2,
+      "smoothing": 0.02,
+      "weight_decay": 0.03,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true,
+      "architecture": "patch_transformer",
+      "history_seconds": 60
+    },
+    "history20_hybrid_transformer": {
+      "features": "geometry",
+      "recent_stride": 5,
+      "width": 192,
+      "layers": 3,
+      "dropout": 0.25,
+      "smoothing": 0.03,
+      "weight_decay": 0.04,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true,
+      "architecture": "hybrid_transformer",
+      "history_seconds": 20
+    },
+    "history60_hybrid_transformer": {
+      "features": "geometry",
+      "recent_stride": 5,
+      "width": 192,
+      "layers": 3,
+      "dropout": 0.25,
+      "smoothing": 0.03,
+      "weight_decay": 0.04,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true,
+      "architecture": "hybrid_transformer",
+      "history_seconds": 60
+    }
+  },
+  "split_seeds": [
+    271828,
+    314159
+  ],
+  "training_seeds": [
+    42,
+    43,
+    44
+  ],
+  "max_epochs": 60,
+  "patience": 10,
+  "min_delta": 0.001,
+  "learning_rate": 0.0003,
+  "batch_size": 1024,
+  "evaluation_batch_size": 2048,
+  "selection": "Screen by standalone accuracy; confirm primary Transformer-only and optional incumbent blend separately",
+  "confirmation": "Two pure Transformers and one architectural hybrid, each with three seeds in both training-only partitions",
+  "final_fit": "Union of frozen recipes; epochs/temperature median of six internal fits, three seeds, all original train groups",
+  "validation_policy": "One invocation evaluates the jointly frozen primary and optional secondary; no validation-based winner selection",
+  "test_policy": "Reserved test is neither prepared nor evaluated",
+  "design_description": "v5 Transformer challenge against the preserved v4 15-member MLP/TCN ensemble; one predeclared all-Transformer primary challenger and optional secondary incumbent blend, frozen together before validation. Identical data, 33 labels, origins, horizons and grouped partitions.",
+  "source_hashes": {
+    "bvr_behavior_prediction/__init__.py": "078c11047c3c28432920bf09b1537b0e8ff10fc2b7fe2576d07d25518b04477f",
+    "scripts/train_skill_forecaster.py": "70cceba1df8bf0a737546b8fd26342e9e6e1465c687cc9b791e2440f018f1b57",
+    "configs/training/skill_forecasting.json": "30450306f0c51ca0b8a794c9019317836deb2175516b836ce56e13d25ffacbac",
+    "bvr_behavior_prediction/forecasting/__init__.py": "10874e83ad527c485f39732498796650b2508a8768da5b83c153ae6b3bd39e1c",
+    "bvr_behavior_prediction/forecasting/data.py": "f8a6cbffcb047cba18a724aad9c9f9ba7308e44861621e1a0bedd6c70dde31cb",
+    "bvr_behavior_prediction/forecasting/evaluation.py": "c2307bbd047ce0505341ac16b900b7b3e41d1be9281802f788ae8dc2fc5a2635",
+    "bvr_behavior_prediction/forecasting/inference.py": "3707a3e675f9fbbd18edb608c0d3cc317d35b658e460060079e087bcd09793bd",
+    "bvr_behavior_prediction/forecasting/models.py": "50bbc21aba51802977f66d9af87b32b54adf262108b4c689d4e650452f029bb4",
+    "bvr_behavior_prediction/forecasting/train.py": "0f64dbfab6903a582d41cc5886cd07e0fe4da2bc766122ef64745a0a1dc8ada1",
+    "bvr_behavior_prediction/skill_forecasting/__init__.py": "c0171da18492c251ef426b0e1d4e56c8780fa5c3173073b7bab57ac65dff4ceb",
+    "bvr_behavior_prediction/skill_forecasting/data.py": "2f0d85eedc647cc109a0f81097daba44514b5ca68c2858fa63943322ccaa4c9d",
+    "bvr_behavior_prediction/skill_forecasting/ensemble_search.py": "09d31a3328e06180f62f2558fed9b7db110c8607bf0b1df5b9f08e61aeb59e16",
+    "bvr_behavior_prediction/skill_forecasting/evaluation.py": "3cd079631df4122700c3bf062bff90e00369518979a4bc68a091e751cc8da038",
+    "bvr_behavior_prediction/skill_forecasting/improved_features.py": "9e5decc9beba17637b78b3d90e8f5bdaba4c65b4d77426b53a4a9bbf69dbe6e6",
+    "bvr_behavior_prediction/skill_forecasting/improved_models.py": "208aa1d4054ac641099730a51712090e1be4a1852ccc7f2e56f1201304bf80c7",
+    "bvr_behavior_prediction/skill_forecasting/improvement.py": "8caa245a9eb2a2ceee778998cd82950080af27f4b3c4932244b332f7fa030626",
+    "bvr_behavior_prediction/skill_forecasting/inference.py": "06ef294f552cd8735613c9da6ea7b47360f16db66bb940b82c546c12f19cc98f",
+    "bvr_behavior_prediction/skill_forecasting/models.py": "59fd9d68f550b04b14414d787e864e665b0c3c08ba99e89ebfbdd5323b4ae83f",
+    "bvr_behavior_prediction/skill_forecasting/sequence_models.py": "a79d98be0f5dfc1c8e84a48ff906722cfa56ec71de4c44e399840aca66621c34",
+    "bvr_behavior_prediction/skill_forecasting/sequence_search.py": "e62d68e66e98a5811bf14eaa04ac6adb4ce94d64a062ebd24394fd1ecf78d9e9",
+    "bvr_behavior_prediction/skill_forecasting/temperature.py": "738d2c1375e5ac5bd3c8b108d1cbab98c01f755438e43f66ff7bc4a1f9363625",
+    "bvr_behavior_prediction/skill_forecasting/train.py": "54a41af152cb7a4c2815d3986060d4392b8a8c4125b7f9aa3a7e0bce84ce6f01",
+    "bvr_behavior_prediction/skill_forecasting/transformer_models.py": "300cb87903dcc05aede84573a9539eb1619347737339c61b0a3874ec2df1cfe4",
+    "bvr_behavior_prediction/skill_forecasting/transformer_search.py": "2e025abd05a67d5ff2ac6949630a14768a06a6642f73f61bc300ff28570d1abe",
+    "scripts/improve_skill_forecaster.py": "b407c1e1909a0ac1665f5b969a6ea44b66e3ba42a9a9a8f6690043cb7f0fc588",
+    "scripts/transformer_skill_forecaster.py": "40c12b2ca8f2ff8c734d5dca08b178dfe696139d8fbd760db0d53ca44b581790",
+    "configs/training/skill_forecasting_transformer_search.json": "7880a211c86a1b9ae3bbcf8c47dbb04d4644b8f3d1b7c7b2e0451d5865b06af2"
+  },
+  "pure_candidates": [
+    "history20_pooled_transformer",
+    "history60_pooled_transformer",
+    "history20_temporal_transformer",
+    "history60_temporal_transformer",
+    "history20_patch_transformer",
+    "history60_patch_transformer"
+  ],
+  "hybrid_candidates": [
+    "history20_hybrid_transformer",
+    "history60_hybrid_transformer"
+  ],
+  "warmup_epochs": 4,
+  "warmup_start_factor": 0.1,
+  "transformer_weights": [
+    0.25,
+    0.5,
+    0.75
+  ],
+  "guards": {
+    "maximum_nll_increase": 0.02,
+    "maximum_macro_f1_decrease": 0.01,
+    "maximum_horizon_accuracy_decrease": 0.003
+  },
+  "notes": [
+    "All eight candidates fixed before any new fit.",
+    "Screen by standalone mean three-horizon accuracy, with single-model quality guards descriptive; shortlist two pure Transformers and one architectural hybrid.",
+    "Full cached 15-member internal incumbent used at every stage; never use all-training final weights on internal selection groups.",
+    "Confirm three seeds in both folds, rank primary pure single-family or pure-pair ensembles by eligible mean accuracy; if no pure recipe passes quality guards, freeze highest accuracy with guard failures explicitly labelled.",
+    "Always evaluate the frozen primary Transformer-only challenger to answer the requested comparison; this is not automatic promotion of an inferior model.",
+    "Optional secondary blends use fixed weights .25/.5/.75 and must improve mean accuracy with quality guards in both folds.",
+    "Freeze primary and secondary together, then one validation invocation; do not choose a new winner using outer scores.",
+    "No noninferiority margin or equivalence claim from an interval crossing zero.",
+    "Existing validation has guided prior development; reserved test never prepared or evaluated.",
+    "Bidirectional attention is confined to already observed history at or before the forecast origin.",
+    "Patch model is a multivariate adaptation inspired by temporal patching, not a reproduction of channel-independent PatchTST."
+  ],
+  "baseline_v3_directory": "C:\\Users\\jttur\\VSCodeProjects\\Trajectory_Classification\\artifacts\\skill_forecasting\\improvement_v3",
+  "baseline_v4_directory": "C:\\Users\\jttur\\VSCodeProjects\\Trajectory_Classification\\artifacts\\skill_forecasting\\improvement_v4",
+  "baseline_mlp_components": [
+    "history20_mlp_accuracy",
+    "history20_mlp_wide_accuracy",
+    "history20_mlp_smooth_accuracy",
+    "history60_mlp_accuracy"
+  ],
+  "baseline_tcn_component": "history60_tcn",
+  "baseline_members": 15,
+  "baseline_parameters": 31730031,
+  "baseline_new_weight": 0.5,
+  "secondary_weights": [
+    0.25,
+    0.5,
+    0.75
+  ],
+  "partition_hashes": {
+    "inner_split_0.json": "9450b865ad654079177892185b8cbeb0489e4883e942940650f8655e655107cc",
+    "inner_split_1.json": "bc92fa7d280b81db97a14ef3ce83ca507a5fd5845938ebdcded2d5694e4f2b9a"
+  },
+  "fixed_origin_counts": {
+    "train": {
+      "origins": 146690,
+      "valid_targets": [
+        146690,
+        145163,
+        140516
+      ]
+    },
+    "validation": {
+      "origins": 30802,
+      "valid_targets": [
+        30802,
+        30466,
+        29458
+      ]
+    }
+  },
+  "preserved_artifacts_sha256": "21a9ec8b03d08dafd1bdab9e2d153a32da23e2dec6a64ed54892755333b26555"
+}

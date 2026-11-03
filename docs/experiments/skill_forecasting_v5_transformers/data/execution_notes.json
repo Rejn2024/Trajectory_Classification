@@ -1,0 +1,92 @@
+{
+  "training_plan_unchanged": true,
+  "parallel_execution": [
+    {
+      "phase": "screen",
+      "candidates": [
+        "history20_patch_transformer",
+        "history60_patch_transformer"
+      ],
+      "fold": 0,
+      "seeds": [
+        42
+      ],
+      "workers": 1,
+      "alongside": "Main screen; independent already registered runs"
+    },
+    {
+      "phase": "confirmation",
+      "workers": 2,
+      "training_plan_unchanged": true,
+      "root_worker": {
+        "fold_0": {
+          "candidates": [
+            "history60_patch_transformer",
+            "history60_temporal_transformer",
+            "history60_hybrid_transformer"
+          ],
+          "seeds": [
+            43,
+            44
+          ]
+        },
+        "fold_1": {
+          "candidates": [
+            "history60_patch_transformer"
+          ],
+          "seeds": [
+            42,
+            43
+          ]
+        }
+      },
+      "agent_worker": {
+        "fold_1": [
+          {
+            "candidates": [
+              "history60_hybrid_transformer",
+              "history60_temporal_transformer"
+            ],
+            "seeds": [
+              42,
+              43,
+              44
+            ]
+          },
+          {
+            "candidates": [
+              "history60_patch_transformer"
+            ],
+            "seeds": [
+              44
+            ]
+          }
+        ]
+      },
+      "freeze": "Standard confirm invoked only after both disjoint workers complete; same registered fits and selection."
+    },
+    {
+      "phase": "frozen_refit",
+      "workers": 2,
+      "training_plan_unchanged": true,
+      "root_worker": {
+        "candidate": "history60_temporal_transformer",
+        "seeds": [
+          42,
+          43,
+          44
+        ]
+      },
+      "agent_worker": {
+        "candidate": "history60_patch_transformer",
+        "seeds": [
+          42,
+          43,
+          44
+        ]
+      },
+      "budgets": "Exact jointly frozen component epochs and temperatures; no validation callbacks."
+    }
+  ],
+  "timing_interpretation": "Some registered fits share the same RTX4090 concurrently. Summed fit timers include contention and exclude loading/setup/selection prediction; they are not elapsed wall time or isolated throughput."
+}

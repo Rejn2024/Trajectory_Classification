@@ -1,6 +1,10 @@
 # BVR behaviour prediction
 
-**Latest slide pack — 41-slide skills catalogue comparison:**
+**Latest experiment — Transformer challenge (v5):**
+[Download the six-page PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/forecasting/docs/experiments/skill_forecasting_v5_transformers/skill_forecasting_v5_transformers.pdf)
+· [Results and complete evidence](docs/experiments/skill_forecasting_v5_transformers/README.md).
+
+**Full overview — 41-slide skills catalogue comparison:**
 [Download the full PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf)
 · [View the PDF on GitHub](https://github.com/Rejn2024/Trajectory_Classification/blob/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf).
 Published on the `forecasting` branch.
@@ -30,6 +34,17 @@ See `configs/` for the initial F-16 experiment and `examples/train_pipeline.py` 
 an end-to-end training skeleton.
 
 ## Trained pilot skill forecasting
+
+[Transformer challenge (v5)](docs/experiments/skill_forecasting_v5_transformers/README.md)
+tests pooled, temporal and patch attention plus an explicitly labelled hybrid
+against the retained fifteen-model v4 ensemble. The separate PDF reports the
+frozen Transformer-only challenger first, with any incumbent blend shown
+separately. See the [experiment guide](docs/skill_forecasting_transformer_experiments.md)
+for architecture, grouped selection and interpretation of learning curves.
+The six-Transformer challenger scores **65.88%** mean validation accuracy versus
+**66.19%** for v4; the frozen blend scores **66.26%**. Both difference intervals
+cross zero. The Transformer-only ensemble improves probability quality with fewer parameters,
+but this study establishes no accuracy improvement or equivalence.
 
 [Architecture experiment supplement (v4)](docs/experiments/skill_forecasting_v4/README.md)
 compares the new sequence-model search directly with the retained twelve-model

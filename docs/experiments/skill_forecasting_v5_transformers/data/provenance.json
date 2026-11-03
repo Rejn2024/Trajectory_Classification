@@ -1,0 +1,13 @@
+{
+  "frozen_protocol_sha256": "e36f4c5e7c3dedf2469a055db08c36d0a9e06342715477be18b27e9e6bcdd298",
+  "portable_protocol_sha256": "7cdb254d8a2b72bb7f30f3eea6a69e201888be10211766be1561cf65a09e7559",
+  "portable_protocol_note": "Only data/baseline directory paths are repository-relative; use frozen_protocol.json for registered bytes.",
+  "preservation_manifest_sha256": "21a9ec8b03d08dafd1bdab9e2d153a32da23e2dec6a64ed54892755333b26555",
+  "source_archive": {
+    "file": "source_snapshot.zip",
+    "sha256": "f921ef25dbc73161c0cb7198970f69cd58f9b2e6128234f1bf57dafd6eb659c9",
+    "source_files": 27,
+    "contents": "Registered training source/config/CLI bytes; no model checkpoints or datasets",
+    "timestamps": "Fixed 1980-01-01; sorted repository-relative paths"
+  }
+}

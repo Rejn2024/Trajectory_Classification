@@ -6,8 +6,8 @@ probability from twelve MLPs, half from three 60-second TCNs. Its existing
 validation accuracies are 67.09%, 66.62% and 64.86% at +1/+2/+5 seconds. These are
 empirical results, not proof that the architecture or its score is optimal.
 
-The primary result will be a **Transformer-only challenger**. A separately named
-secondary result may add Transformers to the incumbent. An incumbent blend cannot
+The primary result is a **Transformer-only challenger**. A separately named
+secondary result adds Transformers to the incumbent. An incumbent blend cannot
 establish that Transformers alone replace the MLP/TCN system.
 
 ## Fixed task and comparison
@@ -45,6 +45,8 @@ are in [the registered configuration](../configs/training/skill_forecasting_tran
 The temporal and patch variants add fixed relative-time/gap coordinates and
 validity flags to describe the existing nonuniform sampling. They use three
 independently initialized pre-norm attention blocks, width 192 and four heads.
+These are encoder-style Transformers trained from scratch on this corpus;
+no pretrained language model or additional training dataset is used.
 Their learned residual gains start at 0.1. The patch layouts contain nine or
 seventeen tokens for the 20- or 60-second history respectively. No patch crosses
 the older one-second/recent half-second sampling boundary.
@@ -60,6 +62,28 @@ Transformers still contain ordinary feed-forward sublayers and classification
 heads; the architectural hybrid additionally has an independent full-history
 MLP branch. Model counts and parameter budgets are reported rather than assumed
 equal across families.
+
+For a batch of `B` forecast origins, the 60-second input is `B × 66 × 91`:
+batch, observation time, feature. Masks describe unavailable earlier history.
+The temporal variant turns this into 66 contextual vectors of width 192; the
+patch variant first combines nearby observations into 17 vectors of width 192.
+Both keep the current observation available to the classification head. Each
+network produces `B × 3 × 33` logits: one distribution over the same 33 labels
+for each of the three horizons. These are direct forecasts; no true future label
+or future observation is fed back as a decoder input.
+
+```mermaid
+flowchart LR
+    H["Observed history: 66 times × 91 features"] --> E["Temporal or patch embedding + masks"]
+    E --> A["Three attention blocks: width 192, four heads"]
+    A --> R["All contextual positions retained in readout"]
+    C["Current observed features"] --> R
+    R --> O["Head: 3 horizons × 33 catalogue logits"]
+    O --> P["Fixed temperature + class probabilities"]
+```
+
+The diagram describes the new pure temporal and patch variants. It does not
+describe the pooled control's mean readout or the hybrid's parallel MLP branch.
 
 Temporal patching is inspired by
 [Nie et al., PatchTST](https://openreview.net/forum?id=Jbdc0vTOcol). Our model jointly
@@ -108,6 +132,61 @@ validation has also been inspected previously. This is further development
 evidence for new scenarios involving the same pilots, not an untouched final test
 or an assessment of unseen-pilot generalization.
 
+## Interpreting the initial internal screen
+
+The following evidence comes from the six completed pure-Transformer screens,
+**seed 42 on internal partition 0 only**. These are selection-group scores from
+the original training partition, not final validation or test results. Accuracy
+is the mean across +1/+2/+5 seconds; selection NLL includes stop-only temperature
+calibration. The saved evidence is each run's `summary.json` and `history.csv`
+under `improvement_v5_transformers/inner_0`.
+
+| Family | 20s accuracy | 60s accuracy | 20s selection NLL | 60s selection NLL |
+|---|---:|---:|---:|---:|
+| Pooled Transformer | 56.11% | 55.41% | 1.540 | 1.542 |
+| Temporal Transformer | 58.26% | 58.77% | 1.388 | 1.426 |
+| Patch Transformer | 57.68% | 59.20% | 1.447 | 1.400 |
+
+The full fifteen-member incumbent scores 60.53% accuracy and 1.217 NLL on these
+same internal cases. Its ensemble size differs from each screening model, so
+this is a reference comparison, not an architecture-only comparison at equal
+model cost. These single-model results do not replace the multi-seed,
+two-partition confirmation reported below.
+
+Longer history helps temporal attention by 0.51 percentage points and patch
+attention by 1.52 points here, while pooled attention loses 0.70 points. A
+plausible explanation is that the flattened temporal readout preserves useful
+position-specific maneuver information, while patches aggregate local movement
+before attention. These are hypotheses, not a causal readout ablation: explicit
+time/gap inputs, residual scaling, initialization and classification heads also
+differ. All six share width, depth and training settings, but parameter counts
+differ: pooled 1.58/1.59 million, temporal 2.54/4.02 million and patch 1.98/2.28
+million for 20s/60s. This screen establishes no architecture optimum.
+
+The incumbent already uses temporal context. Its MLPs flatten the complete
+configured history, including validity masks, into a vector with a fixed slot
+for each time and feature. A dense layer can therefore combine observations
+across time; flattening does not discard their ordering. Its six-block TCN has
+a 127-token receptive field, covering the complete 66-token, 60-second input.
+Transformers change how that supplied history is combined; they do not uniquely
+provide access to it.
+
+The curves show signs of **probability overfitting**: minimum stopping NLL occurs
+at epochs 5–11, whereas accuracy-selected checkpoints occur at epochs 31–55.
+For example, the 60s pooled model's stopping NLL rises from 1.299 at epoch 9 to
+1.683 at epoch 41 while stopping accuracy rises from 56.31% to 62.00% and the
+training objective falls from 1.031 to 0.621. Better top-label predictions can
+coexist with worse probability quality; accuracy-based stopping does not minimize
+NLL. A lower score on different selection scenarios alone is not proof of overfit.
+
+Keep three quantities distinct: **training objective** is label-smoothed cross
+entropy measured with training dropout; **stopping NLL** is plain evaluation NLL
+before temperature calibration; **selection NLL** is measured on separate groups
+after calibration. Their absolute values are not directly interchangeable.
+Temperatures of 1.47–1.54 soften these six models' confidence, but their calibrated
+selection NLL still trails the incumbent in this screen. No protocol or stopping
+rule is changed in response to these observations.
+
 ## Reproduction
 
 Use a new, empty output directory for a new experiment. Existing registered runs
@@ -124,5 +203,82 @@ source-hash guards.
 
 ## Results
 
-Pending the registered search. Transformer-only and incumbent-blend results will
-be kept distinct, including any regressions, extra model cost and uncertainty.
+### Internal confirmation and frozen recipes
+
+All eight screens and fifteen additional confirmation fits completed. The
+predeclared six-model pair (three patch plus three temporal Transformers) was
+selected as the primary; it passed every quality guard in both partitions.
+The separately frozen secondary is 75% of that Transformer ensemble plus 25%
+of the preserved fifteen-model incumbent. The architectural hybrids were not
+selected for either reported recipe.
+
+| Internal partition | v4 mean accuracy | Six Transformers | Gain | Secondary blend | Gain |
+|---|---:|---:|---:|---:|---:|
+| 0 | 60.5334% | 61.0929% | +0.5594 pp | 61.4302% | +0.8968 pp |
+| 1 | 63.6433% | 64.8144% | +1.1711 pp | 64.9124% | +1.2691 pp |
+| Equal partition mean | 62.0883% | 62.9536% | +0.8653 pp | 63.1713% | +1.0829 pp |
+
+The primary uses **18,908,886 parameters across six models**, versus 31,730,031
+across fifteen in v4. The secondary retains both systems: 50,638,917 parameters
+across twenty-one models. Parameter count is not a measured latency comparison.
+Both outputs share the same six new final refits. Patch models receive 42 epochs
+and temperature 1.5072423450; temporal models receive 28 epochs and temperature
+1.4619287139, each with seeds 42/43/44. These budgets come from the registered
+six-fit median rule and remain fixed during training on all 210 training groups.
+
+### Development validation
+
+The six frozen refits and single registered validation invocation completed.
+**The Transformer-only model did not improve measured validation accuracy.**
+The internal gain did not carry through to this development partition. The
+separately frozen blend has a very small positive point estimate, with uncertainty
+spanning both improvement and deterioration.
+
+| Horizon | Preserved v4 | Six Transformers | Change | Frozen 75% Transformer blend | Change |
+|---|---:|---:|---:|---:|---:|
+| +1 s | 67.09% | 66.67% | -0.43 pp | 67.10% | +0.01 pp |
+| +2 s | 66.62% | 66.47% | -0.15 pp | 66.73% | +0.11 pp |
+| +5 s | 64.86% | 64.50% | -0.37 pp | 64.96% | +0.10 pp |
+| Equal horizon mean | **66.19%** | **65.88%** | **-0.31 pp** | **66.26%** | **+0.07 pp** |
+
+The paired 95% scenario interval for mean accuracy change is **[-1.18, +0.64]
+percentage points** for the primary and **[-0.63, +0.84]** for the secondary.
+Both cross zero; this establishes neither an accuracy improvement nor equivalence.
+The 5,000 shared resamples preserve whole scenario groups and horizon dependence.
+They are conditional on the frozen models and previously inspected development
+data, without adjustment for the preceding model search.
+
+| Mean across horizons | Preserved v4 | Six Transformers | Secondary blend |
+|---|---:|---:|---:|
+| All-33-label macro-F1 | 0.4024 | 0.3963 | 0.4006 |
+| NLL (lower is better) | 1.0929 | 1.0618 | 1.0477 |
+
+Probability quality and classification accuracy do not move together. Both new
+recipes improve NLL, while the primary loses macro-F1 at all three horizons;
+its +5-second macro-F1 falls from 0.3767 to 0.3639. The secondary improves
++1-second F1 but loses at +2/+5 seconds. The complete report also includes top-3
+accuracy, Brier score and calibration error, with their regressions retained.
+
+Pilot effects differ substantially. The primary improves four of ten pilot point
+estimates at each horizon; the secondary improves four, six and six at +1/+2/+5
+seconds. Pilots 001, 006, 008 and 009 regress at every horizon under both new
+recipes. The largest primary loss is pilot 008 at +2 seconds: **-4.01 percentage
+points**. These are correlated, exploratory comparisons; the full tables include
+paired scenario intervals and support counts.
+
+The result is a competitive smaller Transformer ensemble with better NLL, not a
+demonstrated accuracy replacement. The six-model primary has about 40% fewer
+parameters than v4, but a smaller count is not a latency benchmark. The 21-model
+blend offers no established accuracy benefit for its additional model cost.
+The v4 baseline and all earlier results remain intact. No recipe, weight,
+checkpoint, epoch budget or temperature was retuned after this evaluation, and
+the reserved test was not prepared or evaluated.
+
+This bounded study does not establish an architecture optimum or show that
+Transformers cannot improve further. The internal curves motivate a future,
+separately registered comparison of stronger regularization and probability-aware
+checkpoint selection using training partitions only. The present result must
+remain part of the experiment history.
+
+See the [six-page PDF and complete portable evidence](experiments/skill_forecasting_v5_transformers/README.md)
+for every candidate, seed, pilot and skill comparison, timing and source provenance.
