@@ -1,5 +1,26 @@
 # BVR behaviour prediction
 
+**RL and forecasting handover:**
+[Dataset locations, frozen pilots and generation commands](docs/rl_forecasting_handover.md).
+Explains which artifacts are available through Git LFS, which remain local,
+and how to rebuild the raw corpora and prepared forecasting datasets.
+
+**Latest presentation — 22-slide skills forecasting revision:**
+[Download the revision PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/main/docs/presentations/skills_forecasting_revision/skills_forecasting_revision.pdf)
+· [Slide map and offline deck](docs/presentations/skills_forecasting_revision/README.md)
+· [Slide-by-slide study guide](docs/presentations/skills_forecasting_revision/study_guide.md).
+Four main model milestones, architecture diagrams, learning curves, metrics and
+one revision question per slide. This is the main study sequence through v5.
+
+**Latest experiment — Transformer challenge (v5):**
+[Download the six-page PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/main/docs/experiments/skill_forecasting_v5_transformers/skill_forecasting_v5_transformers.pdf)
+· [Results and complete evidence](docs/experiments/skill_forecasting_v5_transformers/README.md).
+
+**Historical detailed edition — 41-slide skills catalogue comparison:**
+[Download the full PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/main/docs/presentations/skills_catalogue/skills_catalogue.pdf)
+· [View the PDF on GitHub](https://github.com/Rejn2024/Trajectory_Classification/blob/main/docs/presentations/skills_catalogue/skills_catalogue.pdf).
+The forecasting work and presentations are integrated into `main`.
+
 An implementation of the revised project plan for target-centric F-16 manoeuvre
 recognition, tactical-transition forecasting, and BVR Sim native-action forecasting.
 
@@ -23,6 +44,62 @@ from bvr_sim.agents.skill_manager import SkillManager
 
 See `configs/` for the initial F-16 experiment and `examples/train_pipeline.py` for
 an end-to-end training skeleton.
+
+## Trained pilot skill forecasting
+
+Start with the [22-slide revision presentation](docs/presentations/skills_forecasting_revision/README.md)
+to understand the forecasting task, inputs, MLP/TCN/Transformer architectures,
+grouped training and evaluation, and results by horizon, pilot and skill. The
+numbered study guide and revision questions support a slide-by-slide discussion.
+The full earlier decks and experiment reports below are preserved as references.
+
+[Transformer challenge (v5)](docs/experiments/skill_forecasting_v5_transformers/README.md)
+tests pooled, temporal and patch attention plus an explicitly labelled hybrid
+against the retained fifteen-model v4 ensemble. The separate PDF reports the
+frozen Transformer-only challenger first, with any incumbent blend shown
+separately. See the [experiment guide](docs/skill_forecasting_transformer_experiments.md)
+for architecture, grouped selection and interpretation of learning curves.
+The six-Transformer challenger scores **65.88%** mean validation accuracy versus
+**66.19%** for v4; the frozen blend scores **66.26%**. Both difference intervals
+cross zero. The Transformer-only ensemble improves probability quality with fewer parameters,
+but this study establishes no accuracy improvement or equivalence.
+
+[Architecture experiment supplement (v4)](docs/experiments/skill_forecasting_v4/README.md)
+compares the new sequence-model search directly with the retained twelve-model
+ensemble, with a separate
+[five-page PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/main/docs/experiments/skill_forecasting_v4/skill_forecasting_v4.pdf),
+complete candidate results, pilot and skill metrics, uncertainty and training cost.
+
+[Detailed skills catalogue comparison](docs/presentations/skills_catalogue/README.md)
+provides 41 slides and full tables comparing the original frequency, GRU and
+transformer experiments with the improved ensemble: accuracy, class-level F1,
+probability quality, corrections/regressions and development trade-offs.
+
+[Forecasting insights slides](docs/presentations/forecasting_insights/README.md)
+summarize motion and skill results from tactical observer B01's view of the ten
+trained pilots. The standalone PDF and HTML include accuracy improvements,
+per-pilot comparisons, uncertainty intervals and the limits of the evidence.
+
+[Notebook 10](notebooks/10_skill_forecasting_improvements.ipynb) reports the
+subsequent improvement study: causal encounter geometry, longer observation
+histories, training-only grouped model selection and fixed model averaging.
+See the [improvement guide](docs/skill_forecasting_improvements.md).
+
+[Notebook 09](notebooks/09_skill_forecasting.ipynb) forecasts the trained pilot's
+selected catalogue labels at **+1, +2 and +5 seconds** from tactical observer B01's
+history. It preserves grouped scenario splits and the reserved test set, and
+reports class support, frequency baselines and GRU/transformer validation metrics.
+See the [skill-forecasting guide](docs/skill_forecasting.md). Catalogue selections
+need not represent physically distinct manoeuvres.
+
+## Trained pilot motion forecasting
+
+[Notebook 08](notebooks/08_motion_forecasting.ipynb) reports position and velocity
+forecasts at **1, 2 and 5 seconds** from the scripted tactical aircraft's perspective.
+The first experiment compares a transformer and GRU with two kinematic baselines,
+using complete matched scenario groups for partitioning and a reserved final test.
+See the [forecasting guide](docs/motion_forecasting.md) for results, architecture,
+data preparation, training commands and checkpoint inference.
 
 ## Sharing training results and flight datasets
 

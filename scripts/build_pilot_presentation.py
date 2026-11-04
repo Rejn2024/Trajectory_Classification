@@ -3,6 +3,7 @@
 Use --collect on the training PC to audit and package existing result files.
 Without --collect, rebuild the PDF/HTML from the committed data on any PC with
 Matplotlib and NumPy. Viewing the exported files needs neither Python nor Git LFS.
+Use --collect-forecast to package the saved forecasting validation results.
 """
 
 import argparse
@@ -25,8 +26,11 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 from matplotlib.path import Path as PlotPath
 
+from presentation_forecasting import add_forecasting_slides, collect_forecasting
+
 ROOT = Path(__file__).resolve().parents[1]
 DEST = ROOT / "docs/presentations"
+TITLE = "From multi-pilot training to motion forecasting"
 OUTCOMES = (
     "surviving_elimination", "survived_without_elimination",
     "mutual_destruction", "loss_without_elimination",
@@ -323,15 +327,16 @@ def collect(dest):
 def render(dest, data):
     plt.rcParams.update({"font.family": "DejaVu Sans", "text.color": FG,
                          "axes.labelcolor": FG, "xtick.color": MUTED, "ytick.color": MUTED,
-                         "axes.edgecolor": MUTED, "font.size": 12, "savefig.facecolor": BG})
+                         "axes.edgecolor": MUTED, "font.size": 12, "savefig.facecolor": BG,
+                         "figure.max_open_warning": 0})  # Slides are closed after the batch export.
     slides = []
 
     def page(title, subtitle):
         fig = plt.figure(figsize=(16, 9), facecolor=BG)
-        fig.text(.065, .929, "PILOT POPULATION  /  BRANCH UPDATE", color=TEAL, size=10, weight="bold")
+        fig.text(.065, .929, "PILOT POPULATION  /  DATASET GENERATION  /  FORECASTING", color=TEAL, size=10, weight="bold")
         fig.text(.065, .849, title, size=30, weight="bold")
         fig.text(.065, .793, subtitle, size=14, color=MUTED)
-        fig.text(.065, .041, "Existing results only  |  Tactical evaluation uses a scripted opponent  |  No new training", size=9, color=MUTED)
+        fig.text(.065, .041, "Saved experiment results  |  Scripted tactical observer  |  Forecasting final test remains reserved", size=9, color=MUTED)
         fig.text(.935, .041, str(len(slides) + 1).zfill(2), ha="right", size=11, color=TEAL)
         return fig
 
@@ -374,6 +379,23 @@ def render(dest, data):
         f.add_artist(FancyArrowPatch(path=route, transform=f.transFigure, arrowstyle="-|>",
                                     mutation_scale=14, linewidth=1.5, color=colour,
                                     linestyle="--" if dashed else "-", zorder=2))
+
+    f = page("Multi-pilot training as dataset preparation",
+             "Project objective: forecast trained aircraft movement from one-sided observations")
+    pipeline_box(.065, .46, .255, .25, "1  TRAIN PILOTS",
+                 "Learn useful combat behaviour\nVary fixed reward priorities\nAdapt to tactical opposition\nRetain ten selected checkpoints", fontsize=14)
+    pipeline_box(.375, .46, .255, .25, "2  RECORD ENCOUNTERS",
+                 "Freeze the learned pilot policies\n300 encounters per pilot\n3,000 episodes in total\nObserve from the tactical aircraft", colour=BLUE, fontsize=14)
+    pipeline_box(.685, .46, .25, .25, "3  FORECAST MOTION",
+                 "Use the recorded observations\nPredict the trained pilot's motion\nPosition and velocity at +1 / 2 / 5 s\nAssess on held-out scenarios", fontsize=13)
+    f.text(.065, .35, "Multi-pilot RL is an upstream pre-processing and data-generation stage for forecasting.",
+           size=18, color=TEAL)
+    f.text(.065, .27, "Combat evaluations establish the quality of the flight-generating policies.\n"
+           "Different reward priorities provide behavioural variation for the observation dataset.",
+           size=17, linespacing=1.6)
+    f.text(.065, .13, "The final forecasting objective is learned from recorded movement; pilot rewards guide the earlier RL stage.",
+           size=14, color=MUTED)
+    finish(f, "The repository's end objective is forecasting aircraft manoeuvres from one-sided observations. Multi-pilot reinforcement learning, its controlled experiments and tactical adaptation prepare the policies used to generate that dataset. The learned pilots then fly new encounters with frozen checkpoints against the scripted tactical opponent. In the current forecasting corpus, the tactical aircraft B01 is the observer and trained aircraft A01 is the prediction target. Ten pilots each contribute 300 episodes from matched starting scenarios. Variation in rewards and observed behaviour broadens the sources of trajectories, without guaranteeing that all manoeuvres or styles are covered. Forecasting is a subsequent supervised learning problem using those recorded flights; it does not change the pilot policies. This deck first documents the upstream population training and then presents initial forecasting validation results.")
 
     f = page("Where RL, BVR Sim and JSBSim fit",
              "The learned policy chooses behaviour; the simulator and flight model determine what happens")
@@ -621,24 +643,30 @@ def render(dest, data):
     f.text(.065, .13, "Held-out gains do not establish the absence of overfitting to this simulator or opponent.", size=16)
     finish(f, "Own return and PPO loss are unsuitable for ranking pilots with different reward scales. The 300-case assessment improved from 31.73 to 38.67 percent, paired interval +3.87 to +9.90 points. Historical tactical and simple confirmation suites have already been inspected and cannot serve as untouched final tests in later experiments. Ongoing comparisons use recorded training, validation and fixed development cases. Final testing should occur after model and reward choices are frozen, on unused scenarios shared across all final candidates. Simulation results cannot establish real-world flight performance.")
 
+    add_forecasting_slides(dest, page, finish, chart, outcome_table)
+
     f = page("Portable reports and supporting data", "PDF and self-contained HTML formats; no notebook runtime, Python, GPU or LFS download required")
     words(f, .065, .68, "REPORTS", "presentation.pdf — slide deck\npresentation.html — offline browser deck\nREADME.md — technical report")
-    words(f, .535, .68, "DATA", "data/results.json — verified summaries\ndata/learning_curves.csv — recorded epochs\ndata/development_summary.csv — pilot results")
-    words(f, .065, .345, "Principal findings", "Controlled comparisons improved PPO performance in a diverse pilot population.\nSubsequent tactical adaptation improved clean wins and survival on separate\nevaluation cases, with continued variation in observed behaviour.")
-    finish(f, "The branch also contains executed read-only report notebooks for technical follow-up. Large model weights remain in the existing local experiment directories; the presentation evidence is committed as ordinary Git files. Historical shared MP4 demonstrations depict earlier populations and must not be labelled as tactical adaptation footage.")
+    words(f, .535, .68, "DATA", "data/results.json — pilot results\ndata/forecasting/metrics.csv — forecast errors\ndata/forecasting/summary.json — provenance")
+    words(f, .065, .345, "Principal findings", "Population training and tactical adaptation prepared ten flight-generating policies.\nTheir recorded encounters support forecasts from the tactical observer's perspective.\nInitial neural forecasts improve on constant-motion references on held-out scenarios.")
+    finish(f, "The branch also contains executed read-only report notebooks for technical follow-up. Model weights remain in the existing local experiment directories; this presentation requires only ordinary small evidence files. Forecasting metrics, tolerance rates and a reproducibly selected validation example are packaged under data/forecasting. The deck is rebuildable from that bundle without loading models, the full corpus or simulator libraries. Standalone PNGs of the new introduction and forecasting slides are in figures for reuse in another slide pack. Historical shared MP4 demonstrations depict earlier populations and must not be labelled as tactical adaptation footage.")
 
     dest.mkdir(parents=True, exist_ok=True)
     sections, thumbs = [], []
-    with PdfPages(dest / "presentation.pdf", metadata={"Title": data["title"], "Author": "Trajectory Classification project"}) as pdf:
+    with PdfPages(dest / "presentation.pdf", metadata={"Title": TITLE, "Author": "Trajectory Classification project"}) as pdf:
         for i, (fig, note) in enumerate(slides):
             pdf.savefig(fig)
             buffer = io.BytesIO(); fig.savefig(buffer, format="png", dpi=110)
             encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
             sections.append(f'<section class="slide" aria-label="Slide {i+1}"><img alt="{html.escape(fig.texts[1].get_text())}" src="data:image/png;base64,{encoded}"><aside>{html.escape(note)}</aside></section>')
             thumbs.append(buffer.getvalue())
+            if i == 0 or 16 <= i <= 20:
+                figure_dir = dest / "figures"
+                figure_dir.mkdir(exist_ok=True)
+                fig.savefig(figure_dir / f"slide_{i + 1:02d}.png", dpi=160)
             plt.close(fig)
     markup = """<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Population PPO and tactical adaptation</title><style>
+<title>From multi-pilot training to motion forecasting</title><style>
 body{margin:0;background:#101e30;color:#f2f5f9;font:18px system-ui}main{max-width:1600px;margin:auto}.slide{display:none}.slide.active{display:block}img{width:100%;height:calc(100vh - 80px);object-fit:contain;display:block}aside{display:none;padding:1em 3em;line-height:1.6;color:#d4e0ee}body.notes aside{display:block}nav{display:flex;gap:16px;justify-content:center;align-items:center;padding:14px;position:sticky;bottom:0;background:#15253b}button{background:#233d59;color:white;border:1px solid #8baeff;border-radius:5px;padding:9px 16px;cursor:pointer}button:focus-visible{outline:3px solid #62ddbc}#counter{min-width:70px;text-align:center}@media print{nav{display:none}.slide{display:block;break-after:page}img{height:auto}aside{display:none!important}@page{size:landscape;margin:0}}
 </style><main>""" + "\n".join(sections) + """</main><nav aria-label="Slide controls"><button id="prev">← Previous</button><span id="counter" aria-live="polite"></span><button id="next">Next →</button><button id="notes">Supplementary notes (N)</button><button id="full">Fullscreen (F)</button></nav>
 <script>
@@ -656,14 +684,11 @@ document.addEventListener('keydown',e=>{if(['ArrowRight','PageDown',' '].include
     for i, png in enumerate(thumbs):
         tile = ImageOps.contain(Image.open(io.BytesIO(png)).convert("RGB"), (400, 225))
         sheet.paste(tile, ((i % 3) * 400, (i // 3) * 225))
-    preview = ROOT / "artifacts/checks/presentation_20261011"
+    preview = ROOT / "artifacts/checks/presentation"
     preview.mkdir(parents=True, exist_ok=True)
     sheet.save(preview / "contact_sheet.jpg")
-    (preview / "slide_01.png").write_bytes(thumbs[0])
-    (preview / "slide_02.png").write_bytes(thumbs[1])
-    (preview / "slide_03.png").write_bytes(thumbs[2])
-    (preview / "slide_06.png").write_bytes(thumbs[5])
-    (preview / "slide_08.png").write_bytes(thumbs[7])
+    for i, png in enumerate(thumbs):
+        (preview / f"slide_{i + 1:02d}.png").write_bytes(png)
     write_json(dest / "checksums.json", {
         p.relative_to(dest).as_posix(): sha(p) for p in sorted(dest.rglob("*"))
         if p.is_file() and p.name != "checksums.json"
@@ -674,8 +699,11 @@ document.addEventListener('keydown',e=>{if(['ArrowRight','PageDown',' '].include
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--collect", action="store_true", help="Audit/copy existing local results before rendering.")
+    parser.add_argument("--collect-forecast", action="store_true", help="Package saved forecasting validation evidence; no training or inference.")
     args = parser.parse_args()
     data = collect(DEST) if args.collect else read(DEST / "data/results.json")
+    if args.collect_forecast:
+        collect_forecasting(ROOT, DEST)
     render(DEST, data)
 
 

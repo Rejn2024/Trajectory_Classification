@@ -1,0 +1,27 @@
+{
+  "preserved_artifacts_checked": 927,
+  "preserved_artifacts_unchanged": true,
+  "old_pdfs_checked": [
+    "docs/experiments/skill_forecasting_v4/skill_forecasting_v4.pdf",
+    "docs/presentations/skills_catalogue/skills_catalogue.pdf",
+    "docs/presentations/forecasting_insights/forecasting_insights.pdf",
+    "docs/presentations/pareto/clean_win_bonus.pdf",
+    "docs/presentations/pareto/pareto_comparisons.pdf",
+    "docs/presentations/pareto/simple_comparison.pdf",
+    "docs/presentations/pareto/simple_experiments.pdf",
+    "docs/presentations/pareto/tactical_assessment.pdf",
+    "docs/presentations/pareto/tactical_confirmation.pdf",
+    "docs/presentations/presentation.pdf"
+  ],
+  "frozen_source_files_checked": 27,
+  "frozen_sources_unchanged": true,
+  "frozen_partitions_unchanged": true,
+  "forecast_origins_and_masks_match": true,
+  "saved_recipe_probabilities_exact": true,
+  "joint_scenario_intervals_reproduced": true,
+  "primary_contains_only_registered_pure_transformers": true,
+  "report_performed_training_or_model_inference": false,
+  "reserved_test_evaluated": false,
+  "protocol_sha256": "e36f4c5e7c3dedf2469a055db08c36d0a9e06342715477be18b27e9e6bcdd298",
+  "selection_sha256": "e5b109c3bf48cedfdebee3657097411cf691214773dce694daaa9ccbfd4c1b54"
+}

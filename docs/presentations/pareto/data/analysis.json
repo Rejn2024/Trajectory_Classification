@@ -1,0 +1,367 @@
+{
+  "objectives": {
+    "2d": [
+      "maximise elimination",
+      "maximise survival"
+    ],
+    "3d": [
+      "maximise elimination",
+      "maximise survival",
+      "maximise clean win"
+    ]
+  },
+  "bootstrap": {
+    "replicates": 2000,
+    "seed": 8128,
+    "sampling_unit": "Scenario ID, jointly across every pilot, population and metric within each suite.",
+    "interpretation": "Descriptive resampling stability, not probability of true optimality or a significance test. Does not measure training-seed variation or correct adaptive benchmark reuse."
+  },
+  "groups": {
+    "simple/clean_win_bonus": {
+      "candidates": [
+        "simple/clean_win_bonus/pilot_001",
+        "simple/clean_win_bonus/pilot_002",
+        "simple/clean_win_bonus/pilot_003",
+        "simple/clean_win_bonus/pilot_004",
+        "simple/clean_win_bonus/pilot_005",
+        "simple/clean_win_bonus/pilot_006"
+      ],
+      "frontier_2d": [
+        "simple/clean_win_bonus/pilot_002",
+        "simple/clean_win_bonus/pilot_004",
+        "simple/clean_win_bonus/pilot_005"
+      ],
+      "frontier_3d": [
+        "simple/clean_win_bonus/pilot_002",
+        "simple/clean_win_bonus/pilot_004",
+        "simple/clean_win_bonus/pilot_005"
+      ]
+    },
+    "simple/lower_learning_rate": {
+      "candidates": [
+        "simple/lower_learning_rate/pilot_001",
+        "simple/lower_learning_rate/pilot_002",
+        "simple/lower_learning_rate/pilot_003",
+        "simple/lower_learning_rate/pilot_004",
+        "simple/lower_learning_rate/pilot_005",
+        "simple/lower_learning_rate/pilot_006",
+        "simple/lower_learning_rate/pilot_007",
+        "simple/lower_learning_rate/pilot_008",
+        "simple/lower_learning_rate/pilot_009",
+        "simple/lower_learning_rate/pilot_010"
+      ],
+      "frontier_2d": [
+        "simple/lower_learning_rate/pilot_004",
+        "simple/lower_learning_rate/pilot_006",
+        "simple/lower_learning_rate/pilot_010"
+      ],
+      "frontier_3d": [
+        "simple/lower_learning_rate/pilot_004",
+        "simple/lower_learning_rate/pilot_006",
+        "simple/lower_learning_rate/pilot_010"
+      ]
+    },
+    "simple/original": {
+      "candidates": [
+        "simple/original/pilot_001",
+        "simple/original/pilot_002",
+        "simple/original/pilot_003",
+        "simple/original/pilot_004",
+        "simple/original/pilot_005",
+        "simple/original/pilot_006",
+        "simple/original/pilot_007",
+        "simple/original/pilot_008",
+        "simple/original/pilot_009",
+        "simple/original/pilot_010"
+      ],
+      "frontier_2d": [
+        "simple/original/pilot_001",
+        "simple/original/pilot_002",
+        "simple/original/pilot_005",
+        "simple/original/pilot_006",
+        "simple/original/pilot_009",
+        "simple/original/pilot_010"
+      ],
+      "frontier_3d": [
+        "simple/original/pilot_001",
+        "simple/original/pilot_002",
+        "simple/original/pilot_005",
+        "simple/original/pilot_006",
+        "simple/original/pilot_009",
+        "simple/original/pilot_010"
+      ]
+    },
+    "simple/selected_skill_parameters": {
+      "candidates": [
+        "simple/selected_skill_parameters/pilot_001",
+        "simple/selected_skill_parameters/pilot_002",
+        "simple/selected_skill_parameters/pilot_003",
+        "simple/selected_skill_parameters/pilot_004",
+        "simple/selected_skill_parameters/pilot_005",
+        "simple/selected_skill_parameters/pilot_006",
+        "simple/selected_skill_parameters/pilot_007",
+        "simple/selected_skill_parameters/pilot_008",
+        "simple/selected_skill_parameters/pilot_009",
+        "simple/selected_skill_parameters/pilot_010"
+      ],
+      "frontier_2d": [
+        "simple/selected_skill_parameters/pilot_002",
+        "simple/selected_skill_parameters/pilot_010"
+      ],
+      "frontier_3d": [
+        "simple/selected_skill_parameters/pilot_002",
+        "simple/selected_skill_parameters/pilot_010"
+      ]
+    },
+    "simple/skill_conditioned_parameters": {
+      "candidates": [
+        "simple/skill_conditioned_parameters/pilot_001",
+        "simple/skill_conditioned_parameters/pilot_002",
+        "simple/skill_conditioned_parameters/pilot_003",
+        "simple/skill_conditioned_parameters/pilot_004",
+        "simple/skill_conditioned_parameters/pilot_005",
+        "simple/skill_conditioned_parameters/pilot_006",
+        "simple/skill_conditioned_parameters/pilot_007",
+        "simple/skill_conditioned_parameters/pilot_008",
+        "simple/skill_conditioned_parameters/pilot_009",
+        "simple/skill_conditioned_parameters/pilot_010"
+      ],
+      "frontier_2d": [
+        "simple/skill_conditioned_parameters/pilot_003",
+        "simple/skill_conditioned_parameters/pilot_010"
+      ],
+      "frontier_3d": [
+        "simple/skill_conditioned_parameters/pilot_003",
+        "simple/skill_conditioned_parameters/pilot_010"
+      ]
+    },
+    "simple/full_comparison": {
+      "candidates": [
+        "simple/lower_learning_rate/pilot_001",
+        "simple/lower_learning_rate/pilot_002",
+        "simple/lower_learning_rate/pilot_003",
+        "simple/lower_learning_rate/pilot_004",
+        "simple/lower_learning_rate/pilot_005",
+        "simple/lower_learning_rate/pilot_006",
+        "simple/lower_learning_rate/pilot_007",
+        "simple/lower_learning_rate/pilot_008",
+        "simple/lower_learning_rate/pilot_009",
+        "simple/lower_learning_rate/pilot_010",
+        "simple/original/pilot_001",
+        "simple/original/pilot_002",
+        "simple/original/pilot_003",
+        "simple/original/pilot_004",
+        "simple/original/pilot_005",
+        "simple/original/pilot_006",
+        "simple/original/pilot_007",
+        "simple/original/pilot_008",
+        "simple/original/pilot_009",
+        "simple/original/pilot_010",
+        "simple/selected_skill_parameters/pilot_001",
+        "simple/selected_skill_parameters/pilot_002",
+        "simple/selected_skill_parameters/pilot_003",
+        "simple/selected_skill_parameters/pilot_004",
+        "simple/selected_skill_parameters/pilot_005",
+        "simple/selected_skill_parameters/pilot_006",
+        "simple/selected_skill_parameters/pilot_007",
+        "simple/selected_skill_parameters/pilot_008",
+        "simple/selected_skill_parameters/pilot_009",
+        "simple/selected_skill_parameters/pilot_010",
+        "simple/skill_conditioned_parameters/pilot_001",
+        "simple/skill_conditioned_parameters/pilot_002",
+        "simple/skill_conditioned_parameters/pilot_003",
+        "simple/skill_conditioned_parameters/pilot_004",
+        "simple/skill_conditioned_parameters/pilot_005",
+        "simple/skill_conditioned_parameters/pilot_006",
+        "simple/skill_conditioned_parameters/pilot_007",
+        "simple/skill_conditioned_parameters/pilot_008",
+        "simple/skill_conditioned_parameters/pilot_009",
+        "simple/skill_conditioned_parameters/pilot_010"
+      ],
+      "frontier_2d": [
+        "simple/selected_skill_parameters/pilot_002",
+        "simple/selected_skill_parameters/pilot_010"
+      ],
+      "frontier_3d": [
+        "simple/selected_skill_parameters/pilot_002",
+        "simple/selected_skill_parameters/pilot_010"
+      ]
+    },
+    "simple/bonus_matched_subset": {
+      "candidates": [
+        "simple/clean_win_bonus/pilot_001",
+        "simple/clean_win_bonus/pilot_002",
+        "simple/clean_win_bonus/pilot_003",
+        "simple/clean_win_bonus/pilot_004",
+        "simple/clean_win_bonus/pilot_005",
+        "simple/clean_win_bonus/pilot_006",
+        "simple/selected_skill_parameters/pilot_001",
+        "simple/selected_skill_parameters/pilot_002",
+        "simple/selected_skill_parameters/pilot_003",
+        "simple/selected_skill_parameters/pilot_004",
+        "simple/selected_skill_parameters/pilot_005",
+        "simple/selected_skill_parameters/pilot_006"
+      ],
+      "frontier_2d": [
+        "simple/selected_skill_parameters/pilot_002"
+      ],
+      "frontier_3d": [
+        "simple/selected_skill_parameters/pilot_002"
+      ]
+    },
+    "tactical_assessment/after": {
+      "candidates": [
+        "tactical_assessment/after/pilot_001",
+        "tactical_assessment/after/pilot_002",
+        "tactical_assessment/after/pilot_003",
+        "tactical_assessment/after/pilot_004",
+        "tactical_assessment/after/pilot_005",
+        "tactical_assessment/after/pilot_006",
+        "tactical_assessment/after/pilot_007",
+        "tactical_assessment/after/pilot_008",
+        "tactical_assessment/after/pilot_009",
+        "tactical_assessment/after/pilot_010"
+      ],
+      "frontier_2d": [
+        "tactical_assessment/after/pilot_005",
+        "tactical_assessment/after/pilot_007"
+      ],
+      "frontier_3d": [
+        "tactical_assessment/after/pilot_005",
+        "tactical_assessment/after/pilot_007",
+        "tactical_assessment/after/pilot_010"
+      ]
+    },
+    "tactical_assessment/before": {
+      "candidates": [
+        "tactical_assessment/before/pilot_001",
+        "tactical_assessment/before/pilot_002",
+        "tactical_assessment/before/pilot_003",
+        "tactical_assessment/before/pilot_004",
+        "tactical_assessment/before/pilot_005",
+        "tactical_assessment/before/pilot_006",
+        "tactical_assessment/before/pilot_007",
+        "tactical_assessment/before/pilot_008",
+        "tactical_assessment/before/pilot_009",
+        "tactical_assessment/before/pilot_010"
+      ],
+      "frontier_2d": [
+        "tactical_assessment/before/pilot_001",
+        "tactical_assessment/before/pilot_002",
+        "tactical_assessment/before/pilot_007",
+        "tactical_assessment/before/pilot_010"
+      ],
+      "frontier_3d": [
+        "tactical_assessment/before/pilot_001",
+        "tactical_assessment/before/pilot_002",
+        "tactical_assessment/before/pilot_007",
+        "tactical_assessment/before/pilot_010"
+      ]
+    },
+    "tactical_assessment/comparison": {
+      "candidates": [
+        "tactical_assessment/after/pilot_001",
+        "tactical_assessment/after/pilot_002",
+        "tactical_assessment/after/pilot_003",
+        "tactical_assessment/after/pilot_004",
+        "tactical_assessment/after/pilot_005",
+        "tactical_assessment/after/pilot_006",
+        "tactical_assessment/after/pilot_007",
+        "tactical_assessment/after/pilot_008",
+        "tactical_assessment/after/pilot_009",
+        "tactical_assessment/after/pilot_010",
+        "tactical_assessment/before/pilot_001",
+        "tactical_assessment/before/pilot_002",
+        "tactical_assessment/before/pilot_003",
+        "tactical_assessment/before/pilot_004",
+        "tactical_assessment/before/pilot_005",
+        "tactical_assessment/before/pilot_006",
+        "tactical_assessment/before/pilot_007",
+        "tactical_assessment/before/pilot_008",
+        "tactical_assessment/before/pilot_009",
+        "tactical_assessment/before/pilot_010"
+      ],
+      "frontier_2d": [
+        "tactical_assessment/after/pilot_005",
+        "tactical_assessment/after/pilot_007"
+      ],
+      "frontier_3d": [
+        "tactical_assessment/after/pilot_005",
+        "tactical_assessment/after/pilot_007",
+        "tactical_assessment/after/pilot_010"
+      ]
+    },
+    "tactical_confirmation/after": {
+      "candidates": [
+        "tactical_confirmation/after/pilot_001",
+        "tactical_confirmation/after/pilot_002",
+        "tactical_confirmation/after/pilot_003",
+        "tactical_confirmation/after/pilot_004",
+        "tactical_confirmation/after/pilot_005",
+        "tactical_confirmation/after/pilot_006",
+        "tactical_confirmation/after/pilot_007",
+        "tactical_confirmation/after/pilot_008",
+        "tactical_confirmation/after/pilot_009",
+        "tactical_confirmation/after/pilot_010"
+      ],
+      "frontier_2d": [
+        "tactical_confirmation/after/pilot_005"
+      ],
+      "frontier_3d": [
+        "tactical_confirmation/after/pilot_005"
+      ]
+    },
+    "tactical_confirmation/before": {
+      "candidates": [
+        "tactical_confirmation/before/pilot_001",
+        "tactical_confirmation/before/pilot_002",
+        "tactical_confirmation/before/pilot_003",
+        "tactical_confirmation/before/pilot_004",
+        "tactical_confirmation/before/pilot_005",
+        "tactical_confirmation/before/pilot_006",
+        "tactical_confirmation/before/pilot_007",
+        "tactical_confirmation/before/pilot_008",
+        "tactical_confirmation/before/pilot_009",
+        "tactical_confirmation/before/pilot_010"
+      ],
+      "frontier_2d": [
+        "tactical_confirmation/before/pilot_007",
+        "tactical_confirmation/before/pilot_008"
+      ],
+      "frontier_3d": [
+        "tactical_confirmation/before/pilot_007",
+        "tactical_confirmation/before/pilot_008"
+      ]
+    },
+    "tactical_confirmation/comparison": {
+      "candidates": [
+        "tactical_confirmation/after/pilot_001",
+        "tactical_confirmation/after/pilot_002",
+        "tactical_confirmation/after/pilot_003",
+        "tactical_confirmation/after/pilot_004",
+        "tactical_confirmation/after/pilot_005",
+        "tactical_confirmation/after/pilot_006",
+        "tactical_confirmation/after/pilot_007",
+        "tactical_confirmation/after/pilot_008",
+        "tactical_confirmation/after/pilot_009",
+        "tactical_confirmation/after/pilot_010",
+        "tactical_confirmation/before/pilot_001",
+        "tactical_confirmation/before/pilot_002",
+        "tactical_confirmation/before/pilot_003",
+        "tactical_confirmation/before/pilot_004",
+        "tactical_confirmation/before/pilot_005",
+        "tactical_confirmation/before/pilot_006",
+        "tactical_confirmation/before/pilot_007",
+        "tactical_confirmation/before/pilot_008",
+        "tactical_confirmation/before/pilot_009",
+        "tactical_confirmation/before/pilot_010"
+      ],
+      "frontier_2d": [
+        "tactical_confirmation/after/pilot_005"
+      ],
+      "frontier_3d": [
+        "tactical_confirmation/after/pilot_005"
+      ]
+    }
+  }
+}

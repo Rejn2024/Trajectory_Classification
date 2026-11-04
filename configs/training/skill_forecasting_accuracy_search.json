@@ -1,0 +1,85 @@
+{
+  "description": "Targeted second search based only on internal v2 findings; no new outer-validation evaluation. Accuracy selection plus stop-only temperature scaling; include matched NLL controls and longer history.",
+  "candidates": {
+    "control": {
+      "architecture": "legacy",
+      "features": "raw",
+      "history_seconds": 5,
+      "recent_stride": 1,
+      "width": 128,
+      "layers": 2,
+      "dropout": 0.1,
+      "smoothing": 0,
+      "weight_decay": 0.01,
+      "auxiliary_weight": 0
+    },
+    "history20_mlp_nll": {
+      "architecture": "mlp",
+      "features": "geometry",
+      "history_seconds": 20,
+      "recent_stride": 5,
+      "width": 256,
+      "layers": 3,
+      "dropout": 0.2,
+      "smoothing": 0.02,
+      "weight_decay": 0.03,
+      "auxiliary_weight": 0
+    },
+    "history20_mlp_accuracy": {
+      "architecture": "mlp",
+      "features": "geometry",
+      "history_seconds": 20,
+      "recent_stride": 5,
+      "width": 256,
+      "layers": 3,
+      "dropout": 0.2,
+      "smoothing": 0.02,
+      "weight_decay": 0.03,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true
+    },
+    "history20_mlp_wide_accuracy": {
+      "architecture": "mlp",
+      "features": "geometry",
+      "history_seconds": 20,
+      "recent_stride": 5,
+      "width": 512,
+      "layers": 3,
+      "dropout": 0.3,
+      "smoothing": 0.03,
+      "weight_decay": 0.05,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true
+    },
+    "history20_mlp_smooth_accuracy": {
+      "architecture": "mlp",
+      "features": "geometry",
+      "history_seconds": 20,
+      "recent_stride": 5,
+      "width": 256,
+      "layers": 3,
+      "dropout": 0.3,
+      "smoothing": 0.08,
+      "weight_decay": 0.05,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true
+    },
+    "history60_mlp_accuracy": {
+      "architecture": "mlp",
+      "features": "geometry",
+      "history_seconds": 60,
+      "recent_stride": 5,
+      "width": 256,
+      "layers": 3,
+      "dropout": 0.2,
+      "smoothing": 0.02,
+      "weight_decay": 0.03,
+      "auxiliary_weight": 0,
+      "checkpoint_metric": "accuracy",
+      "calibrate": true
+    }
+  }
+}

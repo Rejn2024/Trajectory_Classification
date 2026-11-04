@@ -1,0 +1,41 @@
+{
+  "retain_baseline": false,
+  "components": [
+    {
+      "candidate": "history60_tcn",
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "epochs": 42,
+      "temperature": 1.4599881045960732,
+      "parameters_per_member": 917657
+    }
+  ],
+  "new_weight": 0.5,
+  "recipe": "history60_tcn",
+  "active_members": 15,
+  "baseline_parameters": 28977060,
+  "active_parameters": 31730031,
+  "selection_metrics": {
+    "recipe": "history60_tcn",
+    "new_weight": 0.5,
+    "mean_accuracy": 0.6208834390465638,
+    "eligible": true,
+    "folds": 2,
+    "mean_gain": 0.008752017960525826,
+    "nll": 1.1786611080169678,
+    "mean_macro_f1": 0.3336347240761377
+  },
+  "practical_gain_target": 0.01,
+  "internal_practical_target_met": false,
+  "ensemble": "Fixed-weight blend of preserved v3 baseline and equal mean of new components/seeds",
+  "comparison_scope": "Same targets/origins; expanded model budget when baseline and new members are blended",
+  "selected_using": "Both original-training partitions; guards and positive mean accuracy gain in each",
+  "epochs_temperature_rule": "Median of six internal fits per selected component; no outer callbacks",
+  "protocol_sha256": "eff1c0661065bee665ac7ba8f224104fa325c2743c8ba7a33dbec252e1534035",
+  "shortlist_sha256": "d673af9f33c1e9918c6ef2e91e4f02a6750a6246db8bea056e051f74fe273971",
+  "outer_validation_evaluated": false,
+  "test_evaluated": false
+}

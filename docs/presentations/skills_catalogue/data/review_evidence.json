@@ -1,0 +1,54 @@
+{
+  "review_date": "2026-11-03",
+  "source_sha256": {
+    "artifacts/skill_forecasting/data_v1/samples.parquet": "9964f92822ddbdd4d7d16f311d47c60d9b336af58721b2a7b76cbc6c51370875",
+    "artifacts/skill_forecasting/data_v1/targets.npy": "01834155919b5061172d33d8c698c70ebb9e7d7b497e4b9f2a53e4183f470c17",
+    "artifacts/skill_forecasting/data_v1/current.npy": "d3ff7e417ccdea2722be9efa4957fe810b662b47729d0c06d0b22d050da3839b",
+    "artifacts/skill_forecasting/data_v1/classes.json": "bce4913e1a26a94d1cdbef99b47f25f81197df4b275c6c26c77727f036da94a0",
+    "artifacts/skill_forecasting/initial_v1/transformer/validation_samples.parquet": "8f1ac6fc5c41723d4bdd52e46e23634f639d8fdf4ae52a4ceb0a071d60335d42",
+    "artifacts/skill_forecasting/initial_v1/transformer/validation_probabilities.npy": "d2b6bb52e8fb59a7695e5720739773030a302ef51291f8bb7e23878bbf608416",
+    "artifacts/skill_forecasting/initial_v1/transformer/per_class_metrics.csv": "17dcfc1915c7ef0126d4f1feacffe3b6b5f8f7103f25ecfc327751089b596a19",
+    "artifacts/skill_forecasting/improvement_v3/validation/ensemble/validation_samples.parquet": "8f1ac6fc5c41723d4bdd52e46e23634f639d8fdf4ae52a4ceb0a071d60335d42",
+    "artifacts/skill_forecasting/improvement_v3/validation/ensemble/validation_probabilities.npy": "f06e1a910028ff8218a49c36f0fdb67a80f51bce1f13f2ef42ff469abc7294e6",
+    "artifacts/skill_forecasting/improvement_v3/validation/ensemble/per_class_metrics.csv": "f198ab8c78cad31c75e17604a38b26f27444e370556f68f451a3bc85ed055c7b",
+    "bvr_sim_source/bvr_sim/agents/skill_manager.py": "0e56ff7118c995a681e34bdaf3398bdeaa4fbe8b8c17183b594bd9ad468ca799",
+    "bvr_behavior_prediction/skill_forecasting/evaluation.py": "3cd079631df4122700c3bf062bff90e00369518979a4bc68a091e751cc8da038",
+    "bvr_behavior_prediction/skill_forecasting/improved_features.py": "9e5decc9beba17637b78b3d90e8f5bdaba4c65b4d77426b53a4a9bbf69dbe6e6"
+  },
+  "bootstrap": {
+    "unit": "scenario_group",
+    "draws": 5000,
+    "seed": 20261103,
+    "interval": "pointwise percentile 95%; no multiple-comparison or selection-bias correction"
+  },
+  "contract": "Descriptive reuse of fixed saved predictions and permitted validation decisions; no model fitting or selection.",
+  "test_evaluated": false,
+  "inference_performed": false,
+  "method_sources": [
+    {
+      "topic": "Selection bias",
+      "title": "Cawley & Talbot (2010)",
+      "url": "https://www.jmlr.org/beta/papers/v11/cawley10a.html"
+    },
+    {
+      "topic": "Dependence-aware evaluation",
+      "title": "Roberts et al. (2017)",
+      "url": "https://nsojournals.onlinelibrary.wiley.com/doi/10.1111/ecog.02881"
+    },
+    {
+      "topic": "Cluster bootstrap",
+      "title": "Field & Welsh (2007)",
+      "url": "https://rss.onlinelibrary.wiley.com/doi/abs/10.1111/j.1467-9868.2007.00593.x"
+    },
+    {
+      "topic": "Calibration",
+      "title": "Guo et al. (2017)",
+      "url": "https://proceedings.mlr.press/v70/guo17a.html"
+    },
+    {
+      "topic": "Supplementary segment metrics",
+      "title": "Lea et al. (2017)",
+      "url": "https://arxiv.org/abs/1611.05267"
+    }
+  ]
+}

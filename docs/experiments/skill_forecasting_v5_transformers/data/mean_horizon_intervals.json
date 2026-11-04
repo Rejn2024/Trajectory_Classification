@@ -1,0 +1,20 @@
+{
+  "primary_transformer": {
+    "mean_accuracy_gain": -0.003143029042783733,
+    "lower_95": -0.011808927096096274,
+    "upper_95": 0.006381571866704542,
+    "scenario_groups": 45,
+    "draws": 5000,
+    "seed": 1729,
+    "interpretation": "Conditional on fixed models and development data; not selection-adjusted"
+  },
+  "secondary_blend": {
+    "mean_accuracy_gain": 0.0006994177630100882,
+    "lower_95": -0.006286044275958937,
+    "upper_95": 0.008441108877402693,
+    "scenario_groups": 45,
+    "draws": 5000,
+    "seed": 1729,
+    "interpretation": "Conditional on fixed models and development data; not selection-adjusted"
+  }
+}

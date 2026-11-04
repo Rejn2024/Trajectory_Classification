@@ -20,3 +20,26 @@ shared/corpora/trained-pilot-episodes-v1/*.json text eol=lf
 shared/corpora/trained-pilot-episodes-v1/*.md text eol=lf
 shared/replays/tactical-checkpoints-v1/*.json text eol=lf
 shared/replays/tactical-checkpoints-v1/*.md text eol=lf
+
+# Keep the small offline video player and its provenance directly readable.
+shared/demonstrators/tactical-checkpoints-v1/index.html !filter !diff !merge text eol=lf
+shared/demonstrators/tactical-checkpoints-v1/*.json !filter !diff !merge text eol=lf
+shared/demonstrators/tactical-checkpoints-v1/*.md text eol=lf
+
+# Preserve exact bytes of the new hash-registered experiment sources.
+bvr_behavior_prediction/skill_forecasting/improved_models.py text eol=lf
+bvr_behavior_prediction/skill_forecasting/improvement.py text eol=lf
+bvr_behavior_prediction/skill_forecasting/sequence_models.py text eol=lf
+bvr_behavior_prediction/skill_forecasting/sequence_search.py text eol=lf
+scripts/sequence_skill_forecaster.py text eol=lf
+configs/training/skill_forecasting_sequence_search.json text eol=lf
+bvr_behavior_prediction/skill_forecasting/transformer_models.py text eol=lf
+bvr_behavior_prediction/skill_forecasting/transformer_search.py text eol=lf
+scripts/transformer_skill_forecaster.py text eol=lf
+configs/training/skill_forecasting_transformer_search.json text eol=lf
+scripts/report_transformer_experiments.py text eol=lf
+
+# Keep the portable revision deck reproducible across checkouts.
+scripts/build_skills_forecasting_revision.py text eol=lf
+scripts/skills_forecasting_revision_content.py text eol=lf
+scripts/skills_forecasting_revision_evidence.py text eol=lf

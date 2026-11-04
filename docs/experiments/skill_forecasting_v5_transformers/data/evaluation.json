@@ -1,0 +1,214 @@
+{
+  "selection_sha256": "e5b109c3bf48cedfdebee3657097411cf691214773dce694daaa9ccbfd4c1b54",
+  "baseline": "Preserved v4 fifteen-model ensemble",
+  "baseline_metrics": {
+    "accuracy": [
+      0.6709304590610999,
+      0.6662180791702226,
+      0.6486183719193428
+    ],
+    "mean_accuracy": 0.6619223033835552,
+    "macro_f1": [
+      0.4124685994239358,
+      0.4180194339080569,
+      0.3767434657674297
+    ],
+    "mean_macro_f1": 0.40241049969980747,
+    "nll": 1.0928617715835571
+  },
+  "recipes": {
+    "primary_transformer": {
+      "recipe": {
+        "kind": "primary_transformer",
+        "recipe": "pure_pair",
+        "components": [
+          "history60_patch_transformer",
+          "history60_temporal_transformer"
+        ],
+        "new_weight": 1.0,
+        "selection_metrics": {
+          "recipe": "pure_pair",
+          "new_weight": 1.0,
+          "mean_accuracy": 0.6295363751643425,
+          "eligible": true,
+          "folds": 2,
+          "mean_gain": 0.00865293611777862,
+          "nll": 1.1658997535705566,
+          "mean_macro_f1": 0.3384144178284334
+        },
+        "quality_guards_passed_both_folds": true,
+        "active_members": 6,
+        "active_parameters": 18908886
+      },
+      "metrics": {
+        "accuracy": [
+          0.6666774884747744,
+          0.6647081993041424,
+          0.6449521352433973
+        ],
+        "mean_accuracy": 0.6587792743407713,
+        "macro_f1": [
+          0.4119399273904142,
+          0.4129711116511061,
+          0.36386440435635925
+        ],
+        "mean_macro_f1": 0.39625848113262646,
+        "nll": 1.0617905855178833
+      },
+      "mean_accuracy_gain": -0.0031430290427838514,
+      "paired_intervals": [
+        {
+          "horizon_s": 1,
+          "accuracy_gain": -0.004252970586325564,
+          "lower_95": -0.013795506856758089,
+          "upper_95": 0.0057047960377030115,
+          "scenario_groups": 45,
+          "bootstrap_draws": 5000
+        },
+        {
+          "horizon_s": 2,
+          "accuracy_gain": -0.0015098798660802206,
+          "lower_95": -0.010702010336480033,
+          "upper_95": 0.008283048673616992,
+          "scenario_groups": 45,
+          "bootstrap_draws": 5000
+        },
+        {
+          "horizon_s": 5,
+          "accuracy_gain": -0.003666236675945414,
+          "lower_95": -0.012180885782304819,
+          "upper_95": 0.006248844794074187,
+          "scenario_groups": 45,
+          "bootstrap_draws": 5000
+        }
+      ],
+      "mean_accuracy_interval": {
+        "mean_accuracy_gain": -0.003143029042783733,
+        "lower_95": -0.011808927096096274,
+        "upper_95": 0.006381571866704542,
+        "scenario_groups": 45,
+        "bootstrap_draws": 5000,
+        "seed": 1729,
+        "interpretation": "Conditional on frozen models and development data, not selection-adjusted; crossing zero is not proof of equivalence"
+      },
+      "standalone_new_components_metrics": {
+        "accuracy": [
+          0.6666774884747744,
+          0.6647081993041424,
+          0.6449521352433973
+        ],
+        "mean_accuracy": 0.6587792743407713,
+        "macro_f1": [
+          0.4119399273904142,
+          0.4129711116511061,
+          0.36386440435635925
+        ],
+        "mean_macro_f1": 0.39625848113262646,
+        "nll": 1.0617905855178833
+      }
+    },
+    "secondary_blend": {
+      "recipe": {
+        "kind": "secondary_blend",
+        "recipe": "pure_pair",
+        "components": [
+          "history60_patch_transformer",
+          "history60_temporal_transformer"
+        ],
+        "new_weight": 0.75,
+        "selection_metrics": {
+          "recipe": "pure_pair",
+          "new_weight": 0.75,
+          "mean_accuracy": 0.6317127873331516,
+          "eligible": true,
+          "folds": 2,
+          "mean_gain": 0.010829348286587714,
+          "nll": 1.145566165447235,
+          "mean_macro_f1": 0.3401757999058038
+        },
+        "quality_guards_passed_both_folds": true,
+        "active_members": 21,
+        "active_parameters": 50638917
+      },
+      "metrics": {
+        "accuracy": [
+          0.6710278553340692,
+          0.6672684303814088,
+          0.6495688777242176
+        ],
+        "mean_accuracy": 0.6626217211465653,
+        "macro_f1": [
+          0.4170655579316109,
+          0.41685262174524634,
+          0.3679552495508794
+        ],
+        "mean_macro_f1": 0.40062447640924553,
+        "nll": 1.0477253198623657
+      },
+      "mean_accuracy_gain": 0.0006994177630100795,
+      "paired_intervals": [
+        {
+          "horizon_s": 1,
+          "accuracy_gain": 9.73962729692877e-05,
+          "lower_95": -0.007586939834115627,
+          "upper_95": 0.008343413223373777,
+          "scenario_groups": 45,
+          "bootstrap_draws": 5000
+        },
+        {
+          "horizon_s": 2,
+          "accuracy_gain": 0.0010503512111862403,
+          "lower_95": -0.0067537004081573955,
+          "upper_95": 0.009470783914099293,
+          "scenario_groups": 45,
+          "bootstrap_draws": 5000
+        },
+        {
+          "horizon_s": 5,
+          "accuracy_gain": 0.0009505058048747369,
+          "lower_95": -0.005602459479880796,
+          "upper_95": 0.00834004324751034,
+          "scenario_groups": 45,
+          "bootstrap_draws": 5000
+        }
+      ],
+      "mean_accuracy_interval": {
+        "mean_accuracy_gain": 0.0006994177630100882,
+        "lower_95": -0.006286044275958937,
+        "upper_95": 0.008441108877402693,
+        "scenario_groups": 45,
+        "bootstrap_draws": 5000,
+        "seed": 1729,
+        "interpretation": "Conditional on frozen models and development data, not selection-adjusted; crossing zero is not proof of equivalence"
+      },
+      "standalone_new_components_metrics": {
+        "accuracy": [
+          0.6666774884747744,
+          0.6647081993041424,
+          0.6449521352433973
+        ],
+        "mean_accuracy": 0.6587792743407713,
+        "macro_f1": [
+          0.4119399273904142,
+          0.4129711116511061,
+          0.36386440435635925
+        ],
+        "mean_macro_f1": 0.39625848113262646,
+        "nll": 1.0617905855178833
+      }
+    }
+  },
+  "checkpoint_hashes": {
+    "refit/history60_patch_transformer_s42": "3e9cfcc1b5ae31f3166bef506d71a1effd30b1095cdfd6672b8dbaebd00d2778",
+    "refit/history60_patch_transformer_s43": "d41c6519c8bbdc745cc9e904dc9bdf7675f3d6e527eefa37571e013cb127d7e3",
+    "refit/history60_patch_transformer_s44": "08276781891addea40fd7bddf33d6e2348752edd9491c74710c092437809a783",
+    "refit/history60_temporal_transformer_s42": "6a2f35e0a53d4d2b4b2bf3ef2dccb9f72627db8855ee133d419b2a18217c5c98",
+    "refit/history60_temporal_transformer_s43": "27c25fc75159d5fa28cd241c757fdd60ab0fa49f71f69ffffc9376f232de3fc9",
+    "refit/history60_temporal_transformer_s44": "32c29bc0885ede64fe7d319d7127ff70fc1e9943f865e12ff88f6621b132e240"
+  },
+  "matched_validation_origins": true,
+  "outer_validation_evaluated": true,
+  "test_evaluated": false,
+  "validation_role": "Previously inspected development validation, not an untouched final test",
+  "decision_policy": "Primary and optional secondary were frozen jointly; validation does not select a winner"
+}

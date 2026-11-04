@@ -1,0 +1,16 @@
+{
+  "frozen_protocol_file": "frozen_protocol.json",
+  "frozen_protocol_sha256": "eff1c0661065bee665ac7ba8f224104fa325c2743c8ba7a33dbec252e1534035",
+  "portable_protocol_file": "protocol.json",
+  "portable_protocol_sha256": "c03b1989e958a2c013fe92ffc86608f9884cc6166fd40096aea400cd2a7b4ffa",
+  "portable_protocol_note": "Only data_directory and baseline_directory are rewritten to repository-relative paths; this copy is not the byte-exact registered protocol.",
+  "preservation_manifest_file": "preserved_artifacts.json",
+  "preservation_manifest_sha256": "e301cbfa3a6ef2e6b56d61e431fc17eaa2370d9a52921a73f0e83cd5805a8d19",
+  "source_archive": {
+    "file": "source_snapshot.zip",
+    "sha256": "edf65087a427520d2d3c3c1d52120eabbe58b747e8c015e4a9d7a6d79674fc15",
+    "source_files": 25,
+    "contents": "Registered training source/config/CLI bytes; no model checkpoints or datasets",
+    "timestamps": "Fixed 1980-01-01; sorted repository-relative paths"
+  }
+}

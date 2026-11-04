@@ -1,0 +1,687 @@
+{
+  "protocol_sha256": "e36f4c5e7c3dedf2469a055db08c36d0a9e06342715477be18b27e9e6bcdd298",
+  "roles": [
+    "baseline_v4",
+    "primary_transformer",
+    "secondary_blend"
+  ],
+  "selection": {
+    "components": [
+      {
+        "candidate": "history60_patch_transformer",
+        "seeds": [
+          42,
+          43,
+          44
+        ],
+        "family": "pure_transformer",
+        "epochs": 42,
+        "temperature": 1.5072423450267238,
+        "parameters_per_member": 2279705
+      },
+      {
+        "candidate": "history60_temporal_transformer",
+        "seeds": [
+          42,
+          43,
+          44
+        ],
+        "family": "pure_transformer",
+        "epochs": 28,
+        "temperature": 1.4619287138774937,
+        "parameters_per_member": 4023257
+      }
+    ],
+    "primary_transformer": {
+      "kind": "primary_transformer",
+      "recipe": "pure_pair",
+      "components": [
+        "history60_patch_transformer",
+        "history60_temporal_transformer"
+      ],
+      "new_weight": 1.0,
+      "selection_metrics": {
+        "recipe": "pure_pair",
+        "new_weight": 1.0,
+        "mean_accuracy": 0.6295363751643425,
+        "eligible": true,
+        "folds": 2,
+        "mean_gain": 0.00865293611777862,
+        "nll": 1.1658997535705566,
+        "mean_macro_f1": 0.3384144178284334
+      },
+      "quality_guards_passed_both_folds": true,
+      "active_members": 6,
+      "active_parameters": 18908886
+    },
+    "secondary_blend": {
+      "kind": "secondary_blend",
+      "recipe": "pure_pair",
+      "components": [
+        "history60_patch_transformer",
+        "history60_temporal_transformer"
+      ],
+      "new_weight": 0.75,
+      "selection_metrics": {
+        "recipe": "pure_pair",
+        "new_weight": 0.75,
+        "mean_accuracy": 0.6317127873331516,
+        "eligible": true,
+        "folds": 2,
+        "mean_gain": 0.010829348286587714,
+        "nll": 1.145566165447235,
+        "mean_macro_f1": 0.3401757999058038
+      },
+      "quality_guards_passed_both_folds": true,
+      "active_members": 21,
+      "active_parameters": 50638917
+    },
+    "baseline_members": 15,
+    "baseline_parameters": 31730031,
+    "epochs_temperature_rule": "Median of six internal fits, then fixed three-seed refit",
+    "primary_policy": "Always evaluate the frozen Transformer-only challenger; guard failure is not promotion",
+    "secondary_policy": "Optional incumbent blend requires positive gain and quality guards in both folds",
+    "validation_policy": "Both named outputs frozen jointly; no selection or tuning from their validation scores",
+    "protocol_sha256": "e36f4c5e7c3dedf2469a055db08c36d0a9e06342715477be18b27e9e6bcdd298",
+    "shortlist_sha256": "b54502a2826f7300b4bff6428f651e7100568b688885727ac216b45af834a0d9",
+    "outer_validation_evaluated": false,
+    "test_evaluated": false
+  },
+  "evaluation": {
+    "selection_sha256": "e5b109c3bf48cedfdebee3657097411cf691214773dce694daaa9ccbfd4c1b54",
+    "baseline": "Preserved v4 fifteen-model ensemble",
+    "baseline_metrics": {
+      "accuracy": [
+        0.6709304590610999,
+        0.6662180791702226,
+        0.6486183719193428
+      ],
+      "mean_accuracy": 0.6619223033835552,
+      "macro_f1": [
+        0.4124685994239358,
+        0.4180194339080569,
+        0.3767434657674297
+      ],
+      "mean_macro_f1": 0.40241049969980747,
+      "nll": 1.0928617715835571
+    },
+    "recipes": {
+      "primary_transformer": {
+        "recipe": {
+          "kind": "primary_transformer",
+          "recipe": "pure_pair",
+          "components": [
+            "history60_patch_transformer",
+            "history60_temporal_transformer"
+          ],
+          "new_weight": 1.0,
+          "selection_metrics": {
+            "recipe": "pure_pair",
+            "new_weight": 1.0,
+            "mean_accuracy": 0.6295363751643425,
+            "eligible": true,
+            "folds": 2,
+            "mean_gain": 0.00865293611777862,
+            "nll": 1.1658997535705566,
+            "mean_macro_f1": 0.3384144178284334
+          },
+          "quality_guards_passed_both_folds": true,
+          "active_members": 6,
+          "active_parameters": 18908886
+        },
+        "metrics": {
+          "accuracy": [
+            0.6666774884747744,
+            0.6647081993041424,
+            0.6449521352433973
+          ],
+          "mean_accuracy": 0.6587792743407713,
+          "macro_f1": [
+            0.4119399273904142,
+            0.4129711116511061,
+            0.36386440435635925
+          ],
+          "mean_macro_f1": 0.39625848113262646,
+          "nll": 1.0617905855178833
+        },
+        "mean_accuracy_gain": -0.0031430290427838514,
+        "paired_intervals": [
+          {
+            "horizon_s": 1,
+            "accuracy_gain": -0.004252970586325564,
+            "lower_95": -0.013795506856758089,
+            "upper_95": 0.0057047960377030115,
+            "scenario_groups": 45,
+            "bootstrap_draws": 5000
+          },
+          {
+            "horizon_s": 2,
+            "accuracy_gain": -0.0015098798660802206,
+            "lower_95": -0.010702010336480033,
+            "upper_95": 0.008283048673616992,
+            "scenario_groups": 45,
+            "bootstrap_draws": 5000
+          },
+          {
+            "horizon_s": 5,
+            "accuracy_gain": -0.003666236675945414,
+            "lower_95": -0.012180885782304819,
+            "upper_95": 0.006248844794074187,
+            "scenario_groups": 45,
+            "bootstrap_draws": 5000
+          }
+        ],
+        "mean_accuracy_interval": {
+          "mean_accuracy_gain": -0.003143029042783733,
+          "lower_95": -0.011808927096096274,
+          "upper_95": 0.006381571866704542,
+          "scenario_groups": 45,
+          "bootstrap_draws": 5000,
+          "seed": 1729,
+          "interpretation": "Conditional on frozen models and development data, not selection-adjusted; crossing zero is not proof of equivalence"
+        },
+        "standalone_new_components_metrics": {
+          "accuracy": [
+            0.6666774884747744,
+            0.6647081993041424,
+            0.6449521352433973
+          ],
+          "mean_accuracy": 0.6587792743407713,
+          "macro_f1": [
+            0.4119399273904142,
+            0.4129711116511061,
+            0.36386440435635925
+          ],
+          "mean_macro_f1": 0.39625848113262646,
+          "nll": 1.0617905855178833
+        }
+      },
+      "secondary_blend": {
+        "recipe": {
+          "kind": "secondary_blend",
+          "recipe": "pure_pair",
+          "components": [
+            "history60_patch_transformer",
+            "history60_temporal_transformer"
+          ],
+          "new_weight": 0.75,
+          "selection_metrics": {
+            "recipe": "pure_pair",
+            "new_weight": 0.75,
+            "mean_accuracy": 0.6317127873331516,
+            "eligible": true,
+            "folds": 2,
+            "mean_gain": 0.010829348286587714,
+            "nll": 1.145566165447235,
+            "mean_macro_f1": 0.3401757999058038
+          },
+          "quality_guards_passed_both_folds": true,
+          "active_members": 21,
+          "active_parameters": 50638917
+        },
+        "metrics": {
+          "accuracy": [
+            0.6710278553340692,
+            0.6672684303814088,
+            0.6495688777242176
+          ],
+          "mean_accuracy": 0.6626217211465653,
+          "macro_f1": [
+            0.4170655579316109,
+            0.41685262174524634,
+            0.3679552495508794
+          ],
+          "mean_macro_f1": 0.40062447640924553,
+          "nll": 1.0477253198623657
+        },
+        "mean_accuracy_gain": 0.0006994177630100795,
+        "paired_intervals": [
+          {
+            "horizon_s": 1,
+            "accuracy_gain": 9.73962729692877e-05,
+            "lower_95": -0.007586939834115627,
+            "upper_95": 0.008343413223373777,
+            "scenario_groups": 45,
+            "bootstrap_draws": 5000
+          },
+          {
+            "horizon_s": 2,
+            "accuracy_gain": 0.0010503512111862403,
+            "lower_95": -0.0067537004081573955,
+            "upper_95": 0.009470783914099293,
+            "scenario_groups": 45,
+            "bootstrap_draws": 5000
+          },
+          {
+            "horizon_s": 5,
+            "accuracy_gain": 0.0009505058048747369,
+            "lower_95": -0.005602459479880796,
+            "upper_95": 0.00834004324751034,
+            "scenario_groups": 45,
+            "bootstrap_draws": 5000
+          }
+        ],
+        "mean_accuracy_interval": {
+          "mean_accuracy_gain": 0.0006994177630100882,
+          "lower_95": -0.006286044275958937,
+          "upper_95": 0.008441108877402693,
+          "scenario_groups": 45,
+          "bootstrap_draws": 5000,
+          "seed": 1729,
+          "interpretation": "Conditional on frozen models and development data, not selection-adjusted; crossing zero is not proof of equivalence"
+        },
+        "standalone_new_components_metrics": {
+          "accuracy": [
+            0.6666774884747744,
+            0.6647081993041424,
+            0.6449521352433973
+          ],
+          "mean_accuracy": 0.6587792743407713,
+          "macro_f1": [
+            0.4119399273904142,
+            0.4129711116511061,
+            0.36386440435635925
+          ],
+          "mean_macro_f1": 0.39625848113262646,
+          "nll": 1.0617905855178833
+        }
+      }
+    },
+    "checkpoint_hashes": {
+      "refit/history60_patch_transformer_s42": "3e9cfcc1b5ae31f3166bef506d71a1effd30b1095cdfd6672b8dbaebd00d2778",
+      "refit/history60_patch_transformer_s43": "d41c6519c8bbdc745cc9e904dc9bdf7675f3d6e527eefa37571e013cb127d7e3",
+      "refit/history60_patch_transformer_s44": "08276781891addea40fd7bddf33d6e2348752edd9491c74710c092437809a783",
+      "refit/history60_temporal_transformer_s42": "6a2f35e0a53d4d2b4b2bf3ef2dccb9f72627db8855ee133d419b2a18217c5c98",
+      "refit/history60_temporal_transformer_s43": "27c25fc75159d5fa28cd241c757fdd60ab0fa49f71f69ffffc9376f232de3fc9",
+      "refit/history60_temporal_transformer_s44": "32c29bc0885ede64fe7d319d7127ff70fc1e9943f865e12ff88f6621b132e240"
+    },
+    "matched_validation_origins": true,
+    "outer_validation_evaluated": true,
+    "test_evaluated": false,
+    "validation_role": "Previously inspected development validation, not an untouched final test",
+    "decision_policy": "Primary and optional secondary were frozen jointly; validation does not select a winner"
+  },
+  "mean_horizon_intervals": {
+    "primary_transformer": {
+      "mean_accuracy_gain": -0.003143029042783733,
+      "lower_95": -0.011808927096096274,
+      "upper_95": 0.006381571866704542,
+      "scenario_groups": 45,
+      "draws": 5000,
+      "seed": 1729,
+      "interpretation": "Conditional on fixed models and development data; not selection-adjusted"
+    },
+    "secondary_blend": {
+      "mean_accuracy_gain": 0.0006994177630100882,
+      "lower_95": -0.006286044275958937,
+      "upper_95": 0.008441108877402693,
+      "scenario_groups": 45,
+      "draws": 5000,
+      "seed": 1729,
+      "interpretation": "Conditional on fixed models and development data; not selection-adjusted"
+    }
+  },
+  "classes": [
+    "abort_support",
+    "accelerate_to_speed",
+    "beam_missile_left",
+    "beam_missile_right",
+    "beam_target_left",
+    "beam_target_right",
+    "climb_to_altitude",
+    "commit",
+    "crank_target_left",
+    "crank_target_right",
+    "decelerate_to_speed",
+    "defensive_reversal",
+    "descend_to_altitude",
+    "dive_defense",
+    "drag_missile",
+    "extend",
+    "lag_pursuit",
+    "last_ditch_break",
+    "launch",
+    "lead_pursuit",
+    "lock_target",
+    "maintain_heading",
+    "notch_left",
+    "notch_right",
+    "preemptive_crank",
+    "pursue_target",
+    "recommit",
+    "search",
+    "secondary_shot",
+    "short_range_attack",
+    "support_missile",
+    "turn_cold",
+    "turn_to_heading"
+  ],
+  "horizons_s": [
+    1,
+    2,
+    5
+  ],
+  "validation_origins": 30802,
+  "validation_groups": 45,
+  "validation_episodes": 450,
+  "valid_targets": [
+    30802,
+    30466,
+    29458
+  ],
+  "new_completed_runs": 29,
+  "new_training_seconds": 8118.237103100011,
+  "reused_internal_runs": 30,
+  "source_sha256": {
+    "artifacts/skill_forecasting/data_v1/samples.parquet": "9964f92822ddbdd4d7d16f311d47c60d9b336af58721b2a7b76cbc6c51370875",
+    "artifacts/skill_forecasting/data_v1/targets.npy": "01834155919b5061172d33d8c698c70ebb9e7d7b497e4b9f2a53e4183f470c17",
+    "artifacts/skill_forecasting/data_v1/classes.json": "bce4913e1a26a94d1cdbef99b47f25f81197df4b275c6c26c77727f036da94a0",
+    "artifacts/skill_forecasting/improvement_v4/validation/ensemble/validation_samples.parquet": "8f1ac6fc5c41723d4bdd52e46e23634f639d8fdf4ae52a4ceb0a071d60335d42",
+    "artifacts/skill_forecasting/improvement_v4/validation/ensemble/validation_probabilities.npy": "116179f4b289cc4b9b7975213aec889aceadac2300e2d0a5e0d37ee7a104cc54",
+    "artifacts/skill_forecasting/improvement_v4/validation/ensemble/validation_metrics.csv": "ec8996b8d79490938ac381314a5bbd2ec97cb8bf47f8d92554e2fb94964387bc",
+    "artifacts/skill_forecasting/improvement_v4/validation/ensemble/per_class_metrics.csv": "76da508e44a48f2712d09e9a39f42e1109a3745b2a7ca5ed27f5aa0bfbce90c5",
+    "artifacts/skill_forecasting/improvement_v5_transformers/validation/primary_transformer/validation_samples.parquet": "8f1ac6fc5c41723d4bdd52e46e23634f639d8fdf4ae52a4ceb0a071d60335d42",
+    "artifacts/skill_forecasting/improvement_v5_transformers/validation/primary_transformer/validation_probabilities.npy": "1278dcbb5a8a6bbbdc99f88b36f352268554edf5400af902215ab96c7d63e936",
+    "artifacts/skill_forecasting/improvement_v5_transformers/validation/primary_transformer/validation_metrics.csv": "f059077fa53dabc43fd50e42215945dc0c0da8ef3938c6abdb751d8da0b00818",
+    "artifacts/skill_forecasting/improvement_v5_transformers/validation/primary_transformer/per_class_metrics.csv": "e74f4fc86e17e5d95509d94cf7cef4ea6977fe555842defc00806c3cfd82e7bf",
+    "artifacts/skill_forecasting/improvement_v5_transformers/validation/secondary_blend/validation_samples.parquet": "8f1ac6fc5c41723d4bdd52e46e23634f639d8fdf4ae52a4ceb0a071d60335d42",
+    "artifacts/skill_forecasting/improvement_v5_transformers/validation/secondary_blend/validation_probabilities.npy": "c5c3b1012fa61f24233cb15a1306599ba161e715131426802bc0a1b3f3d6da28",
+    "artifacts/skill_forecasting/improvement_v5_transformers/validation/secondary_blend/validation_metrics.csv": "3df6b160fd35e2a36fc19ea840913f3d1fea2dfc280a1c115c2295e409007a79",
+    "artifacts/skill_forecasting/improvement_v5_transformers/validation/secondary_blend/per_class_metrics.csv": "8c4415311ad201077f600ba85ecb97ba1540324f161260980ce259da54c239ec",
+    "artifacts/skill_forecasting/improvement_v5_transformers/validation/members/history60_patch_transformer_s42/validation_probabilities.npy": "f2b4431ad568c163ef078f1c0bc611503d139770ea109cded52f071794f1b9c1",
+    "artifacts/skill_forecasting/improvement_v5_transformers/validation/members/history60_patch_transformer_s43/validation_probabilities.npy": "23e668f0ee251b6514b050730c34d682e101287b5148ab25ac607b3777b18087",
+    "artifacts/skill_forecasting/improvement_v5_transformers/validation/members/history60_patch_transformer_s44/validation_probabilities.npy": "30390aba540ef05bc732cedfd7a6cac36feac84d657dd87ce43437e8563f2aec",
+    "artifacts/skill_forecasting/improvement_v5_transformers/validation/members/history60_temporal_transformer_s42/validation_probabilities.npy": "acb44e192936d8a165748dafb1344099464ef78e2b549871b29136957f63d57e",
+    "artifacts/skill_forecasting/improvement_v5_transformers/validation/members/history60_temporal_transformer_s43/validation_probabilities.npy": "64da7b98e2c8920fdf00ff63641833b80ea574713718e45b25046f23b0748d5f",
+    "artifacts/skill_forecasting/improvement_v5_transformers/validation/members/history60_temporal_transformer_s44/validation_probabilities.npy": "e3673dae9ba9191b8a9713145584386bfa5061ace5de90d2ed48bc680ccfbf42",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history20_hybrid_transformer_s42/run.json": "93523c4c5b4e8dfa76cd803aa5845fda77ad2a5cb9077c47c2778c16eb31b890",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history20_hybrid_transformer_s42/summary.json": "34db0353b4f1a74f65cadad3941601aa749b9a710bfcea28ba6ae55eb6d56fef",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history20_hybrid_transformer_s42/history.csv": "0b70d1404420cd0fc4e566f3a1e77370491a2a5a1e91f90c151f39aa84d25e9b",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history20_patch_transformer_s42/run.json": "ccc09bb382b7a258fb86db623aad7cd3c84428c65920ad5a56b11767f5e26d46",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history20_patch_transformer_s42/summary.json": "ed288520a3af90704934b05792241f8b873782268f0497628651b8f1326771e1",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history20_patch_transformer_s42/history.csv": "9b648be263f3b353b0b12e0d6018c1b93a6ea0e6b66a3d1893f077f49e789897",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history20_pooled_transformer_s42/run.json": "5e9c4c8cb1e7a8117c56746579bc6f7b90a7df290c59aa4d353f608d3fbe0f13",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history20_pooled_transformer_s42/summary.json": "4b490ca8940032aade7a6563b5857b7dee4b72d276e798065d504403bc250c8a",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history20_pooled_transformer_s42/history.csv": "84798dd39f1ce68dcac3e19050d11047eace595cffda5bbc3265bb54b28e6172",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history20_temporal_transformer_s42/run.json": "9f0cd6df30742231ab1e15d217f5404f4cdf304f263f8b8dc89a131ce08f0c0d",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history20_temporal_transformer_s42/summary.json": "faa2a4fbd1544a4006c658a30e0d872b919ef869896ee1b75d6b21b9bf71c094",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history20_temporal_transformer_s42/history.csv": "b1b79ce71bc18290990ebe6b75d77c32be66cd35c89520fe94b85e5b576a82a1",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_hybrid_transformer_s42/run.json": "8e0a11e6d4974336edb25a0d70aaddfe4cae2b82b601ad6d3a7ec122294c82eb",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_hybrid_transformer_s42/summary.json": "73bbbfbc7cfe69ae2683f36778c4a4e474076a7f62c61832cdcdbf7e46260b1f",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_hybrid_transformer_s42/history.csv": "635b68de7445cd79effa704806b8f3a8a73642f94c5b17f4ab3fa3c8da168641",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_hybrid_transformer_s43/run.json": "9125d5e7d857a3c7d5e00efdbf9e1e270d0b461e75c582edb09aba540f34241d",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_hybrid_transformer_s43/summary.json": "2e5131e14e507f18a6c54f0d290c75a627770cd196c5f721e73edd0646565a85",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_hybrid_transformer_s43/history.csv": "a0f41148551f0cfd0dd6a0560671ae3dd0e00b7e87c3684bdd3475efa6051eea",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_hybrid_transformer_s44/run.json": "2967103d2871f7d3fe84a1320a7b6a18c1d9563bd6a3f8dc43ce1ae7a8b8c691",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_hybrid_transformer_s44/summary.json": "3d38c65dde25b8185aaceb7a7b66e00d35b3f89ec93a28190ff6a1de3bcf48db",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_hybrid_transformer_s44/history.csv": "9a6de3cb1bef4fa178cc88da558b73f85b6633f28169d482bea4ac131c3d547b",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_patch_transformer_s42/run.json": "0c35d03e040f36d094e620c0a2be631f6e17ed1c10232f1180ef12d283c89c6a",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_patch_transformer_s42/summary.json": "637176c1f35f5e3bba64aef6083115871352d966b5ee545c2d2489776d055def",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_patch_transformer_s42/history.csv": "18e39f6e9c387ebd188a68bffd0cdbe24102d003764f44790a4ded46de675c09",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_patch_transformer_s43/run.json": "b274ba74fe53f82f35a03de74b95f351ef9e0c3498dd1224a4a99658ed0eebe8",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_patch_transformer_s43/summary.json": "936ea4efd5a6d3b6e910697faf6a63844dbc7c305476b6ea633dc120f47ed2d6",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_patch_transformer_s43/history.csv": "45291078b930faa57e44bac8f766ba56ecd80d6b02b0cf84f0eb4e3c474d2d62",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_patch_transformer_s44/run.json": "b247a2c29a21237235374d868e1bc57b15f3324ac0689dbab6b8265bf218087b",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_patch_transformer_s44/summary.json": "45d18883fb4791f9d3685878b953d6e7412afca335acfc9636bfa81cb7a95f4f",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_patch_transformer_s44/history.csv": "eba8e424ddf80c8cc4546c3add5d511d865d1f2a39b39b2ba866cf4a4127b5b4",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_pooled_transformer_s42/run.json": "0f7767b580600d127cca091067c7346572a03fef6c27390f8f592422996f80fe",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_pooled_transformer_s42/summary.json": "5cf5771b80d0e4bdc11bc4c87426f727b56b196f00bd783722802743ea6e5bd7",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_pooled_transformer_s42/history.csv": "414fc3d5f3c502a9a64ed16dd906d4cec525ba40adbe01e25f05cea9f7c1ae5a",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_temporal_transformer_s42/run.json": "39235c1754897627c9026bdb7e422336604a7a99f63ec07bdc5715edb147272a",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_temporal_transformer_s42/summary.json": "e4ad9a2d17a8f7d85b26ba1d4820064e31efbccb4378db505efe89cace656ff6",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_temporal_transformer_s42/history.csv": "6c4bcdbb39054ca4d437bc572403f4a3d3c3a84661b0a7157ad16e7d71bfd77b",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_temporal_transformer_s43/run.json": "8ee3c28df94c037f17c50c469bd8b91746bed72cb185099a6d81e8a9b2cff403",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_temporal_transformer_s43/summary.json": "a8add0fe317eda5431260926e2dd828414153d3ebe1e7d5000ea020a67b911fb",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_temporal_transformer_s43/history.csv": "387663801ed19685952637a4e384cbf028cde2f769968fef3bf6a23aaa977825",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_temporal_transformer_s44/run.json": "ee32f6330667009a400aaf41dec1463c2902bac312207ccd2174bace7cd83bba",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_temporal_transformer_s44/summary.json": "f8da597343feee34e9ea5b29a9c56e227a7f3c51a29d3729f4a4dda9ee1de6ed",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_0/history60_temporal_transformer_s44/history.csv": "a3e157197087d9a7795809a3980f6cfba10cb6a2835deb615045ea097d337e65",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_hybrid_transformer_s42/run.json": "3d9d5f63fabbde597a8489e9668dc574026c22266296520902658f494a6ea52a",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_hybrid_transformer_s42/summary.json": "e7a6630b39307aec50bdf7c0a5e302d0e904ffa42415028a96ab01d37898166f",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_hybrid_transformer_s42/history.csv": "e8885fba7f6e8dd9593324adc61a65b8895b4ef485f9faf9aac7bcb585d91ee5",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_hybrid_transformer_s43/run.json": "e6c2bfe05d7164e6431119cc477025940014190f9e637a3cd3686a7b8d66308b",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_hybrid_transformer_s43/summary.json": "3eb2187dfdb7706b7e3afe984aa278d1859105f5dd045157c0d0aa6d5bee05d9",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_hybrid_transformer_s43/history.csv": "aef0c5f05654d3694fc57850f66543f5f72fce3f3512af28920445ca074f7206",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_hybrid_transformer_s44/run.json": "23c2a6f420a91e19ada041262774df8e7b646ee7f968c105fc489a896e44a07d",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_hybrid_transformer_s44/summary.json": "ce2ff332c854f94fe565a14fa49ec5e0b601c07dfe5cd7aa7531ded34325712c",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_hybrid_transformer_s44/history.csv": "0c124e932e556718b4a726a1168e132136f9eeb8a11760542905cb5680c969ac",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_patch_transformer_s42/run.json": "fbdaca4a237e006e1583b0b22443a5dd27258a92303a687f01f1c1bf97d9d825",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_patch_transformer_s42/summary.json": "b312799de2bdef9ecaeb1cf3271b62c323021e29b6bad6da4ac07431f7b1a70d",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_patch_transformer_s42/history.csv": "1b47a5e73330f724c3724848d17774af01f7b0ffc18c0aebe1aff2f68e08d39c",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_patch_transformer_s43/run.json": "6a596be178a13e99fc6b52c2cd0073824bdeb0fc8b7093bf23d4cbb970e7e702",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_patch_transformer_s43/summary.json": "be3814c2f456f3a8b20c1705fee35bb2a510b0deaf23bc9114c723d0ab1a798c",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_patch_transformer_s43/history.csv": "87caf8528b20cc1946d995fba6b0302172cb592041c24f3f47047ffd8a0b7a52",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_patch_transformer_s44/run.json": "932a88eee233a316d66eaa56ea30385d5fdbfc86e269e0172da22a6698750cc4",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_patch_transformer_s44/summary.json": "c96bafb002128f943ddf185765ed2df32521143f1ccc34a38a67c85d45058112",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_patch_transformer_s44/history.csv": "884abf9b9ea702d3b3704a6cd5c29cc7fd91076ae0ff4915ec696676f5490a57",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_temporal_transformer_s42/run.json": "9df8879cb099bce7eca12d92b34f73ada3d2c51b4abebdf4a6f5eefa1b5f3d56",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_temporal_transformer_s42/summary.json": "87090965ec5daefa6b2122954b0e1c63780f85a8438f3fe33e12bd0e31a3b6c7",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_temporal_transformer_s42/history.csv": "9471a745c418e77fbb69536f368bb4b3beed696394d1112e72847c3b4f899409",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_temporal_transformer_s43/run.json": "784642f9de916367bc18d3bec386b8768189c0bb5aab687e2fe8e29758f96af2",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_temporal_transformer_s43/summary.json": "23cc74d4613ac09e8fd9ac2afc8714a2797f297c74ab87b830b841c2d6604d8d",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_temporal_transformer_s43/history.csv": "699624d68a59f7f091335380ea8876b851502bea092361bcde43bebe1846c682",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_temporal_transformer_s44/run.json": "a988235d6f8c0e6439f2488f255d539a8613cf3c97804bc63c1fa8d80d546d9d",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_temporal_transformer_s44/summary.json": "8c8d4e22b25da85fe8fac1f787037c6d231d76b1b9dd029b72dda9df9a6fa0f9",
+    "artifacts/skill_forecasting/improvement_v5_transformers/inner_1/history60_temporal_transformer_s44/history.csv": "dd423744053d61a3ae6172ecb633b6f2b99fa46056bd56edcede9f2de690d1b4",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_patch_transformer_s42/run.json": "31caad71eba9eab45804748d1e07fc70a8d77b9ea5216027012c576067bf54c8",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_patch_transformer_s42/summary.json": "2d5276322e44efbdd09c9de75b28c6d8f2d4b9f0b21223915c466d148b36233f",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_patch_transformer_s42/history.csv": "ab8fad294a22a791da975a290522a05ab1433e365b9c2c63e1cf78c906571d1d",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_patch_transformer_s43/run.json": "31388283eeda26c306591b880ee8986dfbcf792daf6db5739d40a966b24950f9",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_patch_transformer_s43/summary.json": "0562461f479b36498e7b600387c8483e73b61b6b89881c679f7d4007b08371ed",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_patch_transformer_s43/history.csv": "12c8f5714c7dd71f2d5c56569e0c788c01b18513f83fecd12bc6ed856b0e43a4",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_patch_transformer_s44/run.json": "99a2af288b73107a4807b2443ed5e91b492dd3acaaca784fbc96ee5e80b3f5fe",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_patch_transformer_s44/summary.json": "a11621796774573e373e918300ba65a8939e857f180994f05b397a4929cd3a5d",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_patch_transformer_s44/history.csv": "dfe31d992869efb4380f64f97893044988826f185c3e0742336f1be9feafaa4c",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_temporal_transformer_s42/run.json": "ce61d0b3d33205e23d445499f63c744df255c887492e38125dd3ede53d180405",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_temporal_transformer_s42/summary.json": "5fbb8244b70edbbd69cb37c7462d582609e7d413a4e816196d74e2a4ad743b48",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_temporal_transformer_s42/history.csv": "d70fe33a3801234c494fe0c505c9683ed350fdad5a616aba8e00f174d7ade708",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_temporal_transformer_s43/run.json": "9e96582fae6d7c8101766c7cd5888cfcea66f3a5f7e84d84038107be2b4fa0df",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_temporal_transformer_s43/summary.json": "2a37f5b72dc1116f5f6dc1e564d4a5091b0286d54864f0bf2cac34f650f2b393",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_temporal_transformer_s43/history.csv": "2ce906c749043be0510d117cf178ca720b073e164112534d347a5e9e6921b26f",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_temporal_transformer_s44/run.json": "204ff73cbd7272bc2e004586cb388515e061eaa6dad0bf16a31d3b75fecf001c",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_temporal_transformer_s44/summary.json": "1cf26761ca7ffa941d70f77e1daf4395cff4495560c3eaddfaad2028979d9dc8",
+    "artifacts/skill_forecasting/improvement_v5_transformers/refit/history60_temporal_transformer_s44/history.csv": "fcfef5d78d3615f6e3c325501f88b41471fa318055b02e51348a6504b618d4ff",
+    "artifacts/skill_forecasting/improvement_v3/inner_0/history20_mlp_accuracy_s42/run.json": "83e061e29c5a1a23013af5762b8dfca8f438c644790ab5ed5c10a53c8d35735b",
+    "artifacts/skill_forecasting/improvement_v3/inner_0/history20_mlp_accuracy_s42/summary.json": "2b07a206cf44c97be0e5ae8d3be1d61b1f6e1e6cd0a1230c243876a71e3975d8",
+    "artifacts/skill_forecasting/improvement_v3/inner_0/history20_mlp_accuracy_s42/history.csv": "4f4af978cb9e502444bd3b7a7855dc792f69d6ebf5425d0cad80e86870f15764",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_accuracy_s43/run.json": "fefbd389831a337cf35a3ba16a2403edbb901cb41323fe86043dfe0800574a2a",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_accuracy_s43/summary.json": "9f5e8f4cccee969df186a48a4c7eaae74933e52b24d9766ed0ba92bb4ce412d0",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_accuracy_s43/history.csv": "8db0e1e3337ad58b5761742ffcac320d73985d212bb124e4bd3baf2dee0edaed",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_accuracy_s44/run.json": "dd183c6e15376784f8ff97bf0aecec3038c60e5e728dccb1be52ba2cb0a49d63",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_accuracy_s44/summary.json": "5850ac93c06361bf52ebb3c2ba1645a7a39a0e92b1806aee484fed5bd5186973",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_accuracy_s44/history.csv": "b1ea9362025543d0dfd1c011e978f478266309eb225b5f70f0917c36428201ec",
+    "artifacts/skill_forecasting/improvement_v3/inner_0/history20_mlp_wide_accuracy_s42/run.json": "e2559e9876afe315f80104c4ff7f569a87879546023046cd9a68c85d92669a76",
+    "artifacts/skill_forecasting/improvement_v3/inner_0/history20_mlp_wide_accuracy_s42/summary.json": "efd0357613ee8f50ef5fbaa5af073a6d3092252b136a5d448f440d2279c2be40",
+    "artifacts/skill_forecasting/improvement_v3/inner_0/history20_mlp_wide_accuracy_s42/history.csv": "b24865e8a579226cd9961022fc6fdaeb0f51b586bd2886acfee31a684f32ee9e",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_wide_accuracy_s43/run.json": "7ec7fe29fa9aef8847c5eb931f9db0e9da2b866f80cd25f4e6188ae3818080bd",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_wide_accuracy_s43/summary.json": "becf72e23cb54396f078436919fb863f7e870072602b6e45a5425491f13e421a",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_wide_accuracy_s43/history.csv": "bea9c63317d029ec602db44bbc5b3e04ea3705bd1cdb4dec8e906d732c03ba71",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_wide_accuracy_s44/run.json": "8b1b764d7232af10b56b8706f58f4aaf0f70e7e6edcac5c803098c82e5f3e0b0",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_wide_accuracy_s44/summary.json": "667b29aad76f6682f3d2c7587ec0012f91a07b1b22ad5fca15fc4284f4d4e2eb",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_wide_accuracy_s44/history.csv": "7a045eabd02785bd615536a040bef202612fae11807d9d07c23b2888434bbc6b",
+    "artifacts/skill_forecasting/improvement_v3/inner_0/history20_mlp_smooth_accuracy_s42/run.json": "5fb9bbd5c3ed3021995e26c27c3509dc7ee948560fb7165b9adffc239e086e99",
+    "artifacts/skill_forecasting/improvement_v3/inner_0/history20_mlp_smooth_accuracy_s42/summary.json": "9bb75e257878634b66b5bf0fcfc9db49f75e95b8bcfe66dba7ab1ce8bb614519",
+    "artifacts/skill_forecasting/improvement_v3/inner_0/history20_mlp_smooth_accuracy_s42/history.csv": "745d7be79281d506916e4b75ac508522ed83bebc426676f8867a35b006adfa7e",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_smooth_accuracy_s43/run.json": "27e118d5395e26199778459668452135ac516f96ffc0fc2016583f3c10ccc42f",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_smooth_accuracy_s43/summary.json": "7f0c708c7dbfab6dea073495f3c3ecbc8043bda1a4a36dfe9816b6e29f10edfa",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_smooth_accuracy_s43/history.csv": "fff2b4639089d595a4a463035332349c156110e6c902b16aa1793579c9d09d89",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_smooth_accuracy_s44/run.json": "8cfeb61e3a7982836dd79fee805a8df00cc5be9c631aa646cd2e12e2af160a41",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_smooth_accuracy_s44/summary.json": "37bfa0ec36bd2949f03c15259e7594cb5a8ce7ae4a20cd511b7404c741ac7a4b",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history20_mlp_smooth_accuracy_s44/history.csv": "eeafb126790a06fee35f3bd3cd8314f1523676d1abbeb40192f3150e0e7dd0ec",
+    "artifacts/skill_forecasting/improvement_v3/inner_0/history60_mlp_accuracy_s42/run.json": "a4d8739e108c37c05bec6b78db2653f7c3510a7624dc8fa1df36716b4de6cb5a",
+    "artifacts/skill_forecasting/improvement_v3/inner_0/history60_mlp_accuracy_s42/summary.json": "3786ae5a3a1a695d4d07fd52ae95b26876584442dfe0ef8ff25d17bc128b6fa5",
+    "artifacts/skill_forecasting/improvement_v3/inner_0/history60_mlp_accuracy_s42/history.csv": "0cc04e2d4b4a32be30839be93ff1ff1dcf1bea07c472fe10a1517ef9c13db0e2",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history60_mlp_accuracy_s43/run.json": "0c700e9f120b60b68541a4dbcc712f46f9e9345780bad1ba0b481967f5d3662e",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history60_mlp_accuracy_s43/summary.json": "05f261ade2a7493492f9de87d6b0dd8a94877e731a029333209b1b488b45a7e8",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history60_mlp_accuracy_s43/history.csv": "b4d88043122fbdd53b43bb83ad0ab52d3e2c7b7f3f327bc0ff32d7c16dc574a0",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history60_mlp_accuracy_s44/run.json": "1fbe5be0ada376f4838eb35854f236a5974fce89d18c7f4a66fd07119aa09dfc",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history60_mlp_accuracy_s44/summary.json": "3937c18a375d55a397f90d18b5e7c35e938b08aa5e04e7d4114a6cee1990d0bf",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history60_mlp_accuracy_s44/history.csv": "4c16c884516d5f7d1c25b04bc880fe63448506762ccb53591521477e4d95301d",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history60_tcn_s42/run.json": "372260df1d69e8128cc4242cc08b32e4f853f4240affd68c0901b778eb9a0be2",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history60_tcn_s42/summary.json": "8237ba45788c8c3a2432d83e2e480fe99e8fca43eae7d0707fdd9628ea67e14b",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history60_tcn_s42/history.csv": "f011e0ed9391510fc3ba7c8e475a713d6c3391647fd6b5689a85204330c0f4c7",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history60_tcn_s43/run.json": "ed371b2aade84c47a1aefb4cc3ed088ce38f0ff68b07f7b3486a4088778c7d63",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history60_tcn_s43/summary.json": "53068ab3f79347ee7657097eaa98e223aa545c7efad53ce30a602705ef9584d9",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history60_tcn_s43/history.csv": "137e79c7fafd701f892126fc9964221b25bca7fc714adbb02c11e90a8d33a501",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history60_tcn_s44/run.json": "af11adcd6ba02820e417a6b20dc9f29f6e0ec707d2ff3b1187c4d0db676b1c55",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history60_tcn_s44/summary.json": "90fedeb031f3da9d75dff893046995b864b828a434cea4f920250f9cc7109a1e",
+    "artifacts/skill_forecasting/improvement_v4/inner_0/history60_tcn_s44/history.csv": "445b8bf996acd2f5579941ab462188a7d3d2d3ffa1885d7ad7951487d23e4f21",
+    "artifacts/skill_forecasting/improvement_v3/inner_1/history20_mlp_accuracy_s42/run.json": "2ba7aff181feddde37f294cffc9a5cbe0f982d730e2801e39ae030a3e6204009",
+    "artifacts/skill_forecasting/improvement_v3/inner_1/history20_mlp_accuracy_s42/summary.json": "7e7579beb9a73a0d98d71bc65f597641c9f8f8c47274eea8e082efbae9b915ef",
+    "artifacts/skill_forecasting/improvement_v3/inner_1/history20_mlp_accuracy_s42/history.csv": "1017176aead006e1411c4790fa83af4a71fc3f5af85ef877ae67c794166caa4f",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_accuracy_s43/run.json": "2906b81e5d4146b37e9359bdc0ba879313b24864bc436f2ea7b123741b668fff",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_accuracy_s43/summary.json": "e0b7b47ace24ce23895be3e4a3a21406042a20b0cd504e5ad2c0a4110f4eb4f8",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_accuracy_s43/history.csv": "a237021aafdd828001e3401989ea95e3423d418546a6d9e137abcedd82250b40",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_accuracy_s44/run.json": "d70ffa615ea92327e2388ace2d0f8b45fa4da4d8c60fa08533a0cca18328e887",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_accuracy_s44/summary.json": "bd6be6d2f00f3dd6fabf8780e54a73685cd580e8627fdc0ffdd091a6412ca55d",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_accuracy_s44/history.csv": "3a68fe23c92be724bd0f7bd228b52f3f0dcf377e1a5b817300e3f578786ac578",
+    "artifacts/skill_forecasting/improvement_v3/inner_1/history20_mlp_wide_accuracy_s42/run.json": "a3a951ffb5369fa929ebce7b0cc335c4b85cb13a33a48d762426873d41329de4",
+    "artifacts/skill_forecasting/improvement_v3/inner_1/history20_mlp_wide_accuracy_s42/summary.json": "d752a46a8caa3139325b1d043ebe3398e828fcec1fe06e46e534c83e7032185f",
+    "artifacts/skill_forecasting/improvement_v3/inner_1/history20_mlp_wide_accuracy_s42/history.csv": "f5dc8ea41ecd81a2443523b2548caf2686facb3b82c8c5ec2aaec9324df78946",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_wide_accuracy_s43/run.json": "7367496f0448aac448d4aae4c2e6ce13c17e52f70e062dfc0e6c5a46de5e5340",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_wide_accuracy_s43/summary.json": "ae40d92b26998f79e128af3af04d916854af389d671f918dea9daf1b54056bf9",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_wide_accuracy_s43/history.csv": "0544fc1b963778bb8e0ecd1d1972f2eb76b719c077306c6b850f461c83ec8ae7",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_wide_accuracy_s44/run.json": "6c35131b949a0f2387ba56e949d151ea0f4f056a2b6bb1f7c86dc4db2c285226",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_wide_accuracy_s44/summary.json": "a81db456a8024425560f38994b6c71531b4e4581b97f72ecee2a58a4d96fc602",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_wide_accuracy_s44/history.csv": "d4e2549e1cb121fbbc5211aab524147be462e57bb103ad397f256fbaba3fa27a",
+    "artifacts/skill_forecasting/improvement_v3/inner_1/history20_mlp_smooth_accuracy_s42/run.json": "e08285e9273386ab3c8e3f6b0bcd5abfdb97b2450d3e61dafa52de3e7f5a3e09",
+    "artifacts/skill_forecasting/improvement_v3/inner_1/history20_mlp_smooth_accuracy_s42/summary.json": "2d143fde3efa4fc53dd9c84a3ec33fb2438cff3f266137870063be0d54a64fa3",
+    "artifacts/skill_forecasting/improvement_v3/inner_1/history20_mlp_smooth_accuracy_s42/history.csv": "90c0943e86a3d6ca6be3ba0ba6075846d754eb2d68ebbd7764f406d36ed184f2",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_smooth_accuracy_s43/run.json": "775026d597bcc3b15ae021f54bc46e2565c055969efa5c3b886e3dba93118b4d",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_smooth_accuracy_s43/summary.json": "fd3ac852b5b47218b5c48aab76c6c52cb2ac2f1550b90122228f4b429139b8a3",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_smooth_accuracy_s43/history.csv": "a6543cd50bb883274b65ceae7000f2ba0574f51ff6ffbd2cf00444843ad622f9",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_smooth_accuracy_s44/run.json": "65755afa259bd43abec1c517457d0ecf3e61f7e1c52a0cd5c4db2dca9aa82226",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_smooth_accuracy_s44/summary.json": "24a4ea6ebb952cac5504dbafd2c3d0c1e95af8ec698db8f010a04586446ba8de",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history20_mlp_smooth_accuracy_s44/history.csv": "b4cf32fa0330e637f35b37e6dae9e91f8b6fb4b7f8226c0bee1a7795e45e90da",
+    "artifacts/skill_forecasting/improvement_v3/inner_1/history60_mlp_accuracy_s42/run.json": "b4ddc7ed9f12b6c67d6f523ed930b2083c1be86836de8239e86cc7873b24e974",
+    "artifacts/skill_forecasting/improvement_v3/inner_1/history60_mlp_accuracy_s42/summary.json": "91db3e6c772b6d79348158b042f0a4db93ca497b8685d347b4aa65c924703b10",
+    "artifacts/skill_forecasting/improvement_v3/inner_1/history60_mlp_accuracy_s42/history.csv": "6dba43521b6834f751172fc91ddb311dc281de6ae275d9b6e56c9c7957382d00",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history60_mlp_accuracy_s43/run.json": "31bf34889f375cafacb370a8c6ce5030e6b48f7cf2ded88137c1a2485ab1d172",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history60_mlp_accuracy_s43/summary.json": "6b95ed8eba96d160d281d875df1e2814a3ea3dfa64cb21ebc3b3ee292530874a",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history60_mlp_accuracy_s43/history.csv": "a4e2e4fd3412cd1ff44de90247384d5c8a33d166e582093af7e16169ad6328f2",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history60_mlp_accuracy_s44/run.json": "76d093c3b42889ce54f04b13771d465e286f430bb4a5be534cf8468b2631fecd",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history60_mlp_accuracy_s44/summary.json": "3aff9e52ed0de9cfb9d8502ce3899a4f956e48c51d0ab46b6d00bf9cd906b26e",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history60_mlp_accuracy_s44/history.csv": "2fd1b133ba3d4b3556e33e8c61fe02965d00eab6612742afe670ace0c9c477c1",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history60_tcn_s42/run.json": "21eb0241c25b2c2bd77649316b7610db495abc20fa85f251f75c65a8b314d957",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history60_tcn_s42/summary.json": "69a5f0ba783ceea18fca0e9794b0c6b8f6b829d008fc3bba0a0dafcd26fde9bd",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history60_tcn_s42/history.csv": "818c04b402baca4fe4685caef572b8f80b8559eb9abaa99671d64d93026cf268",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history60_tcn_s43/run.json": "007c898fd6dfcd6053dbf857d71ebd9ecd50211c7c832364d9b5d42304b17133",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history60_tcn_s43/summary.json": "4cefb45131c0e8a832430e7eb1d9a34b639c50564c314822249cd090687110e9",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history60_tcn_s43/history.csv": "d2051c9d999a58134ef730a6efac9a7a16d26b5adca9f216316d4eaa72afbce9",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history60_tcn_s44/run.json": "296b24e71095cae7ca0bac3b0226615126a118869694365b257deea67694e167",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history60_tcn_s44/summary.json": "0c8e18c05e7d00fb1fe132c89ef0a2a524081c51021552ed6a9c60ceb63de0f0",
+    "artifacts/skill_forecasting/improvement_v4/inner_1/history60_tcn_s44/history.csv": "3489644b3dd5ee9957eac3a6158a44a1def270d18234819e6da014473f18388a",
+    "artifacts/skill_forecasting/improvement_v5_transformers/transformer_screen.csv": "3f7cc1231c7490d409edc2b57f02ecf15fe2d20ad1a2456f5873499e97d69e77",
+    "artifacts/skill_forecasting/improvement_v5_transformers/transformer_confirmation.csv": "33635f41b7199d21bcfbc7e150ea6b4ad3cb45490a44d4f2d68e7868260f97f2",
+    "artifacts/skill_forecasting/improvement_v5_transformers/paired_scenario_bootstrap.csv": "9480944d9251cf90316ea25caa56d59165a5c9833342897a4503e37ebcc6e8a3",
+    "artifacts/skill_forecasting/improvement_v5_transformers/protocol.json": "e36f4c5e7c3dedf2469a055db08c36d0a9e06342715477be18b27e9e6bcdd298",
+    "artifacts/skill_forecasting/improvement_v5_transformers/shortlist.json": "b54502a2826f7300b4bff6428f651e7100568b688885727ac216b45af834a0d9",
+    "artifacts/skill_forecasting/improvement_v5_transformers/frozen_selection.json": "e5b109c3bf48cedfdebee3657097411cf691214773dce694daaa9ccbfd4c1b54",
+    "artifacts/skill_forecasting/improvement_v5_transformers/selection_receipt.json": "d77ec60585dffa15d064a6212c625b238165c53722c750a388464c9d47389c53",
+    "artifacts/skill_forecasting/improvement_v5_transformers/internal_baseline_metrics.json": "2d8ea1b58be8f783a7238440bc71eec6a9818524ca09063e81eca14616411d7b",
+    "artifacts/skill_forecasting/improvement_v5_transformers/environment.json": "dbe261d50815d98e855e28acf362055c5171657f90f09a560899b72b400fb2ac",
+    "artifacts/skill_forecasting/improvement_v5_transformers/execution_notes.json": "70150a407e217f0d913cfe7c7c44f6e5d323f3133acc3027bdfb95f264796b25",
+    "artifacts/skill_forecasting/improvement_v5_transformers/validation/evaluation.json": "a14c51cdabac1acbb2e5ae79111059b0b2bf9c43421d041504d15fdd4310a020",
+    "scripts/report_transformer_experiments.py": "10ec019d8778a69e6f86d5845100f4478c2dcc0431d7b4df868775f4fc72a221",
+    "scripts/report_sequence_experiments.py": "6cec28cdae6b6c35858c1fd250b7eb599b4b4068a2c6782ac54c38c87b60f339",
+    "scripts/skill_catalogue_evidence.py": "3dd5cefee98272314f869e9364687641cc219aa367b692d24c2a1d23039c8089",
+    "scripts/skill_catalogue_review.py": "9b8898520ed65340ac516e70b7a12b4a323f1252a0a9db9f316adcc6a2e8aa2b",
+    "scripts/build_forecasting_insights.py": "b23e54f5953c77c0e346fc82b92322e7d0582cf007c10959b34609323b232ce1"
+  },
+  "quality_notes": {
+    "primary_transformer": "NLL improved at all horizons; Brier improved at all horizons; ECE improved at all horizons.",
+    "secondary_blend": "NLL improved at all horizons; Brier improved at all horizons; ECE changed across horizons."
+  },
+  "execution_notes": {
+    "training_plan_unchanged": true,
+    "parallel_execution": [
+      {
+        "phase": "screen",
+        "candidates": [
+          "history20_patch_transformer",
+          "history60_patch_transformer"
+        ],
+        "fold": 0,
+        "seeds": [
+          42
+        ],
+        "workers": 1,
+        "alongside": "Main screen; independent already registered runs"
+      },
+      {
+        "phase": "confirmation",
+        "workers": 2,
+        "training_plan_unchanged": true,
+        "root_worker": {
+          "fold_0": {
+            "candidates": [
+              "history60_patch_transformer",
+              "history60_temporal_transformer",
+              "history60_hybrid_transformer"
+            ],
+            "seeds": [
+              43,
+              44
+            ]
+          },
+          "fold_1": {
+            "candidates": [
+              "history60_patch_transformer"
+            ],
+            "seeds": [
+              42,
+              43
+            ]
+          }
+        },
+        "agent_worker": {
+          "fold_1": [
+            {
+              "candidates": [
+                "history60_hybrid_transformer",
+                "history60_temporal_transformer"
+              ],
+              "seeds": [
+                42,
+                43,
+                44
+              ]
+            },
+            {
+              "candidates": [
+                "history60_patch_transformer"
+              ],
+              "seeds": [
+                44
+              ]
+            }
+          ]
+        },
+        "freeze": "Standard confirm invoked only after both disjoint workers complete; same registered fits and selection."
+      },
+      {
+        "phase": "frozen_refit",
+        "workers": 2,
+        "training_plan_unchanged": true,
+        "root_worker": {
+          "candidate": "history60_temporal_transformer",
+          "seeds": [
+            42,
+            43,
+            44
+          ]
+        },
+        "agent_worker": {
+          "candidate": "history60_patch_transformer",
+          "seeds": [
+            42,
+            43,
+            44
+          ]
+        },
+        "budgets": "Exact jointly frozen component epochs and temperatures; no validation callbacks."
+      }
+    ],
+    "timing_interpretation": "Some registered fits share the same RTX4090 concurrently. Summed fit timers include contention and exclude loading/setup/selection prediction; they are not elapsed wall time or isolated throughput."
+  }
+}

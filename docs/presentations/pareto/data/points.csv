@@ -1,0 +1,87 @@
+id,suite,population,label,pilot,scenarios,elimination,survival,clean_win,mutual_destruction,elimination_ci_low,elimination_ci_high,survival_ci_low,survival_ci_high,clean_win_ci_low,clean_win_ci_high,mutual_destruction_ci_low,mutual_destruction_ci_high
+simple/clean_win_bonus/pilot_001,simple,clean_win_bonus,Clean-win bonus (six completed pilots),pilot_001,100,0.63,0.57,0.46,0.17,0.54,0.72,0.47,0.66,0.36,0.56,0.1,0.25
+simple/clean_win_bonus/pilot_002,simple,clean_win_bonus,Clean-win bonus (six completed pilots),pilot_002,100,0.83,0.63,0.57,0.26,0.75,0.9,0.53,0.72,0.47,0.67,0.18,0.35
+simple/clean_win_bonus/pilot_003,simple,clean_win_bonus,Clean-win bonus (six completed pilots),pilot_003,100,0.78,0.56,0.51,0.27,0.7,0.86,0.46,0.66,0.41,0.61,0.19,0.36
+simple/clean_win_bonus/pilot_004,simple,clean_win_bonus,Clean-win bonus (six completed pilots),pilot_004,100,0.82,0.67,0.56,0.26,0.74,0.9,0.57975,0.76,0.46,0.6502499999999987,0.18,0.35
+simple/clean_win_bonus/pilot_005,simple,clean_win_bonus,Clean-win bonus (six completed pilots),pilot_005,100,0.65,0.7,0.45,0.2,0.55,0.74,0.61,0.79,0.35,0.54,0.12,0.28
+simple/clean_win_bonus/pilot_006,simple,clean_win_bonus,Clean-win bonus (six completed pilots),pilot_006,100,0.62,0.7,0.44,0.18,0.52,0.71,0.60975,0.79,0.34,0.53,0.11,0.26
+simple/lower_learning_rate/pilot_001,simple,lower_learning_rate,Reduced learning rate,pilot_001,100,0.41,0.68,0.29,0.12,0.31,0.5,0.58,0.77,0.2,0.38,0.06,0.19
+simple/lower_learning_rate/pilot_002,simple,lower_learning_rate,Reduced learning rate,pilot_002,100,0.69,0.58,0.32,0.37,0.59975,0.77,0.48,0.68,0.23,0.41,0.27,0.46
+simple/lower_learning_rate/pilot_003,simple,lower_learning_rate,Reduced learning rate,pilot_003,100,0.67,0.65,0.39,0.28,0.58,0.75,0.55,0.74,0.3,0.48,0.2,0.37
+simple/lower_learning_rate/pilot_004,simple,lower_learning_rate,Reduced learning rate,pilot_004,100,0.61,0.72,0.38,0.23,0.51,0.7,0.63,0.8,0.29,0.47,0.15975000000000003,0.31
+simple/lower_learning_rate/pilot_005,simple,lower_learning_rate,Reduced learning rate,pilot_005,100,0.48,0.65,0.3,0.18,0.38,0.58,0.55,0.74,0.21,0.39,0.11,0.26
+simple/lower_learning_rate/pilot_006,simple,lower_learning_rate,Reduced learning rate,pilot_006,100,0.67,0.69,0.41,0.26,0.58,0.75,0.59,0.78,0.31,0.5,0.18,0.35
+simple/lower_learning_rate/pilot_007,simple,lower_learning_rate,Reduced learning rate,pilot_007,100,0.59,0.68,0.39,0.2,0.49,0.68,0.58,0.77,0.29,0.48,0.13,0.28
+simple/lower_learning_rate/pilot_008,simple,lower_learning_rate,Reduced learning rate,pilot_008,100,0.56,0.68,0.31,0.25,0.46,0.65,0.59,0.77,0.22,0.4,0.17,0.34
+simple/lower_learning_rate/pilot_009,simple,lower_learning_rate,Reduced learning rate,pilot_009,100,0.64,0.65,0.37,0.27,0.54,0.73,0.56,0.74,0.28,0.46,0.19,0.36
+simple/lower_learning_rate/pilot_010,simple,lower_learning_rate,Reduced learning rate,pilot_010,100,0.76,0.67,0.52,0.24,0.68,0.84,0.58,0.76,0.42,0.61,0.16,0.33
+simple/original/pilot_001,simple,original,Original baseline,pilot_001,100,0.4,0.71,0.29,0.11,0.3,0.5,0.61975,0.8,0.20975000000000002,0.37,0.05,0.17
+simple/original/pilot_002,simple,original,Original baseline,pilot_002,100,0.69,0.54,0.32,0.37,0.59975,0.77,0.44,0.64,0.23,0.41,0.27,0.46
+simple/original/pilot_003,simple,original,Original baseline,pilot_003,100,0.58,0.52,0.2,0.38,0.48,0.67,0.42,0.62,0.12,0.28,0.29,0.48
+simple/original/pilot_004,simple,original,Original baseline,pilot_004,100,0.67,0.44,0.26,0.41,0.58,0.7502499999999986,0.34,0.54,0.18,0.35,0.31,0.51
+simple/original/pilot_005,simple,original,Original baseline,pilot_005,100,0.68,0.55,0.32,0.36,0.59,0.76,0.45,0.65,0.23,0.42,0.27,0.46
+simple/original/pilot_006,simple,original,Original baseline,pilot_006,100,0.63,0.59,0.29,0.34,0.53,0.72,0.49,0.69,0.20975000000000002,0.38,0.25,0.43
+simple/original/pilot_007,simple,original,Original baseline,pilot_007,100,0.55,0.62,0.24,0.31,0.45,0.64,0.52,0.71,0.16,0.32,0.22,0.4
+simple/original/pilot_008,simple,original,Original baseline,pilot_008,100,0.69,0.51,0.29,0.4,0.6,0.78,0.41,0.61,0.2,0.38,0.31,0.5
+simple/original/pilot_009,simple,original,Original baseline,pilot_009,100,0.48,0.65,0.25,0.23,0.38,0.58,0.55,0.74,0.17,0.34,0.15,0.32
+simple/original/pilot_010,simple,original,Original baseline,pilot_010,100,0.61,0.63,0.36,0.25,0.51,0.7,0.53,0.72,0.27,0.45,0.17,0.33
+simple/selected_skill_parameters/pilot_001,simple,selected_skill_parameters,Selected-skill probabilities,pilot_001,100,0.81,0.64,0.54,0.27,0.73,0.88,0.55,0.73,0.44,0.64,0.19,0.36
+simple/selected_skill_parameters/pilot_002,simple,selected_skill_parameters,Selected-skill probabilities,pilot_002,100,0.83,0.73,0.6,0.23,0.75,0.9,0.64,0.81,0.5,0.69,0.15,0.32
+simple/selected_skill_parameters/pilot_003,simple,selected_skill_parameters,Selected-skill probabilities,pilot_003,100,0.74,0.73,0.53,0.21,0.65,0.82,0.64,0.81,0.43,0.62,0.14,0.29
+simple/selected_skill_parameters/pilot_004,simple,selected_skill_parameters,Selected-skill probabilities,pilot_004,100,0.64,0.7,0.41,0.23,0.54,0.73,0.6,0.79,0.31,0.5,0.15,0.32
+simple/selected_skill_parameters/pilot_005,simple,selected_skill_parameters,Selected-skill probabilities,pilot_005,100,0.76,0.67,0.56,0.2,0.68,0.84,0.58,0.76,0.47,0.66,0.13,0.28
+simple/selected_skill_parameters/pilot_006,simple,selected_skill_parameters,Selected-skill probabilities,pilot_006,100,0.59,0.63,0.45,0.14,0.49,0.68,0.53,0.72,0.35,0.54,0.08,0.21
+simple/selected_skill_parameters/pilot_007,simple,selected_skill_parameters,Selected-skill probabilities,pilot_007,100,0.68,0.71,0.45,0.23,0.58,0.76,0.61,0.79,0.35,0.54,0.15,0.32
+simple/selected_skill_parameters/pilot_008,simple,selected_skill_parameters,Selected-skill probabilities,pilot_008,100,0.75,0.66,0.48,0.27,0.66,0.83,0.57,0.75,0.38,0.58,0.19,0.36
+simple/selected_skill_parameters/pilot_009,simple,selected_skill_parameters,Selected-skill probabilities,pilot_009,100,0.75,0.67,0.52,0.23,0.66,0.83,0.58,0.76,0.42,0.61,0.15,0.31
+simple/selected_skill_parameters/pilot_010,simple,selected_skill_parameters,Selected-skill probabilities,pilot_010,100,0.67,0.74,0.46,0.21,0.57,0.76,0.64,0.82,0.36,0.55,0.13,0.29
+simple/skill_conditioned_parameters/pilot_001,simple,skill_conditioned_parameters,Per-skill parameter heads,pilot_001,100,0.64,0.62,0.38,0.26,0.54,0.73,0.52,0.71,0.28,0.47,0.18,0.35
+simple/skill_conditioned_parameters/pilot_002,simple,skill_conditioned_parameters,Per-skill parameter heads,pilot_002,100,0.66,0.69,0.43,0.23,0.56,0.75,0.6,0.78,0.33,0.52,0.15,0.31
+simple/skill_conditioned_parameters/pilot_003,simple,skill_conditioned_parameters,Per-skill parameter heads,pilot_003,100,0.69,0.72,0.46,0.23,0.59975,0.77,0.63,0.8,0.36,0.55,0.16,0.32
+simple/skill_conditioned_parameters/pilot_004,simple,skill_conditioned_parameters,Per-skill parameter heads,pilot_004,100,0.62,0.68,0.38,0.24,0.52,0.71,0.59,0.77,0.28975,0.47,0.16,0.33
+simple/skill_conditioned_parameters/pilot_005,simple,skill_conditioned_parameters,Per-skill parameter heads,pilot_005,100,0.64,0.71,0.43,0.21,0.5497500000000001,0.73,0.62,0.8,0.33,0.52,0.13,0.29
+simple/skill_conditioned_parameters/pilot_006,simple,skill_conditioned_parameters,Per-skill parameter heads,pilot_006,100,0.68,0.71,0.46,0.22,0.58,0.76,0.61,0.79,0.36,0.55,0.15,0.31
+simple/skill_conditioned_parameters/pilot_007,simple,skill_conditioned_parameters,Per-skill parameter heads,pilot_007,100,0.65,0.67,0.42,0.23,0.56,0.73,0.57975,0.76,0.32,0.51,0.15,0.32
+simple/skill_conditioned_parameters/pilot_008,simple,skill_conditioned_parameters,Per-skill parameter heads,pilot_008,100,0.64,0.67,0.43,0.21,0.54,0.73,0.57,0.76,0.33,0.52,0.14,0.29
+simple/skill_conditioned_parameters/pilot_009,simple,skill_conditioned_parameters,Per-skill parameter heads,pilot_009,100,0.62,0.69,0.39,0.23,0.52,0.71,0.6,0.78,0.29975,0.48,0.16,0.31024999999999864
+simple/skill_conditioned_parameters/pilot_010,simple,skill_conditioned_parameters,Per-skill parameter heads,pilot_010,100,0.7,0.67,0.47,0.23,0.61,0.78,0.57,0.76,0.38,0.56,0.15,0.31
+tactical_assessment/after/pilot_001,tactical_assessment,after,After tactical adaptation,pilot_001,300,0.41333333333333333,0.85,0.38666666666666666,0.02666666666666667,0.36,0.47,0.8066666666666666,0.89,0.3333333333333333,0.44333333333333336,0.01,0.04666666666666667
+tactical_assessment/after/pilot_002,tactical_assessment,after,After tactical adaptation,pilot_002,300,0.4066666666666667,0.8733333333333333,0.36333333333333334,0.043333333333333335,0.35,0.46,0.8366666666666667,0.91,0.3099166666666667,0.4166666666666667,0.023333333333333334,0.06666666666666667
+tactical_assessment/after/pilot_003,tactical_assessment,after,After tactical adaptation,pilot_003,300,0.41,0.8566666666666667,0.3566666666666667,0.05333333333333334,0.3566666666666667,0.4633333333333333,0.8166666666666667,0.8934166666666662,0.30333333333333334,0.41,0.03,0.08
+tactical_assessment/after/pilot_004,tactical_assessment,after,After tactical adaptation,pilot_004,300,0.43,0.86,0.39666666666666667,0.03333333333333333,0.37333333333333335,0.4866666666666667,0.82,0.8966666666666666,0.34,0.4533333333333333,0.016666666666666666,0.056666666666666664
+tactical_assessment/after/pilot_005,tactical_assessment,after,After tactical adaptation,pilot_005,300,0.43,0.9033333333333333,0.39666666666666667,0.03333333333333333,0.37333333333333335,0.4866666666666667,0.87,0.9366666666666666,0.34,0.45,0.013333333333333334,0.05333333333333334
+tactical_assessment/after/pilot_006,tactical_assessment,after,After tactical adaptation,pilot_006,300,0.42,0.8566666666666667,0.37,0.05,0.36666666666666664,0.4766666666666667,0.8166666666666667,0.8933333333333333,0.31666666666666665,0.42333333333333334,0.02666666666666667,0.07666666666666666
+tactical_assessment/after/pilot_007,tactical_assessment,after,After tactical adaptation,pilot_007,300,0.47,0.9,0.42,0.05,0.4166666666666667,0.5233333333333333,0.8665833333333334,0.9333333333333333,0.36666666666666664,0.47333333333333333,0.02666666666666667,0.07666666666666666
+tactical_assessment/after/pilot_008,tactical_assessment,after,After tactical adaptation,pilot_008,300,0.4066666666666667,0.86,0.37333333333333335,0.03333333333333333,0.35,0.4633333333333333,0.82,0.9,0.32,0.4266666666666667,0.013333333333333334,0.056666666666666664
+tactical_assessment/after/pilot_009,tactical_assessment,after,After tactical adaptation,pilot_009,300,0.41333333333333333,0.8933333333333333,0.37,0.043333333333333335,0.36,0.4666666666666667,0.86,0.9266666666666666,0.31666666666666665,0.4266666666666667,0.02,0.06666666666666667
+tactical_assessment/after/pilot_010,tactical_assessment,after,After tactical adaptation,pilot_010,300,0.46,0.87,0.43333333333333335,0.02666666666666667,0.4066666666666667,0.5166666666666667,0.83,0.9066666666666666,0.37666666666666665,0.49,0.01,0.04666666666666667
+tactical_assessment/before/pilot_001,tactical_assessment,before,Before tactical adaptation,pilot_001,300,0.4,0.6933333333333334,0.3233333333333333,0.07666666666666666,0.3466666666666667,0.4534166666666662,0.64,0.7433333333333333,0.2733333333333333,0.37666666666666665,0.04666666666666667,0.11
+tactical_assessment/before/pilot_002,tactical_assessment,before,Before tactical adaptation,pilot_002,300,0.39666666666666667,0.8066666666666666,0.3433333333333333,0.05333333333333334,0.34,0.4533333333333333,0.76,0.85,0.29,0.4,0.03,0.08
+tactical_assessment/before/pilot_003,tactical_assessment,before,Before tactical adaptation,pilot_003,300,0.33,0.7366666666666667,0.30333333333333334,0.02666666666666667,0.2799166666666667,0.38666666666666666,0.6866666666666666,0.7866666666666666,0.25333333333333335,0.3566666666666667,0.01,0.04666666666666667
+tactical_assessment/before/pilot_004,tactical_assessment,before,Before tactical adaptation,pilot_004,300,0.34,0.8133333333333334,0.3,0.04,0.2866666666666667,0.3933333333333333,0.77,0.8567499999999996,0.25,0.35333333333333333,0.02,0.06333333333333334
+tactical_assessment/before/pilot_005,tactical_assessment,before,Before tactical adaptation,pilot_005,300,0.35,0.7733333333333333,0.34,0.01,0.2966666666666667,0.4066666666666667,0.7233333333333334,0.82,0.2866666666666667,0.39666666666666667,0.0,0.023333333333333334
+tactical_assessment/before/pilot_006,tactical_assessment,before,Before tactical adaptation,pilot_006,300,0.29,0.6633333333333333,0.26666666666666666,0.023333333333333334,0.24,0.3433333333333333,0.6099166666666667,0.7134166666666663,0.22,0.31666666666666665,0.006666666666666667,0.043333333333333335
+tactical_assessment/before/pilot_007,tactical_assessment,before,Before tactical adaptation,pilot_007,300,0.38,0.82,0.34,0.04,0.32666666666666666,0.43666666666666665,0.7766666666666666,0.8633333333333333,0.2866666666666667,0.3933333333333333,0.02,0.06333333333333334
+tactical_assessment/before/pilot_008,tactical_assessment,before,Before tactical adaptation,pilot_008,300,0.38666666666666666,0.7466666666666667,0.31,0.07666666666666666,0.3333333333333333,0.44333333333333336,0.6933333333333334,0.7933333333333333,0.26,0.36333333333333334,0.05,0.11
+tactical_assessment/before/pilot_009,tactical_assessment,before,Before tactical adaptation,pilot_009,300,0.34,0.7933333333333333,0.30333333333333334,0.03666666666666667,0.29,0.39666666666666667,0.7466666666666667,0.84,0.25333333333333335,0.3566666666666667,0.016666666666666666,0.06
+tactical_assessment/before/pilot_010,tactical_assessment,before,Before tactical adaptation,pilot_010,300,0.36,0.8333333333333334,0.3433333333333333,0.016666666666666666,0.30666666666666664,0.4134166666666662,0.79,0.8734166666666662,0.29,0.39666666666666667,0.0033333333333333335,0.03333333333333333
+tactical_confirmation/after/pilot_001,tactical_confirmation,after,After tactical adaptation,pilot_001,100,0.45,0.81,0.34,0.11,0.35,0.55,0.73,0.88,0.24975000000000003,0.43,0.05,0.18
+tactical_confirmation/after/pilot_002,tactical_confirmation,after,After tactical adaptation,pilot_002,100,0.49,0.84,0.38,0.11,0.4,0.59,0.76,0.91,0.29,0.48,0.05,0.18
+tactical_confirmation/after/pilot_003,tactical_confirmation,after,After tactical adaptation,pilot_003,100,0.46,0.85,0.37,0.09,0.36,0.56,0.78,0.92,0.28,0.47,0.04,0.14024999999999865
+tactical_confirmation/after/pilot_004,tactical_confirmation,after,After tactical adaptation,pilot_004,100,0.49,0.84,0.39,0.1,0.39,0.59,0.77,0.91,0.3,0.49,0.04,0.16
+tactical_confirmation/after/pilot_005,tactical_confirmation,after,After tactical adaptation,pilot_005,100,0.52,0.86,0.44,0.08,0.42,0.62,0.79,0.93,0.35,0.54,0.03,0.14
+tactical_confirmation/after/pilot_006,tactical_confirmation,after,After tactical adaptation,pilot_006,100,0.49,0.83,0.39,0.1,0.39,0.59,0.75,0.9,0.29,0.49,0.04,0.16
+tactical_confirmation/after/pilot_007,tactical_confirmation,after,After tactical adaptation,pilot_007,100,0.51,0.85,0.43,0.08,0.42,0.61,0.78,0.92,0.34,0.53,0.03,0.14
+tactical_confirmation/after/pilot_008,tactical_confirmation,after,After tactical adaptation,pilot_008,100,0.5,0.83,0.38,0.12,0.4,0.6,0.75,0.9,0.29,0.48,0.06,0.19
+tactical_confirmation/after/pilot_009,tactical_confirmation,after,After tactical adaptation,pilot_009,100,0.44,0.85,0.35,0.09,0.35,0.54,0.78,0.92,0.26,0.45,0.04,0.15
+tactical_confirmation/after/pilot_010,tactical_confirmation,after,After tactical adaptation,pilot_010,100,0.51,0.82,0.39,0.12,0.41,0.61,0.74,0.8902499999999987,0.3,0.49,0.06,0.18
+tactical_confirmation/before/pilot_001,tactical_confirmation,before,Before tactical adaptation,pilot_001,100,0.42,0.72,0.34,0.08,0.32,0.52,0.63,0.82,0.25,0.43,0.03,0.14
+tactical_confirmation/before/pilot_002,tactical_confirmation,before,Before tactical adaptation,pilot_002,100,0.45,0.75,0.32,0.13,0.35,0.55,0.66,0.83,0.23,0.42,0.07,0.2
+tactical_confirmation/before/pilot_003,tactical_confirmation,before,Before tactical adaptation,pilot_003,100,0.41,0.74,0.32,0.09,0.31,0.51,0.65,0.82,0.23,0.42,0.04,0.15
+tactical_confirmation/before/pilot_004,tactical_confirmation,before,Before tactical adaptation,pilot_004,100,0.42,0.79,0.33,0.09,0.33,0.52,0.71,0.87,0.24,0.42,0.04,0.15
+tactical_confirmation/before/pilot_005,tactical_confirmation,before,Before tactical adaptation,pilot_005,100,0.38,0.74,0.31,0.07,0.28,0.48,0.65,0.83,0.22,0.4,0.03,0.12
+tactical_confirmation/before/pilot_006,tactical_confirmation,before,Before tactical adaptation,pilot_006,100,0.37,0.65,0.3,0.07,0.28,0.47,0.56,0.74,0.21,0.39,0.03,0.12
+tactical_confirmation/before/pilot_007,tactical_confirmation,before,Before tactical adaptation,pilot_007,100,0.43,0.8,0.33,0.1,0.34,0.53,0.72,0.88,0.24,0.43,0.04,0.16
+tactical_confirmation/before/pilot_008,tactical_confirmation,before,Before tactical adaptation,pilot_008,100,0.51,0.76,0.37,0.14,0.41,0.61,0.68,0.8402499999999986,0.28,0.47,0.07,0.21
+tactical_confirmation/before/pilot_009,tactical_confirmation,before,Before tactical adaptation,pilot_009,100,0.41,0.76,0.34,0.07,0.31,0.51,0.68,0.8402499999999986,0.25,0.43,0.02,0.12
+tactical_confirmation/before/pilot_010,tactical_confirmation,before,Before tactical adaptation,pilot_010,100,0.38,0.8,0.31,0.07,0.28,0.48,0.72,0.88,0.22,0.4,0.02,0.12

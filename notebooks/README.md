@@ -1,5 +1,26 @@
 # Notebooks
 
+For the skill-forecasting improvement study, open
+[10_skill_forecasting_improvements.ipynb](10_skill_forecasting_improvements.ipynb).
+**Run All reads saved results and demonstrates inference.** It compares the
+frozen ensemble with the preserved initial models, including scenario-group
+uncertainty intervals. See the [improvement guide](../docs/skill_forecasting_improvements.md).
+
+For future catalogue selections, open
+[09_skill_forecasting.ipynb](09_skill_forecasting.ipynb). **Run All reads saved
+development results and demonstrates observation-only inference.** It shows
+exact +1/+2/+5-second labels, class support, frequency baselines, per-pilot and
+changed/unchanged metrics, and confusion matrices. Training controls default to
+off. See the [skill-forecasting guide](../docs/skill_forecasting.md).
+
+For position and velocity forecasting, open
+[08_motion_forecasting.ipynb](08_motion_forecasting.ipynb). **Run All reads saved
+validation results and demonstrates checkpoint inference; it does not retrain or
+evaluate the reserved test set.** It compares transformer and GRU forecasts at
+1, 2 and 5 seconds against constant-velocity and constant-acceleration baselines.
+See the [forecasting guide](../docs/motion_forecasting.md) for training commands,
+grouped partitions, input definitions and the initial results.
+
 For current pilot experiments, use the [experiment index](../docs/pilot_experiments.md).
 `05_compare_population_runs.ipynb` is a read-only report: select a named experiment
 in its first code cell and **Run All** to refresh progress, tables and plots. Saved

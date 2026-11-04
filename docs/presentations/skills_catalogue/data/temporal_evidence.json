@@ -1,0 +1,50 @@
+{
+  "contract": "Descriptive analysis of fixed validation forecasts and validation-only decision records; no fitting, inference, selection or test evaluation.",
+  "source_sha256": {
+    "artifacts/skill_forecasting/data_v1/samples.parquet": "9964f92822ddbdd4d7d16f311d47c60d9b336af58721b2a7b76cbc6c51370875",
+    "artifacts/skill_forecasting/data_v1/targets.npy": "01834155919b5061172d33d8c698c70ebb9e7d7b497e4b9f2a53e4183f470c17",
+    "artifacts/skill_forecasting/data_v1/current.npy": "d3ff7e417ccdea2722be9efa4957fe810b662b47729d0c06d0b22d050da3839b",
+    "artifacts/skill_forecasting/data_v1/classes.json": "bce4913e1a26a94d1cdbef99b47f25f81197df4b275c6c26c77727f036da94a0",
+    "artifacts/skill_forecasting/initial_v1/transformer/validation_samples.parquet": "8f1ac6fc5c41723d4bdd52e46e23634f639d8fdf4ae52a4ceb0a071d60335d42",
+    "artifacts/skill_forecasting/initial_v1/transformer/validation_probabilities.npy": "d2b6bb52e8fb59a7695e5720739773030a302ef51291f8bb7e23878bbf608416",
+    "artifacts/skill_forecasting/improvement_v3/validation/ensemble/validation_samples.parquet": "8f1ac6fc5c41723d4bdd52e46e23634f639d8fdf4ae52a4ceb0a071d60335d42",
+    "artifacts/skill_forecasting/improvement_v3/validation/ensemble/validation_probabilities.npy": "f06e1a910028ff8218a49c36f0fdb67a80f51bce1f13f2ef42ff469abc7294e6",
+    "artifacts/skill_forecasting/data_v1/split_assignments.csv": "33be6951153b74808ac573ccbbffa469ff0a4e7ee583806bd537c1656d4a1eac",
+    "shared/corpora/trained-pilot-episodes-v1/manifest.json": "66e4a2e09ce3d8cf085cbca8c818ab4adbb4adaebaf47284fb3e845bb1e049e0",
+    "shared/corpora/trained-pilot-episodes-v1/target_decisions/pilot_001.parquet": "8cd3e6794b7c879e9cb3dacc84e4946d4938df085ccb96d4b032348f9a18949a",
+    "shared/corpora/trained-pilot-episodes-v1/target_decisions/pilot_002.parquet": "62f2e8269fa85f1c02485dc19dbb20aadeb7179eeb94f84f3061060a359c311a",
+    "shared/corpora/trained-pilot-episodes-v1/target_decisions/pilot_003.parquet": "0398a3dec34bf8cf18a4de6696d07fbc28086f06639d00bfdb69de4100f8185f",
+    "shared/corpora/trained-pilot-episodes-v1/target_decisions/pilot_004.parquet": "6c9af183a79b2847d478be1e2b4f8919b506825a0851fa0f4934469a3400e2aa",
+    "shared/corpora/trained-pilot-episodes-v1/target_decisions/pilot_005.parquet": "472965d604b34310813f7337a755c04826b11443c240c982f408b650cac7663c",
+    "shared/corpora/trained-pilot-episodes-v1/target_decisions/pilot_006.parquet": "32f6a4cd44dcc413f6a965988c95733686013e4baf70e788921bd233575964d3",
+    "shared/corpora/trained-pilot-episodes-v1/target_decisions/pilot_007.parquet": "4cc8ac883e7618bbfdffbb54c6a9faa11a541d6717b0940b79a637abafcb70d1",
+    "shared/corpora/trained-pilot-episodes-v1/target_decisions/pilot_008.parquet": "df590bcdbd15d1f3ec15327eb50625a26971824cb6d31fdba4c7d56e431e516f",
+    "shared/corpora/trained-pilot-episodes-v1/target_decisions/pilot_009.parquet": "623ee64f956d4957c6474e38ea0011e43fd38aee4fe306ab94277c42289718f1",
+    "shared/corpora/trained-pilot-episodes-v1/target_decisions/pilot_010.parquet": "d0a714327ecb24013ff984fb48c29081da7d562e7bb23a6908ff45fe0ed6818e"
+  },
+  "validation_forecast_origins": 30802,
+  "common_origins_all_horizons": 29458,
+  "decision_row_groups_decoded": {
+    "train": 0,
+    "validation": 450,
+    "test": 0
+  },
+  "regular_adjacent_decision_pairs": 37731,
+  "irregular_decision_gaps": 0,
+  "phase_boundaries_s": [
+    21,
+    61
+  ],
+  "phase_contract": "All phases use the common eligible origins across horizons. Full 20/60-second histories first occur at 21/61-second origins because acceleration needs prior frames and the reset is excluded.",
+  "run_contract": "A run comprises consecutive identical catalogue choices at one-second cadence. Only a contiguous next different choice completes it. Gaps and episode ends right-censor; resumed or late first recordings may left-censor. Duration statistics use only fully observed completed runs, not an unbiased estimate of all run durations.",
+  "limits": [
+    "Full validation decision streams include early/terminal decisions outside eligible forecast origins; supports differ.",
+    "Endpoint equality can conceal intervening changes and returns; it is not an event-duration measure.",
+    "True-current-label persistence is a privileged diagnostic, not an admissible input baseline.",
+    "Elapsed-time groups differ in surviving episodes, skill mix and available history, so their differences do not isolate history length's effect.",
+    "Catalogue selections can share physical guidance; runs are not necessarily distinct executed manoeuvres.",
+    "Overlapping forecasts are correlated; these descriptive tables do not supply independent-sample significance tests.",
+    "The 33-label macro F1 uses a fixed catalogue; supported-label macro F1 may average different label sets across horizons."
+  ],
+  "test_evaluated": false
+}

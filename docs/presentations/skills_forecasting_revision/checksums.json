@@ -1,0 +1,17 @@
+{
+  "data/checksums.json": "c5ab78c41aceeac962bb619465d06fc1201aef7ba683ad5ff9949c1f3553cdeb",
+  "data/comparisons.csv": "62d0c2b81f361849128b468eb47c34bc26768151f389eadc0b88f1804da6c63d",
+  "data/costs.csv": "fe2c7261af283847f804a21ea774c1d88cd731331196416551a43fdc546f9c73",
+  "data/evidence.json": "aa9c93b12de625761743b7a104f41bf46004a0cf2afb5bfe1f736765d36cd9b3",
+  "data/horizon_comparisons.csv": "18cf8d7630b737783646ecb583dc8d007bc9332c78781799426e55637d158d23",
+  "data/learning_curves.csv": "000211ce6d3aef4472602a701242732050ab18a91c50505aac54b23aba8b2fac",
+  "data/metrics.csv": "e0927b0078b445f39d39dcaa10a0cfa30bc362666873f7a2d833a6007227a3e0",
+  "data/pilot_intervals.csv": "4609500ad9d6760de3742f19f89d8fde83e6fdeb7b763eac91cf7c31aeec8287",
+  "data/skills.csv": "6e2e65cac9aab96ecfa8e6953fa5cd0839682eab4463a530e34ee9ca387e36df",
+  "data/temporal.csv": "eec31404852351cbf2f2a691ba6002d1377bddf042893605840a7a666ed5be2f",
+  "index.html": "b2413867ae281a13b48e56fd84ed9221f0de5076e49211577bfe9d5162a897b7",
+  "README.md": "9f172bda93c161c27947ee4f7595be99c6bcf436c1a4e0b4f93f4d6de966e40e",
+  "skills_forecasting_revision.pdf": "f51ec4db473669c81e58e717136c39bfb141feda956612747c53479bed37d500",
+  "speaker_notes.md": "ac70996bb96c4420c0cfaa6e5eba50eea4ee12d74a86769e62b6cabbff9d1922",
+  "study_guide.md": "78d8419937ed214e6ad31a4b0b2852b0cdb7af5f15febc1be8505343142efccd"
+}

@@ -1,0 +1,15 @@
+{
+  "training_plan_unchanged": true,
+  "parallel_execution": {
+    "candidate": "history60_tcn",
+    "fold": 1,
+    "seeds": [
+      42,
+      43,
+      44
+    ],
+    "workers": 1,
+    "alongside": "Main confirmation worker; independent registered runs only"
+  },
+  "timing_interpretation": "Some fits share the same RTX4090 concurrently. Summed per-fit epoch-loop times include resource contention and exclude loading/setup/selection prediction. They are not end-to-end duration or an isolated throughput benchmark."
+}

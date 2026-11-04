@@ -1,0 +1,9 @@
+{
+  "mean_accuracy_gain": 0.014365341659363548,
+  "lower_95": 0.009048297305021798,
+  "upper_95": 0.02080884638652716,
+  "scenario_groups": 45,
+  "draws": 5000,
+  "seed": 1729,
+  "interpretation": "Conditional on fixed models and development data; not selection-adjusted"
+}
