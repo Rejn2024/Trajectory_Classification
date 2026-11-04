@@ -26,6 +26,39 @@ For current pilot experiments, use the [experiment index](../docs/pilot_experime
 in its first code cell and **Run All** to refresh progress, tables and plots. Saved
 historical reports live in `results/`. Training notebooks start new runs.
 
+[09b: paired A01/B01 skill forecasting](09b_paired_skill_forecasting.ipynb) combines
+the synchronized observation streams from both published corpora. It uses the same
+five-second history and +1/+2/+5-second skill targets as notebook 09, with six
+attention heads, scenario-grouped 40/30/30 train/test/validation splits and up to 100 epochs.
+Optional early stopping is enabled in the notebook: after the first 50 epochs,
+10 consecutive epochs without a new minimum test loss conclude training (earliest
+stop: epoch 60). Set `EARLY_STOPPING=False` for the full 100 epochs.
+Run All downloads the needed LFS files and trains; each epoch displays train/test
+per-class loss and F1. Every improving test-loss checkpoint is retained, and the
+selected checkpoint receives final inline diagnostics on all three partitions.
+Validation is held out until that final report; test is used for model selection.
+The notebook includes setup, resumption instructions and performance recommendations.
+Every executable cell reports CPU and elapsed wall time using `%%time`, with CUDA
+synchronization before completion. A resource audit describes current batching,
+and the throughput recommendations include conditional speedup and memory estimates.
+CUDA defaults now use BF16 autocast, training/evaluation batches of 512/1024 and
+a normalized cache of unique frames on the GPU. CPU execution falls back to FP32
+and direct memory-mapped batches. Set `DATA_BACKEND="prefetch"` for a reusable,
+spawn-safe CPU worker pool with pinned buffers and overlapping CUDA transfers.
+The training-only batch benchmark compares 512 and 1024 without changing the fitted
+model or RNG state. `COMPILE_MODEL` and `BENCHMARK_COMPILATION` opt into compilation
+and an eager/compiled comparison; saved weights remain portable. Earlier run folders
+are preserved; acceleration settings use a fresh run directory.
+MLflow tracking is enabled by default, with a dedicated SQLite store at
+`artifacts/paired_skill_forecasting/mlflow.db`. The setup cell prints the local UI
+command; set `MLFLOW_TRACKING_URI` to use a tracking server. Each training run gets
+a unique folder/name and logs configuration, data/source lineage, runtime/backend,
+epoch/horizon/class metrics, final metrics, selected model and diagnostic figures.
+`EXISTING_RUN` plus `RESUME=True` reuses the original MLflow run ID. The final
+notebook section compares runs on the same prepared dataset and plots their loss
+histories. Models are saved in the MLflow PyTorch flavor with their input schema;
+the raw corpora and large prepared/prediction arrays are not uploaded.
+
 Start with `01_generate_smoke_dataset.ipynb`. It is intentionally executable without
 BVR Sim: a small deterministic dynamics stub exercises the repository's real scenario
 sampler, policies, episode runner, feature generation, manifest, and Parquet writer.
