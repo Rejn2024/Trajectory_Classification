@@ -1,0 +1,610 @@
+{
+  "schema_version": 1,
+  "revision_date": "2026-11-04",
+  "model_order": [
+    "original",
+    "v3",
+    "v4",
+    "v5"
+  ],
+  "models": {
+    "original": {
+      "label": "Original Transformer",
+      "members": 1,
+      "parameters": 439651,
+      "features": 54,
+      "history_seconds": [
+        5
+      ],
+      "history_tokens": [
+        51
+      ],
+      "settings": {
+        "architecture": "transformer",
+        "num_classes": 33,
+        "history_steps": 51,
+        "input_size": 54,
+        "width": 128,
+        "layers": 2,
+        "heads": 4,
+        "dropout": 0.1
+      },
+      "mean_metrics": {
+        "top1_accuracy": 0.577489029240618,
+        "top3_accuracy": 0.8771201416515911,
+        "macro_f1_catalogue": 0.29005219100341356,
+        "nll": 1.2493577003479004
+      },
+      "history_text": "5 s",
+      "tokens_text": "51"
+    },
+    "v3": {
+      "label": "12 temporal MLPs",
+      "members": 12,
+      "parameters": 28977060,
+      "features": 91,
+      "history_seconds": [
+        20,
+        60
+      ],
+      "history_tokens": [
+        26,
+        66
+      ],
+      "components": [
+        {
+          "candidate": "history20_mlp_accuracy",
+          "epochs": 46,
+          "temperature": 1.4654122285172617,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "label": "20 s / standard",
+          "features_per_timestamp": 91,
+          "history_tokens": 26,
+          "input_columns_with_flags": 2392,
+          "history_seconds": 20,
+          "width": 256,
+          "block_expansion_width": 512,
+          "residual_blocks": 3,
+          "parameters_per_member": 1428835,
+          "dropout": 0.2,
+          "label_smoothing": 0.02,
+          "weight_decay": 0.03,
+          "refit_seconds_sum": 237.7330347999814,
+          "refit_seconds_min": 79.0111818999867,
+          "refit_seconds_max": 79.47532959998352
+        },
+        {
+          "candidate": "history20_mlp_wide_accuracy",
+          "epochs": 32,
+          "temperature": 1.401350272421892,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "label": "20 s / wider",
+          "features_per_timestamp": 91,
+          "history_tokens": 26,
+          "input_columns_with_flags": 2392,
+          "history_seconds": 20,
+          "width": 512,
+          "block_expansion_width": 1024,
+          "residual_blocks": 3,
+          "parameters_per_member": 4430435,
+          "dropout": 0.3,
+          "label_smoothing": 0.03,
+          "weight_decay": 0.05,
+          "refit_seconds_sum": 166.544699399994,
+          "refit_seconds_min": 55.32295269999304,
+          "refit_seconds_max": 55.87836050000624
+        },
+        {
+          "candidate": "history20_mlp_smooth_accuracy",
+          "epochs": 40,
+          "temperature": 1.1691098930819268,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "label": "20 s / smoothing",
+          "features_per_timestamp": 91,
+          "history_tokens": 26,
+          "input_columns_with_flags": 2392,
+          "history_seconds": 20,
+          "width": 256,
+          "block_expansion_width": 512,
+          "residual_blocks": 3,
+          "parameters_per_member": 1428835,
+          "dropout": 0.3,
+          "label_smoothing": 0.08,
+          "weight_decay": 0.05,
+          "refit_seconds_sum": 228.9770065000339,
+          "refit_seconds_min": 68.79928850001306,
+          "refit_seconds_max": 89.47979380001198
+        },
+        {
+          "candidate": "history60_mlp_accuracy",
+          "epochs": 40,
+          "temperature": 1.423756914204838,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "label": "60 s / standard",
+          "features_per_timestamp": 91,
+          "history_tokens": 66,
+          "input_columns_with_flags": 6072,
+          "history_seconds": 60,
+          "width": 256,
+          "block_expansion_width": 512,
+          "residual_blocks": 3,
+          "parameters_per_member": 2370915,
+          "dropout": 0.2,
+          "label_smoothing": 0.02,
+          "weight_decay": 0.03,
+          "refit_seconds_sum": 291.7449762999895,
+          "refit_seconds_min": 95.35346909999498,
+          "refit_seconds_max": 100.15417769999476
+        }
+      ],
+      "ensemble": "Equal mean of twelve calibrated probability arrays",
+      "mean_metrics": {
+        "top1_accuracy": 0.6475569617241915,
+        "top3_accuracy": 0.8972280078781463,
+        "macro_f1_catalogue": 0.3966840655712101,
+        "nll": 1.13740157592637
+      },
+      "history_text": "20/60 s",
+      "tokens_text": "26/66"
+    },
+    "v4": {
+      "label": "12 MLPs + 3 TCNs",
+      "members": 15,
+      "parameters": 31730031,
+      "features": 91,
+      "history_seconds": [
+        20,
+        60
+      ],
+      "history_tokens": [
+        26,
+        66
+      ],
+      "components": [
+        {
+          "candidate": "history60_tcn",
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "epochs": 42,
+          "temperature": 1.4599881045960732,
+          "parameters_per_member": 917657
+        }
+      ],
+      "tcn_settings": {
+        "architecture": "tcn",
+        "features": "geometry",
+        "history_seconds": 60,
+        "recent_stride": 5,
+        "width": 128,
+        "layers": 6,
+        "dropout": 0.2,
+        "smoothing": 0.02,
+        "weight_decay": 0.03,
+        "auxiliary_weight": 0,
+        "checkpoint_metric": "accuracy",
+        "calibrate": true
+      },
+      "ensemble": "50% v3 probabilities + 50% equal mean of three TCNs",
+      "new_weight": 0.5,
+      "mean_metrics": {
+        "top1_accuracy": 0.6619223033835552,
+        "top3_accuracy": 0.9055126003602396,
+        "macro_f1_catalogue": 0.40241049969980747,
+        "nll": 1.0928617593895378
+      },
+      "history_text": "20/60 s",
+      "tokens_text": "26/66"
+    },
+    "v5": {
+      "label": "6 Transformers",
+      "members": 6,
+      "parameters": 18908886,
+      "features": 91,
+      "history_seconds": [
+        60
+      ],
+      "history_tokens": [
+        66
+      ],
+      "components": [
+        {
+          "candidate": "history60_patch_transformer",
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "family": "pure_transformer",
+          "epochs": 42,
+          "temperature": 1.5072423450267238,
+          "parameters_per_member": 2279705
+        },
+        {
+          "candidate": "history60_temporal_transformer",
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "family": "pure_transformer",
+          "epochs": 28,
+          "temperature": 1.4619287138774937,
+          "parameters_per_member": 4023257
+        }
+      ],
+      "settings": {
+        "history60_patch_transformer": {
+          "features": "geometry",
+          "recent_stride": 5,
+          "width": 192,
+          "layers": 3,
+          "dropout": 0.2,
+          "smoothing": 0.02,
+          "weight_decay": 0.03,
+          "auxiliary_weight": 0,
+          "checkpoint_metric": "accuracy",
+          "calibrate": true,
+          "architecture": "patch_transformer",
+          "history_seconds": 60
+        },
+        "history60_temporal_transformer": {
+          "features": "geometry",
+          "recent_stride": 5,
+          "width": 192,
+          "layers": 3,
+          "dropout": 0.2,
+          "smoothing": 0.02,
+          "weight_decay": 0.03,
+          "auxiliary_weight": 0,
+          "checkpoint_metric": "accuracy",
+          "calibrate": true,
+          "architecture": "temporal_transformer",
+          "history_seconds": 60
+        }
+      },
+      "ensemble": "Equal mean of three patch and three temporal Transformers",
+      "mean_metrics": {
+        "top1_accuracy": 0.6587792743407713,
+        "top3_accuracy": 0.9078654123075022,
+        "macro_f1_catalogue": 0.39625848113262646,
+        "nll": 1.0617906494797227
+      },
+      "history_text": "60 s",
+      "tokens_text": "66"
+    }
+  },
+  "classes": [
+    "abort_support",
+    "accelerate_to_speed",
+    "beam_missile_left",
+    "beam_missile_right",
+    "beam_target_left",
+    "beam_target_right",
+    "climb_to_altitude",
+    "commit",
+    "crank_target_left",
+    "crank_target_right",
+    "decelerate_to_speed",
+    "defensive_reversal",
+    "descend_to_altitude",
+    "dive_defense",
+    "drag_missile",
+    "extend",
+    "lag_pursuit",
+    "last_ditch_break",
+    "launch",
+    "lead_pursuit",
+    "lock_target",
+    "maintain_heading",
+    "notch_left",
+    "notch_right",
+    "preemptive_crank",
+    "pursue_target",
+    "recommit",
+    "search",
+    "secondary_shot",
+    "short_range_attack",
+    "support_missile",
+    "turn_cold",
+    "turn_to_heading"
+  ],
+  "horizons_s": [
+    1,
+    2,
+    5
+  ],
+  "counts": {
+    "train": {
+      "episodes": 2100,
+      "scenario_groups": 210,
+      "samples": 146690,
+      "valid_by_horizon": [
+        146690,
+        145163,
+        140516
+      ]
+    },
+    "validation": {
+      "episodes": 450,
+      "scenario_groups": 45,
+      "samples": 30802,
+      "valid_by_horizon": [
+        30802,
+        30466,
+        29458
+      ]
+    },
+    "test": {
+      "episodes": 450,
+      "scenario_groups": 45,
+      "samples": 0,
+      "valid_by_horizon": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "task": {
+    "observer": "B01",
+    "target": "A01",
+    "known_pilots": 10,
+    "classes": 33,
+    "pilots": 10,
+    "scenario_groups": 300,
+    "episodes": 3000,
+    "train_groups": 210,
+    "validation_groups": 45,
+    "test_groups": 45,
+    "validation_origins": 30802,
+    "valid_targets": [
+      30802,
+      30466,
+      29458
+    ],
+    "meaning": "Exact future catalogue selection; not pilot competence"
+  },
+  "selection": {
+    "fit_groups": 147,
+    "stop_groups": 21,
+    "selection_groups": 42,
+    "training_seeds": [
+      42,
+      43,
+      44
+    ],
+    "partition_seeds": [
+      271828,
+      314159
+    ]
+  },
+  "learning_curves": {
+    "v3": {
+      "variant": "history20_mlp_accuracy",
+      "fold": 0,
+      "seed": 42,
+      "selected_epoch": 51,
+      "epochs_completed": 60,
+      "scope": "Internal stop groups"
+    },
+    "v4": {
+      "variant": "history60_tcn",
+      "fold": 0,
+      "seed": 42,
+      "selected_epoch": 51,
+      "epochs_completed": 60,
+      "scope": "Internal stop groups"
+    },
+    "v5": {
+      "variant": "history60_patch_transformer",
+      "fold": 0,
+      "seed": 42,
+      "selected_epoch": 47,
+      "epochs_completed": 57,
+      "scope": "Internal stop groups"
+    }
+  },
+  "learning_contract": "Representative population-wide internal fold-0 seed-42 curves; training uses smoothing/dropout, stop NLL is uncalibrated; no per-pilot forecast epoch curves were logged.",
+  "cost_contract": "New fits per study only. v3 excludes initial_v1 and v2; v4/v5 exclude reused fits. Summed recorded timers exclude setup and include shared-GPU contention; not wall time or isolated throughput.",
+  "prior_cost_context": {
+    "initial_and_v2_fits": 13,
+    "initial_and_v2_seconds": 442.06275549996644,
+    "old_all_stages_fits": 36,
+    "old_all_stages_seconds": 1900.3717717999534
+  },
+  "temporal_contract": "All phases use the common eligible origins across horizons. Full 20/60-second histories first occur at 21/61-second origins because acceleration needs prior frames and the reset is excluded.",
+  "temporal_limits": [
+    "Full validation decision streams include early/terminal decisions outside eligible forecast origins; supports differ.",
+    "Endpoint equality can conceal intervening changes and returns; it is not an event-duration measure.",
+    "True-current-label persistence is a privileged diagnostic, not an admissible input baseline.",
+    "Elapsed-time groups differ in surviving episodes, skill mix and available history, so their differences do not isolate history length's effect.",
+    "Catalogue selections can share physical guidance; runs are not necessarily distinct executed manoeuvres.",
+    "Overlapping forecasts are correlated; these descriptive tables do not supply independent-sample significance tests.",
+    "The 33-label macro F1 uses a fixed catalogue; supported-label macro F1 may average different label sets across horizons."
+  ],
+  "persistence": {
+    "fraction_adjacent_equal": 0.9177334287455938,
+    "median_completed_run_s": 5.0,
+    "p90_completed_run_s": 16.0,
+    "censored_runs": 450,
+    "completed_runs": 3104
+  },
+  "secondary": {
+    "mean_accuracy": 0.6626217211465653,
+    "gain": 0.0006994177630100795,
+    "lower_95": -0.006286044275958937,
+    "upper_95": 0.008441108877402693,
+    "members": 21,
+    "parameters": 50638917
+  },
+  "secondary_summary": {
+    "selection": {
+      "kind": "secondary_blend",
+      "recipe": "pure_pair",
+      "components": [
+        "history60_patch_transformer",
+        "history60_temporal_transformer"
+      ],
+      "new_weight": 0.75,
+      "selection_metrics": {
+        "recipe": "pure_pair",
+        "new_weight": 0.75,
+        "mean_accuracy": 0.6317127873331516,
+        "eligible": true,
+        "folds": 2,
+        "mean_gain": 0.010829348286587714,
+        "nll": 1.145566165447235,
+        "mean_macro_f1": 0.3401757999058038
+      },
+      "quality_guards_passed_both_folds": true,
+      "active_members": 21,
+      "active_parameters": 50638917
+    },
+    "evaluation": {
+      "recipe": {
+        "kind": "secondary_blend",
+        "recipe": "pure_pair",
+        "components": [
+          "history60_patch_transformer",
+          "history60_temporal_transformer"
+        ],
+        "new_weight": 0.75,
+        "selection_metrics": {
+          "recipe": "pure_pair",
+          "new_weight": 0.75,
+          "mean_accuracy": 0.6317127873331516,
+          "eligible": true,
+          "folds": 2,
+          "mean_gain": 0.010829348286587714,
+          "nll": 1.145566165447235,
+          "mean_macro_f1": 0.3401757999058038
+        },
+        "quality_guards_passed_both_folds": true,
+        "active_members": 21,
+        "active_parameters": 50638917
+      },
+      "metrics": {
+        "accuracy": [
+          0.6710278553340692,
+          0.6672684303814088,
+          0.6495688777242176
+        ],
+        "mean_accuracy": 0.6626217211465653,
+        "macro_f1": [
+          0.4170655579316109,
+          0.41685262174524634,
+          0.3679552495508794
+        ],
+        "mean_macro_f1": 0.40062447640924553,
+        "nll": 1.0477253198623657
+      },
+      "mean_accuracy_gain": 0.0006994177630100795,
+      "paired_intervals": [
+        {
+          "horizon_s": 1,
+          "accuracy_gain": 9.73962729692877e-05,
+          "lower_95": -0.007586939834115627,
+          "upper_95": 0.008343413223373777,
+          "scenario_groups": 45,
+          "bootstrap_draws": 5000
+        },
+        {
+          "horizon_s": 2,
+          "accuracy_gain": 0.0010503512111862403,
+          "lower_95": -0.0067537004081573955,
+          "upper_95": 0.009470783914099293,
+          "scenario_groups": 45,
+          "bootstrap_draws": 5000
+        },
+        {
+          "horizon_s": 5,
+          "accuracy_gain": 0.0009505058048747369,
+          "lower_95": -0.005602459479880796,
+          "upper_95": 0.00834004324751034,
+          "scenario_groups": 45,
+          "bootstrap_draws": 5000
+        }
+      ],
+      "mean_accuracy_interval": {
+        "mean_accuracy_gain": 0.0006994177630100882,
+        "lower_95": -0.006286044275958937,
+        "upper_95": 0.008441108877402693,
+        "scenario_groups": 45,
+        "bootstrap_draws": 5000,
+        "seed": 1729,
+        "interpretation": "Conditional on frozen models and development data, not selection-adjusted; crossing zero is not proof of equivalence"
+      },
+      "standalone_new_components_metrics": {
+        "accuracy": [
+          0.6666774884747744,
+          0.6647081993041424,
+          0.6449521352433973
+        ],
+        "mean_accuracy": 0.6587792743407713,
+        "macro_f1": [
+          0.4119399273904142,
+          0.4129711116511061,
+          0.36386440435635925
+        ],
+        "mean_macro_f1": 0.39625848113262646,
+        "nll": 1.0617905855178833
+      }
+    }
+  },
+  "comparison_contract": "Previously inspected development validation; shared whole-scenario intervals conditional on frozen models, not selection-adjusted. Crossing zero does not establish equivalence.",
+  "collection_contract": "Committed portable CSV/JSON evidence only; no raw observations, inference, fitting, calibration or reserved-test access.",
+  "source_sha256": {
+    "docs/presentations/skills_catalogue/data/evidence.json": "856760c3907fcc688e7ab738236d6d957014b5024c1d469aa2135c1e6b2416a0",
+    "docs/presentations/skills_catalogue/data/architecture_review.json": "7320ea34bdf09a73381a88d9d87a0d617ce9228c46166050b7f055733e53cbf0",
+    "docs/presentations/skills_catalogue/data/summary_metrics.csv": "432f58b09ffd776d34fcbb38c82980d8774167e80c843d5a40e3dad71c0d5ae9",
+    "docs/presentations/skills_catalogue/data/probability_metrics.csv": "bcbc573c183636f47003441d0b5b810df215da3ea36320d16b18c3a0d6545571",
+    "docs/experiments/skill_forecasting_v4/data/metrics.csv": "7a49a4f3506093d2cedb474a38f38df206a43fc2a022643b321d7a55af65f428",
+    "docs/experiments/skill_forecasting_v5_transformers/data/metrics.csv": "205b2888c641a9af6b2e6df913dbf0c5d88f70220032792282d7b2b39b043b23",
+    "docs/presentations/skills_catalogue/data/class_metrics.csv": "c1a46b929d83578d355e48a841248331f7461e74c877b8b52d7d30d866a774e6",
+    "docs/experiments/skill_forecasting_v4/data/pilot_skill_metrics.csv": "2ca6e799d5a7f8050377731e5a20e48125ac3e7ddbdf710355aecd7ba260fb3d",
+    "docs/experiments/skill_forecasting_v5_transformers/data/pilot_skill_metrics.csv": "b00bb79b29d123bf00d0abf511bdf0ac43b6117e9613cec8cc2fa6fe3857f8f0",
+    "docs/experiments/skill_forecasting_v4/data/evidence.json": "e419cc07c49f22eb948624974c46f87da761754e89597b744a92924af847e93d",
+    "docs/experiments/skill_forecasting_v5_transformers/data/evidence.json": "97183f84cc8c505665c8d2af72f1ba030405b2f32afa900e32a223377a5090c7",
+    "docs/experiments/skill_forecasting_v4/data/evaluation.json": "482aec5dff61ca0ee5a7b045ea94fb41e99528599e946d2f5cc14fefd3f769a4",
+    "docs/experiments/skill_forecasting_v5_transformers/data/evaluation.json": "55a6749dfdd26bbd80bba9cead5c111296bb2e6a642f171b87941422b5d93f76",
+    "docs/experiments/skill_forecasting_v5_transformers/data/pilot_comparison.csv": "6c14f3c3e9c2208c7c06adaee748c98885c3cbc12941ab7620fdcd0685003b60",
+    "docs/presentations/skills_catalogue/data/forecast_learning_curves.csv": "de0b5c05e8339ebba29913797857aa2a437f1956800a81d26274476d9d6613e7",
+    "docs/presentations/skills_catalogue/data/training_run_inventory.csv": "65afd1c336e58c0867606475630be19a49959e9b511daeee4327c97a31356d43",
+    "docs/experiments/skill_forecasting_v4/data/run_inventory.csv": "e954c01ff9ac675453d0631e322269a61422624d3749272ece1747666d157313",
+    "docs/experiments/skill_forecasting_v5_transformers/data/run_inventory.csv": "c8f2f97ff85af1354b52904bcd376c0cea56bd03db2300ebe9a7a51f0b21f2ef",
+    "docs/experiments/skill_forecasting_v4/data/training_histories.csv": "f61cea43cf9e7deca67d18fbd9bf164fcfb95b3965c8f26e5fb561cfeb577743",
+    "docs/experiments/skill_forecasting_v5_transformers/data/training_histories.csv": "30277f8458cd0a4cb8849262004eb0082b9e2a48a6ce05a6ac7d8a9e2d129b5f",
+    "docs/experiments/skill_forecasting_v5_transformers/data/temporal_common_origin_metrics.csv": "c06cd6bed156a208f4412cfaed9dff1e9c565ab43f0cd4f759a5a780fc0beb5d",
+    "docs/presentations/skills_catalogue/data/temporal_elapsed_phases.csv": "d86a398d5f13ff3f4488a3842749249dbe8a7d3d61d51a046430e804566c54ce",
+    "docs/experiments/skill_forecasting_v4/data/paired_scenario_bootstrap.csv": "fccffdde4843d1b686171331603b5648ca769c37377c65d99f947fb4ddba4491",
+    "docs/experiments/skill_forecasting_v4/data/mean_horizon_interval.json": "c0019adc2b3b04eba78fd7539a93f6a543470c10231f45f28351123fd9cf1070",
+    "docs/experiments/skill_forecasting_v5_transformers/data/paired_scenario_bootstrap.csv": "adf6594cde6fa56296c702319cab604cf25d8589510100feca26046eb28af7bd",
+    "docs/experiments/skill_forecasting_v5_transformers/data/mean_horizon_intervals.json": "b000d37dcda70a20d411c5bc1fe883eb1cc857aafc80bb7482037e8c8504beed",
+    "docs/experiments/skill_forecasting_v4/data/frozen_selection.json": "2dc546cd5393753566a063ddc9fb96b9e6cb5c29614e841e431b514f26014698",
+    "docs/experiments/skill_forecasting_v5_transformers/data/frozen_selection.json": "e5b109c3bf48cedfdebee3657097411cf691214773dce694daaa9ccbfd4c1b54",
+    "docs/experiments/skill_forecasting_v4/data/protocol.json": "c03b1989e958a2c013fe92ffc86608f9884cc6166fd40096aea400cd2a7b4ffa",
+    "docs/experiments/skill_forecasting_v5_transformers/data/protocol.json": "7cdb254d8a2b72bb7f30f3eea6a69e201888be10211766be1561cf65a09e7559",
+    "docs/presentations/skills_catalogue/data/temporal_evidence.json": "0e6b28a8ec613c12f60bb69966715a96572e9654114e5d1a932b77c3fdce0d76",
+    "docs/presentations/skills_catalogue/data/temporal_pilot_dynamics.csv": "666e8e3969fa368ae0af46269e238c7f03bfe4f318e55c7c5b1f5bb60858782c"
+  },
+  "test_evaluated": false
+}
