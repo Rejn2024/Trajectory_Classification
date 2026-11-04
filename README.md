@@ -1,20 +1,25 @@
 # BVR behaviour prediction
 
+**RL and forecasting handover:**
+[Dataset locations, frozen pilots and generation commands](docs/rl_forecasting_handover.md).
+Explains which artifacts are available through Git LFS, which remain local,
+and how to rebuild the raw corpora and prepared forecasting datasets.
+
 **Latest presentation — 22-slide skills forecasting revision:**
-[Download the revision PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/forecasting/docs/presentations/skills_forecasting_revision/skills_forecasting_revision.pdf)
+[Download the revision PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/main/docs/presentations/skills_forecasting_revision/skills_forecasting_revision.pdf)
 · [Slide map and offline deck](docs/presentations/skills_forecasting_revision/README.md)
 · [Slide-by-slide study guide](docs/presentations/skills_forecasting_revision/study_guide.md).
 Four main model milestones, architecture diagrams, learning curves, metrics and
 one revision question per slide. This is the main study sequence through v5.
 
 **Latest experiment — Transformer challenge (v5):**
-[Download the six-page PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/forecasting/docs/experiments/skill_forecasting_v5_transformers/skill_forecasting_v5_transformers.pdf)
+[Download the six-page PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/main/docs/experiments/skill_forecasting_v5_transformers/skill_forecasting_v5_transformers.pdf)
 · [Results and complete evidence](docs/experiments/skill_forecasting_v5_transformers/README.md).
 
 **Historical detailed edition — 41-slide skills catalogue comparison:**
-[Download the full PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf)
-· [View the PDF on GitHub](https://github.com/Rejn2024/Trajectory_Classification/blob/forecasting/docs/presentations/skills_catalogue/skills_catalogue.pdf).
-Published on the `forecasting` branch.
+[Download the full PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/main/docs/presentations/skills_catalogue/skills_catalogue.pdf)
+· [View the PDF on GitHub](https://github.com/Rejn2024/Trajectory_Classification/blob/main/docs/presentations/skills_catalogue/skills_catalogue.pdf).
+The forecasting work and presentations are integrated into `main`.
 
 An implementation of the revised project plan for target-centric F-16 manoeuvre
 recognition, tactical-transition forecasting, and BVR Sim native-action forecasting.
@@ -62,7 +67,7 @@ but this study establishes no accuracy improvement or equivalence.
 [Architecture experiment supplement (v4)](docs/experiments/skill_forecasting_v4/README.md)
 compares the new sequence-model search directly with the retained twelve-model
 ensemble, with a separate
-[five-page PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/forecasting/docs/experiments/skill_forecasting_v4/skill_forecasting_v4.pdf),
+[five-page PDF](https://github.com/Rejn2024/Trajectory_Classification/raw/refs/heads/main/docs/experiments/skill_forecasting_v4/skill_forecasting_v4.pdf),
 complete candidate results, pilot and skill metrics, uncertainty and training cost.
 
 [Detailed skills catalogue comparison](docs/presentations/skills_catalogue/README.md)
