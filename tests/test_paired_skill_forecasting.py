@@ -32,45 +32,47 @@ def episode_frames(n=141, episode_id="p_case"):
 
 def test_exact_horizons_masks_and_causal_histories():
     frames = list(episode_frames())
-    features, ends, targets = paired.paired_examples(*frames, ["alpha", "beta"])
-    assert features.shape == (141, 108)
+    features, ends, targets = paired.trained_examples(*frames[1:], ["alpha", "beta"])
+    assert features.shape == (141, 54)
     assert ends[0] == 60
     assert targets[0].tolist() == [1, 0, 1]  # Exact decisions at ticks 70, 80 and 110.
     # Remove the +2 s decision: never substitute the previous or next decision.
     frames[3] = frames[3].loc[frames[3].step.ne(80)]
-    _, _, targets = paired.paired_examples(*frames, ["alpha", "beta"])
+    _, _, targets = paired.trained_examples(*frames[1:], ["alpha", "beta"])
     assert targets[0].tolist() == [1, -1, 1]
     assert targets[-1, 2] == -1  # Never extend into an unrecorded future.
     # Modify future-only non-geometric observations and prove past features unchanged.
     for frame in frames[:2]:
         frame.loc[frame.step.gt(60), "obs_19"] = 123
-    modified, _, _ = paired.paired_examples(*frames, ["alpha", "beta"])
+    modified, _, _ = paired.trained_examples(*frames[1:], ["alpha", "beta"])
     np.testing.assert_array_equal(features[10:61], modified[10:61])
     frames[2].loc[20, "target_alive"] = False
-    _, ends, _ = paired.paired_examples(*frames, ["alpha", "beta"])
+    _, ends, _ = paired.trained_examples(*frames[1:], ["alpha", "beta"])
     assert 60 not in ends  # Includes the extra acceleration lookback in the alive check.
 
 
 def test_bad_pairing_and_bad_labels_fail():
     frames = list(episode_frames())
-    frames[0].loc[10, "step"] = 99
+    frames[1].loc[10, "step"] = 99
     with pytest.raises(ValueError, match="cadence"):
-        paired.paired_examples(*frames, ["alpha", "beta"])
+        paired.trained_examples(*frames[1:], ["alpha", "beta"])
     frames = list(episode_frames())
-    frames[0].loc[10, "obs_00"] += .01
-    with pytest.raises(ValueError, match="divergent"):
-        paired.paired_examples(*frames, ["alpha", "beta"])
+    frames[1].loc[10, "time_s"] += .01
+    with pytest.raises(ValueError, match="cadence"):
+        paired.trained_examples(*frames[1:], ["alpha", "beta"])
     frames = list(episode_frames())
     frames[3] = pd.concat([frames[3], frames[3].iloc[:1]])
     with pytest.raises(ValueError, match="decision"):
-        paired.paired_examples(*frames, ["alpha", "beta"])
+        paired.trained_examples(*frames[1:], ["alpha", "beta"])
 
 
 def test_grouped_split_has_exact_requested_ratios():
     cases = [{"scenario_group": f"case_{r}_{i:03d}", "scenario": {"range_m": r}}
              for r in [18000, 30000, 45000] for i in range(100)]
-    groups = paired.scenario_splits(cases)
-    assert groups == paired.scenario_splits(cases)
+    episodes = pd.DataFrame({"scenario_group": [c["scenario_group"] for c in cases]})
+    counts = np.ones((len(cases), 3, 2), dtype=int)
+    groups = paired.scenario_splits(cases, episodes, counts)
+    assert groups == paired.scenario_splits(cases, episodes, counts)
     for distance in [18000, 30000, 45000]:
         counts = pd.Series([g["split"] for g in groups.values() if g["range_m"] == distance]).value_counts()
         assert counts.to_dict() == {"train": 40, "test": 30, "validation": 30}
@@ -90,7 +92,7 @@ def test_metrics_class_nll_f1_and_missing_labels():
 def test_model_shape_and_masked_gradients():
     model = paired.PairedTransformer(num_classes=3, width=12, heads=6, layers=1)
     assert model.encoder.layers[0].self_attn.num_heads == 6
-    assert model(torch.zeros(2, 51, 108)).shape == (2, 3, 3)
+    assert model(torch.zeros(2, 51, len(paired.FEATURES))).shape == (2, 3, 3)
     logits = torch.randn(2, 3, 3, requires_grad=True)
     labels = torch.tensor([[0, -1, 2], [1, 0, -1]])
     paired.masked_loss(logits, labels).backward()
@@ -110,12 +112,11 @@ def synthetic_corpora(tmp_path):
         metadata.append({"episode_id": f"p_case_{i:04d}", "pilot_id": "pilot_001",
                          "scenario_group": f"case_{i:04d}", "seed": i,
                          "checkpoint_sha256": "fixed", "frames": 141})
-    for name, observer, target in [("tactical-episodes-v1", "A01", "B01"),
-                                   ("trained-pilot-episodes-v1", "B01", "A01")]:
+    for name, observer, target in [("trained-pilot-episodes-v1", "B01", "A01")]:
         corpus = root / "shared/corpora" / name
         corpus.mkdir(parents=True)
         paired.write_json(corpus / "config.json", {"cases": cases, "pilots": ["pilot_001"],
-                          "observer_id": observer, "target_id": target, "sample_interval_s": .1})
+                          "observer_id": observer, "target_id": target, "target_policy": "trained_pilot", "sample_interval_s": .1})
         paired.write_json(corpus / "schema.json", {})
         pd.DataFrame(metadata).to_parquet(corpus / "episodes.parquet", index=False)
         parts = ["observations"] if observer == "A01" else ["observations", "tracks", "target_decisions"]
@@ -209,8 +210,8 @@ def controlled_training(tmp_path, monkeypatch, loss_at_epoch):
     paired.write_json(directory / "manifest.json", {"fixture": "controlled test loss"})
     data = SimpleNamespace(directory=directory, classes=["a", "b"],
                            indices={"train": np.array([0])},
-                           mean=np.zeros(108, np.float32), std=np.ones(108, np.float32))
-    data.batch = lambda ids, device: (torch.zeros(len(ids), 51, 108, device=device),
+                           mean=np.zeros(len(paired.FEATURES), np.float32), std=np.ones(len(paired.FEATURES), np.float32))
+    data.batch = lambda ids, device: (torch.zeros(len(ids), 51, len(paired.FEATURES), device=device),
                                     torch.zeros(len(ids), 3, dtype=torch.long, device=device))
     calls = []
 
@@ -259,7 +260,9 @@ def test_optional_early_stopping(tmp_path, monkeypatch, enabled, sequence,
         # The notebook must permit its final diagnostics after a legitimate early stop.
         notebook = json.loads((Path(__file__).parents[1] /
                               "notebooks/09b_paired_skill_forecasting.ipynb").read_text())
-        source = "".join(notebook["cells"][9]["source"]).split("best_epoch, final_metrics")[0]
+        source = next("".join(c["source"]) for c in notebook["cells"]
+                      if c["cell_type"] == "code" and "best_epoch, final_metrics" in "".join(c["source"]))
+        source = source.split("best_epoch, final_metrics")[0]
         if source.startswith("%%time\n"):
             source = source.partition("\n")[2]
         exec(compile(source, "final-evaluation-guard", "exec"), {
@@ -595,3 +598,62 @@ def test_download_reports_missing_lfs(tmp_path, monkeypatch):
     monkeypatch.setattr(paired.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1, stderr="not a git command"))
     with pytest.raises(RuntimeError, match="Git LFS is unavailable"):
         paired.download_paired_corpora(tmp_path, ["shared/test/*.parquet"], git_executable=str(git))
+
+
+def test_pre_split_episode_counts_match_prepared_labels(tmp_path):
+    root = synthetic_corpora(tmp_path)
+    assert not (root / "shared/corpora/tactical-episodes-v1").exists()
+    analysis = paired.analyze_trained_corpus(root)
+    assert "split" not in analysis["episodes"]
+    table = paired.skill_support_table(analysis)
+    # Repeated labels count once per episode; both skills occur at every horizon.
+    assert table.episodes.tolist() == [10] * 6
+    assert (table.windows > table.episodes).all()
+    output = tmp_path / "prepared"
+    manifest = paired.prepare_dataset(root, output, analysis=analysis)
+    assert set(manifest["source_manifests"]) == {paired.CORPUS}
+    assert manifest["data_contract"] == paired.DATA_CONTRACT
+    data = paired.PairedData(output)
+    assert data.features.shape[1] == 54
+    expected = pd.read_csv(output / "skill_support_by_split.csv")
+    for row in expected.itertuples():
+        h = paired.HORIZONS.index(row.horizon_s)
+        c = data.classes.index(row.skill)
+        ids = data.indices[row.split]
+        selected = data.samples.iloc[ids].loc[data.targets[ids, h] == c]
+        assert selected.episode_id.nunique() == row.episodes
+        assert len(selected) == row.windows
+
+
+def test_multilabel_stratification_balances_each_horizon_and_rare_skills():
+    cases = [{"scenario_group": f"g{i:03d}", "scenario": {"range_m": 18000}}
+             for i in range(100)]
+    # Two pilots share each scenario, including a skill present in just ten groups.
+    episodes = pd.DataFrame({"scenario_group": np.repeat([c["scenario_group"] for c in cases], 2)})
+    counts = np.zeros((200, 3, 4), dtype=int)
+    for i in range(100):
+        for h in range(3):
+            counts[2*i:2*i+2, h, (i + h) % 2] = 20
+            if (i + h) % 10 == 0:
+                counts[2*i:2*i+2, h, 2] = 1
+    # Fourth skill is globally absent and must remain visible with zero support.
+    groups = paired.scenario_splits(cases, episodes, counts)
+    analysis = {"episodes": episodes, "counts": counts, "classes": ["a", "b", "rare", "absent"]}
+    table = paired.skill_support_table(analysis, groups)
+    for h in paired.HORIZONS:
+        for name, total in [("a", 100), ("b", 100), ("rare", 20)]:
+            subset = table.loc[table.horizon_s.eq(h) & table.skill.eq(name)].set_index("split")
+            for split, fraction in zip(paired.SPLITS, [.4, .3, .3]):
+                assert abs(subset.loc[split, "episodes"] - total*fraction) <= 2
+    assert table.loc[table.skill.eq("absent"), "episodes"].sum() == 0
+
+
+def test_analysis_cell_precedes_split_and_downloads_only_trained_corpus():
+    notebook = json.loads((Path(__file__).parents[1] /
+                          "notebooks/09b_paired_skill_forecasting.ipynb").read_text())
+    code = ["".join(c["source"]) for c in notebook["cells"] if c["cell_type"] == "code"]
+    survey = next(i for i, c in enumerate(code) if "analysis = analyze_trained_corpus" in c)
+    prepare = next(i for i, c in enumerate(code) if "prepare_dataset(ROOT" in c)
+    assert survey < prepare
+    assert "tactical-episodes-v1" not in "".join(code)
+    assert 'prepared_manifest.get("data_contract") == DATA_CONTRACT' in code[prepare]

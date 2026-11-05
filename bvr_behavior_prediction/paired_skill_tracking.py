@@ -83,7 +83,7 @@ class RunTracker:
                 experiment_id = experiment.experiment_id
             active = self.client.create_run(experiment_id, tags={
                 "mlflow.runName": self.settings.get("run_name", self.output.name),
-                "pipeline": "paired_A01_B01_skill_forecasting",
+                "pipeline": "trained_pilot_skill_forecasting",
                 "test_role": "checkpoint_selection", "validation_role": "held_out_until_final",
             })
             self.state = {"run_id": active.info.run_id, "experiment_id": experiment_id,
@@ -136,12 +136,13 @@ class RunTracker:
             params.update(dataset_manifest_sha256=run["data_manifest_sha256"],
                           source_sha256=run["source_sha256"],
                           tracking_source_sha256=_sha(__file__),
-                          history_steps=51, raw_history_steps=56, input_features=108,
+                          history_steps=51, raw_history_steps=56, input_features=len(data.manifest["features"]),
                           horizons_s="1,2,5", classes=len(self.classes),
                           split_fractions="train=0.4,test=0.3,validation=0.3",
                           selection="strict_minimum_mean_test_NLL")
             self.client.log_batch(self.state["run_id"], params=[Param(k, _value(v)) for k, v in params.items()])
-        for name in ("manifest.json", "scaling.json", "scenario_splits.json", "split_assignments.csv"):
+        for name in ("manifest.json", "scaling.json", "scenario_splits.json", "split_assignments.csv",
+                     "skill_support_before_split.csv", "skill_support_by_split.csv"):
             self.artifact(data.directory / name, "data_metadata")
         self.artifact(self.output / "training_source.py", "source")
         shutil.copy2(__file__, self.output / "tracking_source.py")
@@ -268,6 +269,7 @@ class RunTracker:
         from .paired_skill_forecasting import PairedTransformer
 
         saved = torch.load(checkpoint, map_location="cpu", weights_only=False)
+        input_features = len(saved["feature_names"])
         with torch.random.fork_rng(devices=[]):
             model = PairedTransformer(num_classes=len(saved["classes"]), **saved["model_config"])
             model.load_state_dict(saved["model_state"])
@@ -279,7 +281,7 @@ class RunTracker:
             for name in ("__init__.py", "paired_skill_forecasting.py", "paired_skill_tracking.py"):
                 shutil.copy2(Path(__file__).parent / name, package / name)
             signature = ModelSignature(
-                inputs=Schema([TensorSpec(np.dtype("float32"), (-1, 51, 108))]),
+                inputs=Schema([TensorSpec(np.dtype("float32"), (-1, 51, input_features))]),
                 outputs=Schema([TensorSpec(np.dtype("float32"), (-1, 3, len(saved["classes"]))) ]))
             requirements = [f"mlflow=={mlflow.__version__}", f"torch=={str(torch.__version__).split('+')[0]}",
                             f"numpy=={np.__version__}", f"pandas=={pd.__version__}", f"pyarrow=={pyarrow.__version__}"]
@@ -291,7 +293,7 @@ class RunTracker:
                 major, minor = [int(v) for v in str(torch.__version__).split("+")[0].split(".")[:2]]
                 if (major, minor) >= (2, 4):
                     export_format = "pt2"
-                    options = {"serialization_format": "pt2", "input_example": np.zeros((2, 51, 108), dtype=np.float32)}
+                    options = {"serialization_format": "pt2", "input_example": np.zeros((2, 51, input_features), dtype=np.float32)}
                 else:
                     options["serialization_format"] = "pickle"
             mlflow.pytorch.save_model(model, str(root / "model"), signature=signature,
@@ -299,7 +301,7 @@ class RunTracker:
             if export_format == "pt2":
                 shutil.copytree(root / "source", root / "model" / "source_snapshot")
             _write(root / "model" / "paired_input_schema.json", {
-                "input": "Normalized paired feature histories, shape [batch,51,108]",
+                "input": f"Normalized trained-pilot feature histories, shape [batch,51,{input_features}]",
                 "output": "Raw logits, shape [batch,3,classes]; apply softmax on the last axis",
                 "classes": saved["classes"], "features": saved["feature_names"],
                 "mean": saved["mean"].tolist(), "std": saved["std"].tolist(),

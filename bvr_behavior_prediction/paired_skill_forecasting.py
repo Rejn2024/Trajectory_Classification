@@ -1,7 +1,7 @@
-"""Paired A01/B01 skill forecasting for notebook 09b.
+"""Trained-pilot-only skill forecasting for notebook 09b.
 
 Keeps the paired experiment's data and training contract self-contained.
-Inputs are synchronized observation histories; labels are A01's future selections.
+Inputs are B01 observation histories of the NN-trained A01 pilot; labels are A01's future selections.
 """
 
 import hashlib
@@ -31,7 +31,9 @@ OBS_COLUMNS = [f"obs_{i:02d}" for i in range(51)]
 KEYS = ["episode_id", "step", "time_s"]
 SPLITS = ("train", "test", "validation")
 BASE_FEATURES = OBS_COLUMNS + [f"observed_target_acceleration_{a}" for a in "nwu"]
-FEATURES = [f"{aircraft}_{f}" for aircraft in ("A01", "B01") for f in BASE_FEATURES]
+FEATURES = [f"B01_{f}" for f in BASE_FEATURES]
+DATA_CONTRACT = "trained-pilot-only-skill-horizon-v2"
+CORPUS = "shared/corpora/trained-pilot-episodes-v1"
 DEFAULT_TRAINING = {
     "epochs": 100, "seed": 42, "batch_size": 512, "evaluation_batch_size": 1024,
     "learning_rate": 0.0003, "weight_decay": 0.01, "gradient_clip": 1.0,
@@ -124,25 +126,70 @@ def catalogue(root):
     return sorted(module.SkillManager().list_skills())
 
 
-def scenario_splits(cases, seed=1729):
-    """40/30/30 by scenario, stratified by requested range, never by window."""
+def scenario_splits(cases, episodes, counts, seed=1729):
+    """Balance episode presence and window support for every skill/horizon.
+
+    Whole scenario groups move together. Range-specific 40/30/30 group quotas
+    are fixed; seeded pair swaps minimize squared deviations from those shares.
+    Each nonzero skill/horizon has equal weight, regardless of its frequency.
+    Exact balance can be impossible for rare skills or indivisible groups.
+    """
+    names = sorted(case["scenario_group"] for case in cases)
+    if len(names) != len(set(names)) or set(episodes.scenario_group) != set(names):
+        raise ValueError("Duplicate or unmatched scenario groups")
+    counts = np.asarray(counts)
+    if counts.shape[0] != len(episodes) or counts.ndim != 3 or (counts < 0).any():
+        raise ValueError("Expected episode x horizon x skill counts")
+    # Preserve episode representation, with window counts as an equal-weight objective.
+    vectors = np.concatenate([(counts > 0).reshape(len(episodes), -1),
+                              counts.reshape(len(episodes), -1)], axis=1).astype(float)
+    group_index = {name: i for i, name in enumerate(names)}
+    matrix = np.zeros((len(names), vectors.shape[1]))
+    np.add.at(matrix, [group_index[g] for g in episodes.scenario_group], vectors)
+    totals = matrix.sum(0)
+    matrix = matrix[:, totals > 0] / totals[totals > 0]
+    if not matrix.shape[1]:
+        raise ValueError("No forecast labels to stratify")
+    fractions = np.array([.4, .3, .3])
+    ranges = {case["scenario_group"]: float(case["scenario"]["range_m"]) for case in cases}
+    distance = np.array([ranges[g] for g in names])
     rng = np.random.default_rng(seed)
-    by_range, result = {}, {}
-    for case in cases:
-        by_range.setdefault(case["scenario"]["range_m"], []).append(case["scenario_group"])
-    for distance, groups in sorted(by_range.items()):
-        groups = np.asarray(sorted(groups))
-        rng.shuffle(groups)
-        train_end = round(len(groups) * 0.4)
-        test_end = train_end + round(len(groups) * 0.3)
-        if not 0 < train_end < test_end < len(groups):
-            raise ValueError("Too few scenarios for three nonempty partitions")
-        for split, subset in zip(SPLITS, np.split(groups, [train_end, test_end]), strict=True):
-            for group in subset:
-                if str(group) in result:
-                    raise ValueError("Duplicate scenario group")
-                result[str(group)] = {"split": split, "range_m": float(distance)}
-    return result
+    best = None
+    # Multiple starts avoid depending on one local optimum; deterministic for a seed.
+    for _ in range(8):
+        assignment = np.empty(len(names), dtype=int)
+        for r in np.unique(distance):
+            ids = rng.permutation(np.flatnonzero(distance == r))
+            ntrain, ntest = round(len(ids) * .4), round(len(ids) * .3)
+            if min(ntrain, ntest, len(ids) - ntrain - ntest) < 1:
+                raise ValueError("Too few scenarios for three nonempty partitions per range")
+            for k, subset in enumerate(np.split(ids, [ntrain, ntrain + ntest])):
+                assignment[subset] = k
+        residual = np.stack([matrix[assignment == k].sum(0) for k in range(3)]) - fractions[:, None]
+        for _pass in range(30):
+            improved = False
+            for i in rng.permutation(len(names)):
+                a = assignment[i]
+                candidates = np.flatnonzero((distance == distance[i]) & (assignment != a))
+                delta = matrix[candidates] - matrix[i]
+                # Swapping i and j adds delta to a and subtracts it from j's split.
+                gains = (2 * delta * (residual[a] - residual[assignment[candidates]])
+                         + 2 * delta**2).sum(1)
+                jpos = int(np.argmin(gains))
+                if gains[jpos] < -1e-12:
+                    j = candidates[jpos]
+                    b = assignment[j]
+                    residual[a] += delta[jpos]
+                    residual[b] -= delta[jpos]
+                    assignment[i], assignment[j] = b, a
+                    improved = True
+            if not improved:
+                break
+        score = float(np.square(residual).sum())
+        if best is None or score < best[0]:
+            best = score, assignment.copy()
+    return {g: {"split": SPLITS[best[1][i]], "range_m": ranges[g]}
+            for i, g in enumerate(names)}
 
 
 def observation_features(raw):
@@ -164,27 +211,14 @@ def validate_frames(frame, episode_id, frame_count):
         raise ValueError(f"Invalid frame cadence or episode: {episode_id}")
 
 
-def paired_examples(obs_a, obs_b, tracks_b, decisions_a, classes):
-    """Exact time pairing, causal inputs, independent masks at +1/+2/+5 seconds."""
-    n = len(obs_b)
+def forecast_targets(tracks_b, decisions_a, classes):
+    """Eligibility and exact future labels shared by the survey and preparation."""
+    n = len(tracks_b)
     if not n:
         raise ValueError("Empty episode")
-    episode_id = obs_b.episode_id.iloc[0]
-    for frame in (obs_a, obs_b, tracks_b):
-        validate_frames(frame, episode_id, n)
-        if not frame[KEYS].equals(obs_b[KEYS]):
-            raise ValueError("A01/B01 observation/track keys differ")
-    a, b = (o[OBS_COLUMNS].to_numpy(dtype=np.float32) for o in (obs_a, obs_b))
+    episode_id = tracks_b.episode_id.iloc[0]
+    validate_frames(tracks_b, episode_id, n)
     live = (tracks_b.observer_alive & tracks_b.target_alive).to_numpy(dtype=bool)
-    # The corpora were rerun separately: reject divergent trajectories, not just bad keys.
-    for own, other in ((a, b), (b, a)):
-        own_pos = own[:, :3].astype(float) * [50000, 50000, 10000]
-        from_other = (other[:, :3].astype(float) + other[:, 9:12]) * [50000, 50000, 10000]
-        own_vel = own[:, 3:6].astype(float) * 600
-        other_vel = (other[:, 3:6].astype(float) + other[:, 12:15]) * 600
-        if (not np.allclose(own_pos[live], from_other[live], atol=0.1, rtol=0)
-                or not np.allclose(own_vel[live], other_vel[live], atol=0.01, rtol=0)):
-            raise ValueError("Paired corpora contain divergent aircraft trajectories")
     if (decisions_a.empty or set(decisions_a.episode_id) != {episode_id}
             or set(decisions_a.aircraft_id) != {"A01"}
             or decisions_a.step.duplicated().any()
@@ -205,8 +239,72 @@ def paired_examples(obs_a, obs_b, tracks_b, decisions_a, classes):
     future = ends[:, None] + np.rint(np.asarray(HORIZONS) / DT).astype(int)
     targets = labels.reindex(future.ravel(), fill_value=-1).to_numpy().reshape(-1, 3)
     keep = (targets >= 0).any(axis=1)
-    features = np.concatenate([observation_features(a), observation_features(b)], axis=1)
-    return features, ends[keep], targets[keep]
+    return ends[keep], targets[keep]
+
+
+def trained_examples(obs_b, tracks_b, decisions_a, classes):
+    """Use only B01 observations of the learned A01 pilot from the trained corpus."""
+    validate_frames(obs_b, tracks_b.episode_id.iloc[0], len(tracks_b))
+    if not obs_b[KEYS].equals(tracks_b[KEYS]):
+        raise ValueError("Observation/track keys differ")
+    ends, targets = forecast_targets(tracks_b, decisions_a, classes)
+    return observation_features(obs_b[OBS_COLUMNS]), ends, targets
+
+
+def analyze_trained_corpus(root):
+    """Count eligible forecast labels before assigning any train/test/validation split."""
+    root = Path(root)
+    corpus = root / CORPUS
+    config, manifest = read_json(corpus / "config.json"), read_json(corpus / "manifest.json")
+    if (not manifest["complete"] or config["observer_id"] != "B01"
+            or config["target_id"] != "A01" or config["target_policy"] != "trained_pilot"
+            or config["sample_interval_s"] != DT):
+        raise ValueError("Expected a complete trained-pilot B01/A01 10 Hz corpus")
+    for relative in ("config.json", "schema.json", "episodes.parquet"):
+        verify_source(corpus, manifest, relative)
+    episodes = pd.read_parquet(corpus / "episodes.parquet").sort_values(
+        ["pilot_id", "episode_id"]).reset_index(drop=True)
+    if episodes.episode_id.duplicated().any() or len(episodes) != manifest["episodes"]:
+        raise ValueError("Invalid episode index")
+    classes = catalogue(root)
+    counts = np.zeros((len(episodes), len(HORIZONS), len(classes)), dtype=np.int64)
+    for pilot, subset in episodes.groupby("pilot_id", sort=True):
+        paths = [f"tracks/{pilot}.parquet", f"target_decisions/{pilot}.parquet"]
+        for relative in paths:
+            verify_source(corpus, manifest, relative)
+        files = [pq.ParquetFile(corpus / relative) for relative in paths]
+        if any(f.num_row_groups != len(subset) for f in files):
+            raise ValueError("Expected one Parquet row group per episode")
+        for row_group, (index, episode) in enumerate(subset.iterrows()):
+            tracks, decisions = [f.read_row_group(row_group).to_pandas() for f in files]
+            validate_frames(tracks, episode.episode_id, episode.frames)
+            _, target = forecast_targets(tracks, decisions, classes)
+            for h in range(len(HORIZONS)):
+                valid = target[:, h]
+                counts[index, h] = np.bincount(valid[valid >= 0], minlength=len(classes))
+    return {"episodes": episodes, "counts": counts, "classes": classes,
+            "cases": config["cases"], "source_manifest_sha256": sha256(corpus / "manifest.json")}
+
+
+def skill_support_table(analysis, groups=None):
+    """Include zero-support catalogue skills and count each episode once per label."""
+    episodes, counts = analysis["episodes"], analysis["counts"]
+    partitions = {"all": np.ones(len(episodes), dtype=bool)} if groups is None else {
+        s: episodes.scenario_group.map(lambda g: groups[g]["split"]).eq(s).to_numpy()
+        for s in SPLITS}
+    rows = []
+    for split, mask in partitions.items():
+        presence = (counts[mask] > 0).sum(0)
+        windows = counts[mask].sum(0)
+        group_count = (counts[mask] > 0).reshape(int(mask.sum()), -1)
+        group_count = pd.DataFrame(group_count, index=episodes.loc[mask, "scenario_group"])
+        group_count = group_count.groupby(level=0).max().sum().to_numpy().reshape(presence.shape)
+        for h, horizon in enumerate(HORIZONS):
+            for c, skill in enumerate(analysis["classes"]):
+                rows.append({"split": split, "horizon_s": horizon, "skill": skill,
+                             "episodes": int(presence[h, c]), "windows": int(windows[h, c]),
+                             "scenario_groups": int(group_count[h, c])})
+    return pd.DataFrame(rows)
 
 
 def verify_source(root, manifest, relative):
@@ -215,31 +313,19 @@ def verify_source(root, manifest, relative):
         raise ValueError(f"Missing, pointer-only or changed corpus file: {path}. Run selective LFS pull.")
 
 
-def prepare_dataset(root, output, split_seed=1729):
-    """Store frames once in a memory map; fit scaling on training histories only."""
+def prepare_dataset(root, output, split_seed=1729, analysis=None):
+    """Stratify whole scenarios; fit scaling on training histories only."""
     root, output = Path(root), Path(output)
     if output.exists() and any(output.iterdir()):
         raise ValueError("Choose an empty prepared-data directory or load the existing dataset")
-    corpus_a = root / "shared/corpora/tactical-episodes-v1"
-    corpus_b = root / "shared/corpora/trained-pilot-episodes-v1"
-    ca, cb = [read_json(p / "config.json") for p in (corpus_a, corpus_b)]
-    ma, mb = [read_json(p / "manifest.json") for p in (corpus_a, corpus_b)]
-    if (not ma["complete"] or not mb["complete"] or ca["cases"] != cb["cases"]
-            or ca["pilots"] != cb["pilots"] or ca["observer_id"] != "A01"
-            or cb["observer_id"] != "B01" or ca["target_id"] != "B01"
-            or cb["target_id"] != "A01" or ca["sample_interval_s"] != DT
-            or cb["sample_interval_s"] != DT):
-        raise ValueError("Expected complete matched A01/B01 10 Hz corpora")
-    for corpus, manifest in ((corpus_a, ma), (corpus_b, mb)):
-        for relative in ("config.json", "schema.json", "episodes.parquet"):
-            verify_source(corpus, manifest, relative)
-    ea, eb = [pd.read_parquet(p / "episodes.parquet").sort_values(
-        ["pilot_id", "episode_id"]).reset_index(drop=True) for p in (corpus_a, corpus_b)]
+    corpus_b = root / CORPUS
+    mb = read_json(corpus_b / "manifest.json")
+    analysis = analyze_trained_corpus(root) if analysis is None else analysis
+    if analysis["source_manifest_sha256"] != sha256(corpus_b / "manifest.json"):
+        raise ValueError("Survey provenance changed; rerun the analysis cell")
+    eb, classes = analysis["episodes"].copy(), analysis["classes"]
     identity = ["episode_id", "pilot_id", "scenario_group", "seed", "checkpoint_sha256", "frames"]
-    if (not ea[identity].equals(eb[identity]) or ea.episode_id.duplicated().any()
-            or len(ea) != ma["episodes"] or len(eb) != mb["episodes"]):
-        raise ValueError("Episode identities, policies, scenarios or lengths differ")
-    groups, classes = scenario_splits(cb["cases"], split_seed), catalogue(root)
+    groups = scenario_splits(analysis["cases"], eb, analysis["counts"], split_seed)
     eb["split"] = eb.scenario_group.map(lambda group: groups[group]["split"])
     output.mkdir(parents=True, exist_ok=True)
     features = np.lib.format.open_memmap(output / "features.npy", mode="w+", dtype="float32",
@@ -247,8 +333,7 @@ def prepare_dataset(root, output, split_seed=1729):
     total, squares, count = np.zeros(len(FEATURES)), np.zeros(len(FEATURES)), 0
     anchors, all_targets, metadata, offset = [], [], [], 0
     for pilot, episodes in eb.groupby("pilot_id", sort=True):
-        sources = [(corpus_a, ma, f"observations/{pilot}.parquet"),
-                   (corpus_b, mb, f"observations/{pilot}.parquet"),
+        sources = [(corpus_b, mb, f"observations/{pilot}.parquet"),
                    (corpus_b, mb, f"tracks/{pilot}.parquet"),
                    (corpus_b, mb, f"target_decisions/{pilot}.parquet")]
         for p, m, relative in sources:
@@ -257,15 +342,15 @@ def prepare_dataset(root, output, split_seed=1729):
         if any(f.num_row_groups != len(episodes) for f in files):
             raise ValueError("Expected one Parquet row group per episode")
         for row_group, episode in enumerate(episodes.itertuples()):
-            columns = [KEYS + OBS_COLUMNS, KEYS + OBS_COLUMNS,
+            columns = [KEYS + OBS_COLUMNS,
                        KEYS + ["observer_alive", "target_alive"],
                        KEYS + ["aircraft_id", "skill"]]
             frames = [f.read_row_group(row_group, columns=c).to_pandas()
                       for f, c in zip(files, columns, strict=True)]
-            if (frames[1].episode_id.iloc[0] != episode.episode_id
-                    or len(frames[1]) != episode.frames):
+            if (frames[0].episode_id.iloc[0] != episode.episode_id
+                    or len(frames[0]) != episode.frames):
                 raise ValueError("Row-group ordering differs from episode index")
-            frame, ends, target = paired_examples(*frames, classes)
+            frame, ends, target = trained_examples(*frames, classes)
             features[offset:offset + len(frame)] = frame
             if episode.split == "train" and len(ends):
                 used = np.zeros(len(frame), dtype=bool)
@@ -281,7 +366,7 @@ def prepare_dataset(root, output, split_seed=1729):
                              "scenario_group": episode.scenario_group, "split": episode.split,
                              "step": int(end), "time_s": float(end * DT)} for end in ends)
             offset += len(frame)
-        print(f"Prepared {pilot}: {offset:,} paired frames", flush=True)
+        print(f"Prepared {pilot}: {offset:,} trained-pilot frames", flush=True)
     features.flush()
     del features
     if not count:
@@ -299,12 +384,16 @@ def prepare_dataset(root, output, split_seed=1729):
     write_json(output / "scenario_splits.json", groups)
     write_json(output / "scaling.json", {"mean": mean.tolist(), "std": std.tolist(),
                                          "fitted_on": "train only", "frames": count})
-    manifest = {"classes": classes, "features": FEATURES, "history_steps": HISTORY_STEPS,
+    skill_support_table(analysis).to_csv(output / "skill_support_before_split.csv", index=False)
+    skill_support_table(analysis, groups).to_csv(output / "skill_support_by_split.csv", index=False)
+    manifest = {"data_contract": DATA_CONTRACT,
+                "split_strategy": "scenario-group skill-horizon episode-and-window stratification",
+                "classes": classes, "features": FEATURES, "history_steps": HISTORY_STEPS,
                 "raw_history_steps": RAW_HISTORY_STEPS, "stride_steps": STRIDE_STEPS,
                 "horizons_s": HORIZONS, "split_seed": split_seed,
                 "split_fractions": {"train": 0.4, "test": 0.3, "validation": 0.3},
                 "source_manifests": {str(p.relative_to(root)): sha256(p / "manifest.json")
-                                     for p in (corpus_a, corpus_b)},
+                                     for p in (corpus_b,)},
                 "source_code_sha256": sha256(__file__),
                 "catalogue_sha256": sha256(root / "bvr_sim_source/bvr_sim/agents/skill_manager.py"),
                 "counts": {s: {"groups": int(eb.loc[eb.split.eq(s), "scenario_group"].nunique()),
@@ -556,7 +645,7 @@ class PairedTransformer(nn.Module):
 
     def forward(self, windows):
         if windows.ndim != 3 or tuple(windows.shape[1:]) != (HISTORY_STEPS, len(FEATURES)):
-            raise ValueError("Expected (batch, 51, 108) paired histories")
+            raise ValueError("Expected (batch, 51, 54) trained-pilot histories")
         encoded = self.encoder(self.projection(windows) + self.position)
         # Bidirectional attention is within the past-only window; no future tokens exist.
         return self.head(self.norm(encoded[:, -1])).reshape(-1, 3, self.num_classes)
