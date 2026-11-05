@@ -392,7 +392,7 @@ def prepare_dataset(root, output, split_seed=1729, analysis=None):
                 "raw_history_steps": RAW_HISTORY_STEPS, "stride_steps": STRIDE_STEPS,
                 "horizons_s": HORIZONS, "split_seed": split_seed,
                 "split_fractions": {"train": 0.4, "test": 0.3, "validation": 0.3},
-                "source_manifests": {str(p.relative_to(root)): sha256(p / "manifest.json")
+                "source_manifests": {p.relative_to(root).as_posix(): sha256(p / "manifest.json")
                                      for p in (corpus_b,)},
                 "source_code_sha256": sha256(__file__),
                 "catalogue_sha256": sha256(root / "bvr_sim_source/bvr_sim/agents/skill_manager.py"),

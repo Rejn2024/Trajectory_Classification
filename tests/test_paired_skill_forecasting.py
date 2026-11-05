@@ -657,3 +657,17 @@ def test_analysis_cell_precedes_split_and_downloads_only_trained_corpus():
     assert survey < prepare
     assert "tactical-episodes-v1" not in "".join(code)
     assert 'prepared_manifest.get("data_contract") == DATA_CONTRACT' in code[prepare]
+
+
+def test_notebook_accepts_windows_source_path_but_rejects_other_corpora():
+    notebook = json.loads((Path(__file__).parents[1] /
+                          "notebooks/09b_paired_skill_forecasting.ipynb").read_text())
+    source = next("".join(c["source"]) for c in notebook["cells"] if c["id"] == "paired-03")
+    check = source[source.index("source_corpora ="):source.index("data = PairedData")]
+    for relative in (paired.CORPUS, paired.CORPUS.replace("/", "\\")):
+        exec(check, {"prepared_manifest": {"source_manifests": {relative: "hash"}},
+                     "CORPUS": paired.CORPUS})
+    with pytest.raises(AssertionError, match="Unexpected raw corpus"):
+        exec(check, {"prepared_manifest": {"source_manifests": {
+            paired.CORPUS: "hash", "shared/corpora/tactical-episodes-v1": "hash"}},
+                     "CORPUS": paired.CORPUS})
