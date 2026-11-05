@@ -556,3 +556,42 @@ def test_mlflow_write_failure_resumes_same_run_and_backfills(prepared_pair, tmp_
     assert paired.read_json(output / "mlflow.json")["run_id"] == state["run_id"]
     assert sorted(m.step for m in client.get_metric_history(state["run_id"], "epoch/test/nll")) == [1, 2]
     assert client.get_run(state["run_id"]).info.status == "FINISHED"
+
+
+def test_download_reports_missing_git(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(paired.shutil, "which", lambda command: None)
+    monkeypatch.setattr(paired, "os", SimpleNamespace(name="posix"))
+    with pytest.raises(RuntimeError, match="Git executable not found.*Conda"):
+        paired.download_paired_corpora(tmp_path, ["shared/**/*.parquet"])
+
+
+def test_download_discovers_windows_git_and_uses_exact_path(tmp_path, monkeypatch):
+    import os
+    from types import SimpleNamespace
+    git = tmp_path / "Program Files/Git/cmd/git.exe"
+    git.parent.mkdir(parents=True)
+    git.touch()
+    calls = []
+    monkeypatch.setattr(paired.shutil, "which", lambda command: None)
+    monkeypatch.setattr(paired, "os", SimpleNamespace(
+        name="nt", environ={"ProgramFiles": str(tmp_path / "Program Files")}, pathsep=os.pathsep))
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(paired.subprocess, "run", run)
+    paired.download_paired_corpora(tmp_path, ["shared/test/*.parquet"])
+    assert len(calls) == 2 and all(c[0][0] == str(git) for c in calls)
+    assert calls[1][0][-2:] == ["--include=shared/test/*.parquet", "--exclude="]
+    assert calls[1][1]["env"]["PATH"].startswith(str(git.parent))
+
+
+def test_download_reports_missing_lfs(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    git = tmp_path / "git.exe"
+    git.touch()
+    monkeypatch.setattr(paired.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1, stderr="not a git command"))
+    with pytest.raises(RuntimeError, match="Git LFS is unavailable"):
+        paired.download_paired_corpora(tmp_path, ["shared/test/*.parquet"], git_executable=str(git))

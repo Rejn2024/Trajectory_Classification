@@ -10,6 +10,7 @@ import json
 import os
 import random
 import shutil
+import subprocess
 import time
 from contextlib import nullcontext
 from pathlib import Path
@@ -60,6 +61,56 @@ def sha256(path):
         for chunk in iter(lambda: handle.read(2**20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def download_paired_corpora(root, includes, git_executable=None):
+    """Find Git in the kernel environment, including standard Windows installs."""
+    root = Path(root)
+    if not root.is_dir():
+        raise ValueError(f"Repository directory does not exist: {root}")
+    git = None
+    if git_executable:
+        candidate = Path(git_executable).expanduser()
+        git = str(candidate) if candidate.is_file() else shutil.which(str(git_executable))
+        if not git:
+            raise RuntimeError(f"GIT_EXECUTABLE does not identify an executable file: {git_executable}")
+    else:
+        git = shutil.which("git")
+        if not git and os.name == "nt":
+            candidates = [Path(os.environ.get(key, fallback)) / "Git" / "cmd" / "git.exe"
+                          for key, fallback in (("ProgramFiles", r"C:\Program Files"),
+                                                ("ProgramFiles(x86)", r"C:\Program Files (x86)"))]
+            if os.environ.get("LOCALAPPDATA"):
+                candidates.append(Path(os.environ["LOCALAPPDATA"]) / "Programs/Git/cmd/git.exe")
+            git = next((str(p) for p in candidates if p.is_file()), None)
+    if not git:
+        raise RuntimeError(
+            "Git executable not found by the notebook kernel. Install Git and Git LFS in "
+            "the active environment (for Conda: conda install -c conda-forge git git-lfs), "
+            "then restart Jupyter. Alternatively set GIT_EXECUTABLE to the full path, "
+            r"for example r'C:\Program Files\Git\cmd\git.exe'. "
+            "If the corpus files are already downloaded, set DOWNLOAD_LFS=False."
+        )
+    # Some Jupyter kernels inherit a PATH that omits Git's sibling executables.
+    environment = os.environ.copy()
+    environment["PATH"] = str(Path(git).resolve().parent) + os.pathsep + environment.get("PATH", "")
+    try:
+        probe = subprocess.run([git, "lfs", "version"], cwd=root, env=environment,
+                               capture_output=True, text=True, check=False)
+    except OSError as error:
+        raise RuntimeError(f"The notebook could not start Git at {git}: {error}") from error
+    if probe.returncode:
+        raise RuntimeError(
+            f"Git was found at {git}, but Git LFS is unavailable. Install Git LFS "
+            "(Conda: conda install -c conda-forge git-lfs), run git lfs install in "
+            "the repository, and restart the notebook kernel. " + probe.stderr.strip()
+        )
+    print(f"Downloading corpus files using {git}", flush=True)
+    subprocess.run([git, "-c", "filter.lfs.clean=git-lfs clean -- %f",
+                    "-c", "filter.lfs.smudge=git-lfs smudge -- %f",
+                    "-c", "filter.lfs.process=git-lfs filter-process", "-c", "filter.lfs.required=true",
+                    "lfs", "pull", "--include=" + ",".join(includes), "--exclude="],
+                   cwd=root, env=environment, check=True)
 
 
 def catalogue(root):
