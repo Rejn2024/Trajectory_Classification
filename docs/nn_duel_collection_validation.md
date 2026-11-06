@@ -1,5 +1,10 @@
 # NN versus NN acquisition: handoff and validation
 
+This report records the original CPU version at `39e1d0c`. The notebook now also
+supports shared GPU actor batching and measured CPU/GPU selection; see the
+[GPU batching update](nn_duel_gpu_batching.md). The historical validation sample
+retains its original collector and configuration.
+
 Open `notebooks/11_nn_vs_nn_training_data.ipynb` on `forecasting_ed_261104`.
 The default target is **10,000 new physical flights / 20,000 perspectives**.
 The user requested that the full collection run on their own compute; that
@@ -54,10 +59,10 @@ Two workers reduced elapsed time by about 15.6% in this small sample. These rate
 are not estimates for the user's hardware. The notebook benchmarks that machine
 before selecting its worker count. No 10,000-flight job was launched here.
 
-The implementation uses persistent CPU simulator processes with one native
+The original implementation used persistent CPU simulator processes with one native
 inference thread per process, cached models, inference mode, self-pair batching,
-omitted unused rewards/expert labels, and incremental compressed storage. It does
-not implement centralized GPU rollout inference or GPU physics. The notebook
+omitted unused rewards/expert labels, and incremental compressed storage. It did
+not implement centralized GPU rollout inference or GPU physics. The original notebook
 explains that a batched GPU inference server would need separate implementation
 and measurement for these small networks. GPU availability alone is not claimed
 as an acceleration result. Future forecasting-model training can use the GPU.

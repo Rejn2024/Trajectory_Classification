@@ -60,6 +60,17 @@ FAMILIES = (
 STATE = {}
 
 
+def collector_sources():
+    return [
+        Path(__file__).with_name(name)
+        for name in (
+            "generate_nn_duel_corpus.py",
+            "tactical_corpus_schema.py",
+            "nn_duel_inference.py",
+        )
+    ]
+
+
 def read(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
@@ -215,10 +226,27 @@ def verify_snapshot(job):
     return pilots
 
 
-def prepare(work, flights=10_000, seed=26_110_600, seconds=300, deterministic=True):
+def prepare(
+    work,
+    flights=10_000,
+    seed=26_110_600,
+    seconds=300,
+    deterministic=True,
+    inference_backend="local_cpu",
+    batch_wait_ms=2.0,
+    batch_max_requests=32,
+):
     work = Path(work).resolve()
     if not math.isfinite(seconds) or not 0 < seconds <= 300 or not float(seconds / DT).is_integer():
         raise ValueError("Duration must be a multiple of 0.1 seconds, at most 300")
+    if inference_backend not in ("local_cpu", "central_cpu", "central_cuda"):
+        raise ValueError("Unknown inference backend")
+    if inference_backend != "local_cpu" and not deterministic:
+        raise ValueError(
+            "Central batching requires deterministic policies; use local_cpu for stochastic flights"
+        )
+    if not math.isfinite(batch_wait_ms) or not 0 <= batch_wait_ms <= 50 or batch_max_requests < 1:
+        raise ValueError("Use a finite 0-50 ms batching window and positive request cap")
     expected = read(PARENT / "manifest.json")["files"]["reproduction.zip"]["sha256"]
     if sha256(ARCHIVE) != expected:
         raise ValueError("Fetch the verified tactical reproduction.zip with Git LFS first")
@@ -253,12 +281,12 @@ def prepare(work, flights=10_000, seed=26_110_600, seconds=300, deterministic=Tr
         "parent_archive_sha256": expected,
         "parent_manifest_sha256": sha256(PARENT / "manifest.json"),
         "source_experiment": read(job / "experiment.json")["source_experiment"],
-        "collector_hashes": {
-            p.name: sha256(p)
-            for p in (Path(__file__), Path(__file__).with_name("tactical_corpus_schema.py"))
-        },
+        "collector_hashes": {p.name: sha256(p) for p in collector_sources()},
         "software": versions,
-        "inference_device": "cpu",
+        "inference_device": "cuda" if inference_backend == "central_cuda" else "cpu",
+        "inference_backend": inference_backend,
+        "batch_wait_ms": batch_wait_ms,
+        "batch_max_requests": batch_max_requests,
         "inference_precision": "fp32",
         "native_throttle_override": True,
     }
@@ -272,7 +300,7 @@ def prepare(work, flights=10_000, seed=26_110_600, seconds=300, deterministic=Tr
     return config
 
 
-def initialize_worker(work):
+def initialize_worker(work, assignments=None, channels=None):
     work = Path(work).resolve()
     job = work / "tactical_snapshot"
     source = job / "source"
@@ -292,6 +320,8 @@ def initialize_worker(work):
     torch.set_num_threads(1)
     torch.set_num_interop_threads(1)
     STATE.update(work=work, config=read(work / "config.json"), models={}, loader=load_trained_pilot)
+    if channels is not None:
+        STATE["inference_connection"] = channels[assignments.get(timeout=30)]
 
 
 def completed(work, case, verify=True):
@@ -329,7 +359,9 @@ def collect_one(case):
     random.seed(case["seed"])
     np.random.seed(case["seed"])
     torch.manual_seed(case["seed"])
-    for pilot_id in sorted(set(case["pilots"].values())):
+    for pilot_id in (
+        sorted(set(case["pilots"].values())) if "inference_connection" not in STATE else []
+    ):
         if pilot_id not in STATE["models"]:
             run = work / "tactical_snapshot/training" / pilot_id
             if sha256(run / "best_model.pt") != config["pilots"][pilot_id]["checkpoint_sha256"]:
@@ -374,6 +406,12 @@ def collect_one(case):
     }
     managers = {s: SkillManager() for s in SIDES}
     skills, active = {}, {}
+    timing = {
+        "decision_seconds": 0.0,
+        "simulation_seconds": 0.0,
+        "recording_seconds": 0.0,
+        "decision_rounds": 0,
+    }
 
     def snapshot(env):
         step = env.current_step
@@ -423,29 +461,52 @@ def collect_one(case):
                 snapshot(env)
                 for step in range(sim_config["max_steps"]):
                     if step % 10 == 0:
-                        # Batch both sides when the same pilot flies against itself.
-                        for pilot_id in sorted(set(case["pilots"].values())):
-                            sides = [s for s in SIDES if case["pilots"][s] == pilot_id]
-                            observations = np.stack([np.asarray(histories[s]) for s in sides])
-                            actions = STATE["models"][pilot_id].act_batch(
-                                observations, deterministic=config["deterministic_policy"]
+                        decision_start = time.perf_counter()
+                        choices = {}
+                        if "inference_connection" in STATE:
+                            connection = STATE["inference_connection"]
+                            connection.send(
+                                [
+                                    (case["pilots"][s], np.asarray(histories[s], dtype=np.float32))
+                                    for s in SIDES
+                                ]
                             )
-                            for side, action in zip(sides, actions, strict=True):
-                                name, parameters = action[:2]
-                                choice = (name, parameters)
-                                if active.get(side) != choice:
-                                    skills[side] = managers[side].create_skill(name, parameters)
-                                    active[side] = choice
-                                decisions[side].append(
-                                    {
-                                        "episode_id": case["episode_id"],
-                                        "aircraft_id": side,
-                                        "step": step,
-                                        "time_s": round(step * DT, 8),
-                                        "skill": name,
-                                        "parameters_json": json.dumps(parameters, sort_keys=True),
-                                    }
+                            if not connection.poll(180):
+                                raise TimeoutError(
+                                    "Central inference owner did not respond within 180 seconds"
                                 )
+                            response = connection.recv()
+                            if "error" in response:
+                                raise RuntimeError(response["error"])
+                            choices.update(zip(SIDES, response["actions"], strict=True))
+                        else:
+                            # Batch both aircraft when the same pilot flies against itself.
+                            for pilot_id in sorted(set(case["pilots"].values())):
+                                sides = [s for s in SIDES if case["pilots"][s] == pilot_id]
+                                observations = np.stack([np.asarray(histories[s]) for s in sides])
+                                actions = STATE["models"][pilot_id].act_batch(
+                                    observations, deterministic=config["deterministic_policy"]
+                                )
+                                choices.update(
+                                    (s, a[:2]) for s, a in zip(sides, actions, strict=True)
+                                )
+                        timing["decision_seconds"] += time.perf_counter() - decision_start
+                        timing["decision_rounds"] += 1
+                        for side, (name, parameters) in choices.items():
+                            choice = (name, parameters)
+                            if active.get(side) != choice:
+                                skills[side] = managers[side].create_skill(name, parameters)
+                                active[side] = choice
+                            decisions[side].append(
+                                {
+                                    "episode_id": case["episode_id"],
+                                    "aircraft_id": side,
+                                    "step": step,
+                                    "time_s": round(step * DT, 8),
+                                    "skill": name,
+                                    "parameters_json": json.dumps(parameters, sort_keys=True),
+                                }
+                            )
                     actions = {}
                     for side in SIDES:
                         a = env.agents[side]
@@ -464,8 +525,12 @@ def collect_one(case):
                         actions[side] = env.act_manager.legacy_norm_campus_action(
                             guidance, to_std1=True
                         )
+                    simulation_start = time.perf_counter()
                     env.step(actions)
+                    timing["simulation_seconds"] += time.perf_counter() - simulation_start
+                    recording_start = time.perf_counter()
                     snapshot(env)
+                    timing["recording_seconds"] += time.perf_counter() - recording_start
                     # Native terminal waits for missiles; requested contract stops at first defeat.
                     if any(not env.agents[s].is_alive for s in SIDES):
                         break
@@ -512,6 +577,7 @@ def collect_one(case):
         "termination_reason": "time_limit" if all(alive.values()) else "aircraft_defeated",
         "alive": alive,
         "missile_kills": kills,
+        "timing": timing,
         "support_counts": support_counts,
         "initial_state": {s: tracks[s][0] for s in SIDES},
         "case_sha256": hashlib.sha256(json.dumps(case, sort_keys=True).encode()).hexdigest(),
@@ -540,6 +606,73 @@ def campaign_lock(work):
         lock.unlink()
 
 
+@contextlib.contextmanager
+def inference_service(work, config, workers):
+    """One spawned owner of CUDA; simulator children receive only CPU pipes."""
+    backend = config.get("inference_backend", "local_cpu")
+    if backend == "local_cpu":
+        yield (str(work),)
+        return
+    from nn_duel_inference import serve
+
+    context = get_context("spawn")
+    channels = [context.Pipe(duplex=True) for _ in range(workers)]
+    assignments = context.Queue()
+    for i in range(workers):
+        assignments.put(i)
+    receive_ready, send_ready = context.Pipe(duplex=False)
+    stop = context.Event()
+    process = context.Process(
+        target=serve,
+        args=(
+            str(Path(work).resolve()),
+            [p[0] for p in channels],
+            stop,
+            send_ready,
+            "cuda" if backend == "central_cuda" else "cpu",
+            config["batch_wait_ms"],
+            config["batch_max_requests"],
+        ),
+    )
+    process.start()
+    send_ready.close()
+    try:
+        if not receive_ready.poll(180):
+            raise TimeoutError(
+                "Central inference startup timed out; inspect inference_metrics.json"
+            )
+        startup = receive_ready.recv()
+        if not startup.get("ready"):
+            raise RuntimeError(f"Central inference startup failed: {startup.get('error')}")
+        print(
+            json.dumps(
+                {
+                    "inference_owner_ready": True,
+                    "backend": backend,
+                    "parity": startup["parity"],
+                    "gpu_name": startup["gpu_name"],
+                }
+            ),
+            flush=True,
+        )
+        yield (str(work), assignments, [p[1] for p in channels])
+    finally:
+        active_error = sys.exc_info()[0] is not None
+        stop.set()
+        process.join(timeout=30)
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
+        receive_ready.close()
+        for ends in channels:
+            for connection in ends:
+                connection.close()
+        assignments.close()
+        assignments.join_thread()
+        if process.exitcode != 0 and not active_error:
+            raise RuntimeError("Inference owner failed; inspect inference_metrics.json")
+
+
 def collect(work, config, workers=1, limit=None):
     if workers < 1 or (limit is not None and limit < 1):
         raise ValueError("Positive workers/limit required")
@@ -550,6 +683,12 @@ def collect(work, config, workers=1, limit=None):
         already = sum(d is not None for d in done)
         failures, results = [], []
         start = time.perf_counter()
+        prior_progress = (
+            read(Path(work) / "progress.json") if (Path(work) / "progress.json").exists() else {}
+        )
+        prior_wall = prior_progress.get(
+            "cumulative_wall_seconds", prior_progress.get("wall_seconds", 0.0)
+        )
         # Spawn avoids inherited torch/CUDA state. One BLAS thread per process.
         # Separate processes also isolate simulator RNG and native JSBSim state.
         for key in (
@@ -559,12 +698,15 @@ def collect(work, config, workers=1, limit=None):
             "NUMEXPR_NUM_THREADS",
         ):
             os.environ[key] = "1"
-        with ProcessPoolExecutor(
-            max_workers=workers,
-            mp_context=get_context("spawn"),
-            initializer=initialize_worker,
-            initargs=(str(work),),
-        ) as pool:
+        with (
+            inference_service(work, config, workers) as initializer_args,
+            ProcessPoolExecutor(
+                max_workers=workers,
+                mp_context=get_context("spawn"),
+                initializer=initialize_worker,
+                initargs=initializer_args,
+            ) as pool,
+        ):
             futures = {pool.submit(collect_one, c): c for c in pending}
             for future in as_completed(futures):
                 case = futures[future]
@@ -587,6 +729,7 @@ def collect(work, config, workers=1, limit=None):
                     "failed_this_invocation": failures,
                     "new_completed": len(results),
                     "wall_seconds": elapsed,
+                    "cumulative_wall_seconds": prior_wall + elapsed,
                     "workers": workers,
                     "flights_per_hour": len(results) * 3600 / max(elapsed, 0.001),
                 }
@@ -617,6 +760,66 @@ def forecast_counts(track, decisions, classes):
         target = labels.reindex(origins + horizon * 10, fill_value=-1).to_numpy(dtype=int)
         counts.append(np.bincount(target[target >= 0], minlength=len(classes)))
     return np.array(counts)
+
+
+def estimate_campaign(
+    flights,
+    measured_flights,
+    rollout_seconds,
+    postprocess_seconds,
+    bytes_per_flight,
+    shard_flights=100,
+    upload_mbps=20.0,
+    scan_mbps=400.0,
+    git_seconds_per_snapshot=10.0,
+):
+    """Planning estimate, including repeated prefix hashing and assumed upload speed.
+
+    The range is a sensitivity band, not a statistical confidence interval. Rollout
+    measurements include cold process/model startup, making short probes conservative.
+    """
+    values = (
+        flights,
+        measured_flights,
+        rollout_seconds,
+        bytes_per_flight,
+        shard_flights,
+        upload_mbps,
+        scan_mbps,
+    )
+    if any(not math.isfinite(v) or v <= 0 for v in values) or postprocess_seconds < 0:
+        raise ValueError("Use positive finite counts/rates and nonnegative postprocessing time")
+    snapshots = math.ceil(flights / shard_flights)
+    payload = flights * bytes_per_flight
+    phases = {
+        "rollout_hours": flights / measured_flights * rollout_seconds / 3600,
+        "package_and_semantic_verify_hours": flights
+        / measured_flights
+        * postprocess_seconds
+        / 3600,
+        # Resume, local packaging, immutable publication and pre-push verification
+        # each reread prior payloads. Model the extra prefix scans explicitly.
+        "repeated_checksum_hours": 4
+        * payload
+        * max(0, snapshots - 1)
+        / 2
+        / (scan_mbps * 1e6)
+        / 3600,
+        "upload_hours": payload * 8 / (upload_mbps * 1e6) / 3600,
+        "git_overhead_hours": snapshots * git_seconds_per_snapshot / 3600,
+    }
+    total = sum(phases.values())
+    variable = phases["rollout_hours"] + phases["package_and_semantic_verify_hours"]
+    return {
+        **phases,
+        "total_hours": total,
+        "sensitivity_low_hours": total - 0.25 * variable - 0.5 * phases["repeated_checksum_hours"],
+        "sensitivity_high_hours": total + 0.5 * variable + phases["repeated_checksum_hours"],
+        "payload_gib": payload / 2**30,
+        "assumed_upload_mbps": upload_mbps,
+        "assumed_checksum_read_MBps": scan_mbps,
+        "assumed_git_seconds_per_snapshot": git_seconds_per_snapshot,
+    }
 
 
 def package(work, output, config, shard_flights=100):
@@ -781,7 +984,7 @@ def package(work, output, config, shard_flights=100):
             shutil.copyfile(ARCHIVE, output / "tactical_reproduction.zip")
         if sha256(output / "tactical_reproduction.zip") != config["parent_archive_sha256"]:
             raise ValueError("Published reproduction archive differs")
-        for source in (Path(__file__), Path(__file__).with_name("tactical_corpus_schema.py")):
+        for source in collector_sources():
             destination = output / "collector" / source.name
             destination.parent.mkdir(exist_ok=True)
             shutil.copyfile(source, destination)
@@ -803,7 +1006,10 @@ def package(work, output, config, shard_flights=100):
         (output / "README.md").write_text(readme, encoding="utf-8", newline="\n")
         for path in output.rglob("*"):
             if path.is_file() and path.name != "manifest.json" and path.suffix != ".tmp":
-                inventory[path.relative_to(output).as_posix()] = {
+                relative = path.relative_to(output).as_posix()
+                if relative in inventory:
+                    continue  # Shards were already hashed under this publication lock.
+                inventory[relative] = {
                     "bytes": path.stat().st_size,
                     "sha256": sha256(path),
                 }
@@ -820,7 +1026,7 @@ def package(work, output, config, shard_flights=100):
         return manifest
 
 
-def verify(output, require_complete=False):
+def verify(output, require_complete=False, cache_path=None):
     output = Path(output)
     manifest = read(output / "manifest.json")
     config = read(output / "config.json")
@@ -847,7 +1053,30 @@ def verify(output, require_complete=False):
     if manifest["complete"] != (manifest["physical_flights"] == config["flights"]):
         raise ValueError("Incorrect completeness flag")
     case_by_id = {c["episode_id"]: c for c in config["cases"]}
+    cached = (
+        read(cache_path).get("verified", {}) if cache_path and Path(cache_path).exists() else {}
+    )
+    verified = {}
     for row in episodes.itertuples():
+        key = f"{row.observer_id}/{row.episode_id}"
+        record = row._asdict()
+        record.pop("Index", None)
+        token = hashlib.sha256(
+            json.dumps(
+                {
+                    "index_row": record,
+                    "config": manifest["config_sha256"],
+                    "payloads": [
+                        manifest["files"][f"{row.observer_id}/{part}/{row.shard}.parquet"]["sha256"]
+                        for part in PARTS
+                    ],
+                },
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+        verified[key] = token
+        if cached.get(key) == token:
+            continue  # All actual payload checksums above were still rechecked.
         obs, track, decisions = _load_shard_episode(
             output, row.episode_id, row.observer_id, row.shard
         )
@@ -877,6 +1106,8 @@ def verify(output, require_complete=False):
             rtol=0,
         ):
             raise ValueError("Published geometry differs from requested reset")
+    if cache_path:
+        write(cache_path, {"verified": verified})
     return manifest
 
 
@@ -915,10 +1146,10 @@ def _load_shard_episode(output, episode_id, observer_id, shard):
     ]
 
 
-def publish(output, branch="forecasting_ed_261104", allow_partial=False):
+def publish(output, branch="forecasting_ed_261104", allow_partial=False, cache_path=None):
     """Commit only this verified package; the Git push pre-push hook sends LFS."""
     output = Path(output).resolve()
-    manifest = verify(output, require_complete=not allow_partial)
+    manifest = verify(output, require_complete=not allow_partial, cache_path=cache_path)
     relative = output.relative_to(ROOT).as_posix()
     if not relative.startswith("shared/corpora/"):
         raise ValueError("Publication must be under shared/corpora")
@@ -975,6 +1206,18 @@ def main():
     parser.add_argument("--seconds", type=float, default=300)
     parser.add_argument("--workers", type=int, default=max(1, int((os.cpu_count() or 1) * 0.8)))
     parser.add_argument(
+        "--inference-backend",
+        choices=("local_cpu", "central_cpu", "central_cuda"),
+        default="local_cpu",
+    )
+    parser.add_argument("--batch-wait-ms", type=float, default=2.0)
+    parser.add_argument("--batch-max-requests", type=int, default=32)
+    parser.add_argument(
+        "--verification-cache",
+        type=Path,
+        help="Reuse semantic checks for unchanged indexed payloads; all bytes are still hashed",
+    )
+    parser.add_argument(
         "--limit", type=int, help="Maximum NEW flights this invocation; manifest stays partial"
     )
     parser.add_argument("--shard-flights", type=int, default=100)
@@ -987,9 +1230,11 @@ def main():
     args = parser.parse_args()
     if args.command in ("verify", "publish"):
         result = (
-            verify(args.output)
+            verify(args.output, cache_path=args.verification_cache)
             if args.command == "verify"
-            else publish(args.output, allow_partial=args.allow_partial)
+            else publish(
+                args.output, allow_partial=args.allow_partial, cache_path=args.verification_cache
+            )
         )
     elif args.command == "status":
         config = read(args.work / "config.json")
@@ -998,7 +1243,16 @@ def main():
     else:
         # Prepare/resume is locked too, so two notebook kernels cannot initialize the same campaign.
         with campaign_lock(args.work):
-            config = prepare(args.work, args.flights, args.seed, args.seconds, not args.stochastic)
+            config = prepare(
+                args.work,
+                args.flights,
+                args.seed,
+                args.seconds,
+                not args.stochastic,
+                args.inference_backend,
+                args.batch_wait_ms,
+                args.batch_max_requests,
+            )
         if args.command == "collect":
             result = {"new_flights": len(collect(args.work, config, args.workers, args.limit))}
         elif args.command == "package":

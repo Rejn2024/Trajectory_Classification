@@ -26,6 +26,10 @@ shared/corpora/nn-duels-v1/collector/*.py !filter !diff !merge text eol=lf
 # These files are hashed/copied into each new corpus; preserve bytes on Windows.
 scripts/generate_nn_duel_corpus.py text eol=lf
 scripts/tactical_corpus_schema.py text eol=lf
+scripts/nn_duel_inference.py text eol=lf
+shared/corpora/nn-duels-*/*.json text eol=lf
+shared/corpora/nn-duels-*/*.md text eol=lf
+shared/corpora/nn-duels-batched-v1/collector/*.py !filter !diff !merge text eol=lf
 
 # Keep the small offline video player and its provenance directly readable.
 shared/demonstrators/tactical-checkpoints-v1/index.html !filter !diff !merge text eol=lf

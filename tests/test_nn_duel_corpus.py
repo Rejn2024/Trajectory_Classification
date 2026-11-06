@@ -207,5 +207,69 @@ def test_notebook_is_valid_and_defaults_to_requested_campaign():
         if cell.cell_type == "code":
             assert cell.source.startswith("%%time\n")
             compile(cell.source.removeprefix("%%time\n"), str(path), "exec")
-    assert '"10000"' in sources and "EPISODE_SECONDS = 300" in sources
+    assert '"10000"' in sources and '"BVR_NN_SECONDS", "300"' in sources
     assert "duel.verify(OUTPUT, require_complete=True)" in sources
+    assert "central_cuda" in sources and "estimate_campaign" in sources
+
+
+def test_verification_receipt_skips_only_unchanged_indexed_payloads(campaign, monkeypatch):
+    work, output, config = campaign
+    for case in config["cases"]:
+        save_episode(work, case)
+    duel.package(work, output, config, shard_flights=2)
+    cache = work / "receipt.json"
+    native_load = duel._load_shard_episode
+    calls = []
+
+    def counted_load(*args):
+        calls.append(args)
+        return native_load(*args)
+
+    monkeypatch.setattr(duel, "_load_shard_episode", counted_load)
+    duel.verify(output, cache_path=cache)
+    assert len(calls) == 6
+    calls.clear()
+    duel.verify(output, cache_path=cache)
+    assert calls == []
+    # A changed episode index invalidates its receipt even with identical payload files.
+    index = pd.read_parquet(output / "episodes.parquet")
+    index.loc[0, "frames"] += 1
+    duel.save_table(output / "episodes.parquet", index)
+    manifest = duel.read(output / "manifest.json")
+    manifest["files"]["episodes.parquet"] = {
+        "bytes": (output / "episodes.parquet").stat().st_size,
+        "sha256": duel.sha256(output / "episodes.parquet"),
+    }
+    duel.write(output / "manifest.json", manifest)
+    with pytest.raises(ValueError, match="Index disagrees"):
+        duel.verify(output, cache_path=cache)
+    assert len(calls) == 1
+
+
+def test_runtime_estimate_includes_upload_and_repeated_integrity_work():
+    estimate = duel.estimate_campaign(
+        1000, 10, 30, 2, 1_000_000, shard_flights=100, upload_mbps=20, scan_mbps=400
+    )
+    assert estimate["rollout_hours"] == pytest.approx(3000 / 3600)
+    assert estimate["upload_hours"] == pytest.approx(400 / 3600)
+    assert estimate["repeated_checksum_hours"] > 0
+    assert estimate["total_hours"] == pytest.approx(
+        sum(
+            v
+            for k, v in estimate.items()
+            if k.endswith("_hours")
+            and k not in ("total_hours", "sensitivity_low_hours", "sensitivity_high_hours")
+        )
+    )
+    assert (
+        estimate["sensitivity_low_hours"]
+        < estimate["total_hours"]
+        < estimate["sensitivity_high_hours"]
+    )
+    with pytest.raises(ValueError):
+        duel.estimate_campaign(1000, 0, 1, 1, 1)
+
+
+def test_central_backend_never_silently_changes_stochastic_sampling(tmp_path):
+    with pytest.raises(ValueError, match="deterministic"):
+        duel.prepare(tmp_path, flights=3, deterministic=False, inference_backend="central_cuda")

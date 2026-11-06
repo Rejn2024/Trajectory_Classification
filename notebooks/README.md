@@ -5,9 +5,12 @@ For additional manoeuvre forecasting data, open
 10,000 new NN-versus-NN flights and pushes incremental Git LFS backups** on
 `forecasting_ed_261104`. It uses the frozen post-tactical notebook-07 population,
 new actual reset geometries, a 300-second/first-defeat limit, both observation
-perspectives, a worker throughput benchmark, resumable episode checkpoints and
+perspectives, shared GPU actor batching with a CPU/GPU throughput benchmark,
+an end-to-end runtime estimate, resumable episode checkpoints and
 exact-horizon skill-support audits. Collection and publication switches are in the
 first cell. The existing 09b corpus and preparation cache remain separate.
+See the [GPU batching guide](../docs/nn_duel_gpu_batching.md) for expected speedup,
+hardware assumptions and validation limits.
 
 For the skill-forecasting improvement study, open
 [10_skill_forecasting_improvements.ipynb](10_skill_forecasting_improvements.ipynb).
