@@ -65,8 +65,8 @@ def sha256(path):
     return digest.hexdigest()
 
 
-def download_paired_corpora(root, includes, git_executable=None):
-    """Find Git in the kernel environment, including standard Windows installs."""
+def resolve_git_runtime(root, git_executable=None):
+    """Return the resolved Git path and a child environment with working Git LFS."""
     root = Path(root)
     if not root.is_dir():
         raise ValueError(f"Repository directory does not exist: {root}")
@@ -91,8 +91,8 @@ def download_paired_corpora(root, includes, git_executable=None):
             "the active environment (for Conda: conda install -c conda-forge git git-lfs), "
             "then restart Jupyter. Alternatively set GIT_EXECUTABLE to the full path, "
             r"for example r'C:\Program Files\Git\cmd\git.exe'. "
-            "If the corpus files are already downloaded, set DOWNLOAD_LFS=False."
         )
+    git = str(Path(git).resolve())
     # Some Jupyter kernels inherit a PATH that omits Git's sibling executables.
     environment = os.environ.copy()
     environment["PATH"] = str(Path(git).resolve().parent) + os.pathsep + environment.get("PATH", "")
@@ -107,12 +107,20 @@ def download_paired_corpora(root, includes, git_executable=None):
             "(Conda: conda install -c conda-forge git-lfs), run git lfs install in "
             "the repository, and restart the notebook kernel. " + probe.stderr.strip()
         )
+    return git, environment
+
+
+def download_paired_corpora(root, includes, git_executable=None):
+    """Download selected LFS files and return the Git executable used."""
+    root = Path(root)
+    git, environment = resolve_git_runtime(root, git_executable)
     print(f"Downloading corpus files using {git}", flush=True)
     subprocess.run([git, "-c", "filter.lfs.clean=git-lfs clean -- %f",
                     "-c", "filter.lfs.smudge=git-lfs smudge -- %f",
                     "-c", "filter.lfs.process=git-lfs filter-process", "-c", "filter.lfs.required=true",
                     "lfs", "pull", "--include=" + ",".join(includes), "--exclude="],
                    cwd=root, env=environment, check=True)
+    return git
 
 
 def catalogue(root):

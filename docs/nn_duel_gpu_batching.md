@@ -263,3 +263,36 @@ the old setup and main campaign configurations. Version and preparation-setting
 cases fail with the old notebook key and pass with the new key. The focused suite
 passes 65 tests with one CUDA-only skip; all notebook cells also pass with a stale
 legacy setup retained, four short shared-CPU flights and final full verification.
+
+## Git unavailable only during publication
+
+A publication traceback ending in `FileNotFoundError: [WinError 2]` at
+`git("branch", "--show-current", ...)` means the child cannot launch Git. That
+branch check runs after snapshot verification, so this failure has already passed
+local payload verification and has not started its Git upload.
+
+Previously, the download helper could discover `C:\Program Files\Git\cmd\git.exe`
+while the notebook left `GIT_EXECUTABLE=None`. Publication then launched a child
+without that directory in PATH. The notebook now retains the discovered executable
+for subsequent commands and checks Git/LFS, the publication branch and the staging
+area before collection. Discovery also runs with `DOWNLOAD_LFS=False` when
+publication is enabled. A local-only run with both flags false still needs no Git.
+
+To retry the already packaged backup in the existing kernel:
+
+```python
+GIT_EXECUTABLE = r"C:\Program Files\Git\cmd\git.exe"
+run("publish", backend=BACKEND)
+```
+
+Use the actual Git installation path if different. Once publication succeeds,
+rerun the collection cell: completed episodes are verified and skipped. Keep the
+same WORK and OUTPUT. To use automatic discovery after updating the checkout,
+restart the clean kernel and rerun setup. The collector scripts and source hashes
+are unchanged by this fix, so existing campaign configurations remain resumable.
+
+Validation: 77 focused tests pass with one CUDA-only skip. Tests cover Windows Git
+paths containing spaces, publication when downloads are disabled, local-only runs
+without Git, early branch/staging checks, and an actual child that launches Git
+after discovery despite the original PATH omitting Git. All collector source files
+are byte-for-byte unchanged from the campaign-compatible base revision.
