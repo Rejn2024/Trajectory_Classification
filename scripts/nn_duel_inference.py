@@ -11,8 +11,11 @@ import time
 import traceback
 from multiprocessing.connection import wait
 
-import numpy as np
+# Keep Torch first for Windows DLL initialization, including standalone imports.
+# isort: off
 import torch
+import numpy as np
+# isort: on
 from torch import nn
 from torch.func import functional_call, stack_module_state, vmap
 

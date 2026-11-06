@@ -26,6 +26,10 @@ from multiprocessing import get_context
 from pathlib import Path
 from unittest.mock import patch
 
+from nn_duel_runtime import bootstrap_native_runtime
+
+bootstrap_native_runtime()  # Before NumPy, Pandas, Arrow or simulator imports, including spawn.
+
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
@@ -68,6 +72,7 @@ def collector_sources():
             "tactical_corpus_schema.py",
             "nn_duel_inference.py",
             "nn_duel_source.py",
+            "nn_duel_runtime.py",
         )
     ]
 
