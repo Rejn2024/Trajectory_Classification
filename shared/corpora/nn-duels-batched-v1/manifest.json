@@ -1,0 +1,106 @@
+{
+  "name": "nn-duels-v1",
+  "complete": false,
+  "requested_flights": 10000,
+  "physical_flights": 200,
+  "perspective_episodes": 400,
+  "files": {
+    "A01/observations/part-00000.parquet": {
+      "bytes": 27167137,
+      "sha256": "b895d4a6d2eeb479e7790a32b74106627b3bf36d36d5157f0e644cab65c4093f"
+    },
+    "A01/tracks/part-00000.parquet": {
+      "bytes": 24544264,
+      "sha256": "d20bad99307516de6304f7b372c3ac0500a875fb822bf73004139447c6151e29"
+    },
+    "A01/target_decisions/part-00000.parquet": {
+      "bytes": 1171746,
+      "sha256": "2952fc459b650e0f86cfd237aa4be4f1d1e90e9e4e65a34cc10b5ef3416d96b4"
+    },
+    "B01/observations/part-00000.parquet": {
+      "bytes": 27291690,
+      "sha256": "7aee9fb4302789d2093300521afbcd3742a9400081ea875875a426fd249890af"
+    },
+    "B01/tracks/part-00000.parquet": {
+      "bytes": 24544264,
+      "sha256": "addda0221bae1c62644e26fcaaca558ce27553568e4d0bec03db6f6d91279790"
+    },
+    "B01/target_decisions/part-00000.parquet": {
+      "bytes": 1179259,
+      "sha256": "203ffea1454736b0c887ab65326d5252f96d89e3a78dfc7478365a75221daf03"
+    },
+    "A01/observations/part-00001.parquet": {
+      "bytes": 29412852,
+      "sha256": "384921043bc95229d1b388a59225097d94bc03829be4b150b3f5ea6c2c72b115"
+    },
+    "A01/tracks/part-00001.parquet": {
+      "bytes": 25920289,
+      "sha256": "0d62d1550a89b3b60671fdeba39c8921054e8c4db57f44143cc2091902e48951"
+    },
+    "A01/target_decisions/part-00001.parquet": {
+      "bytes": 1227694,
+      "sha256": "06b3ece6aa074606921c2dd180d705d434bbe3f3f7e55c37fa6b77c91bd6f34a"
+    },
+    "B01/observations/part-00001.parquet": {
+      "bytes": 29004511,
+      "sha256": "c3d89ff55f39d76528938b73ca68766475f5de062647039854027f68eed77db6"
+    },
+    "B01/tracks/part-00001.parquet": {
+      "bytes": 25920289,
+      "sha256": "fb5e227ddd07cfc0578b0903f2a4828834b1184e635c2e4f0f2548a16a45ffff"
+    },
+    "B01/target_decisions/part-00001.parquet": {
+      "bytes": 1228736,
+      "sha256": "c30da362ceffed0fdb08226b9e1ed888b99805bfd61ddae70141e3329217ce09"
+    },
+    "config.json": {
+      "bytes": 7617850,
+      "sha256": "13c2201958c986e422afcc5065fc746d827ce42542fcf7f426f95e615c7ecd85"
+    },
+    "episodes.parquet": {
+      "bytes": 55274,
+      "sha256": "c609faf53db9ca73870c17b2a7fab06124c377df12c0571efb7ac5109b18e528"
+    },
+    "README.md": {
+      "bytes": 1131,
+      "sha256": "beb58d497a19f3cd8e52b2425e132e815ef06bb82d87a0490aca0091da10cd66"
+    },
+    "schema.json": {
+      "bytes": 1375,
+      "sha256": "bda043848bf3ea4aaed72bdc738d885778fba67d7384aef090c55fd6916ed332"
+    },
+    "skill_support.parquet": {
+      "bytes": 3851,
+      "sha256": "8eae0ce886f51a4355d0dcc4ba3136c6a5af5f3af0924de071d034f8c048b7e5"
+    },
+    "skill_support_by_pilot_family.parquet": {
+      "bytes": 12639,
+      "sha256": "c4f69c7672e2c9384cc1096150680169918a9cda6b13b1d9a8643151c2614269"
+    },
+    "tactical_reproduction.zip": {
+      "bytes": 5684794,
+      "sha256": "ca592273338d0cd9c45e543de24fda752045de090f6f6dbd23d319c5e44993f1"
+    },
+    "collector/generate_nn_duel_corpus.py": {
+      "bytes": 56303,
+      "sha256": "edfc4516b7874b6fd4fc7251ebe74edca611b972a58f0b543c4efbb63f803909"
+    },
+    "collector/nn_duel_inference.py": {
+      "bytes": 9827,
+      "sha256": "16cbd3c6a31917f7fbd872c35588bb195a0ff58267cb6b9ac0fa4eb0a58a7a2f"
+    },
+    "collector/nn_duel_runtime.py": {
+      "bytes": 4655,
+      "sha256": "447e2d0a396b66ff3c6344f5edee64bb03b1747ba2ad597b3314c6549a100af9"
+    },
+    "collector/nn_duel_source.py": {
+      "bytes": 2191,
+      "sha256": "f54f9feb4449b53e6d84720278482ac6bfe16ba7bf24a3b6595983c638c4cc23"
+    },
+    "collector/tactical_corpus_schema.py": {
+      "bytes": 4203,
+      "sha256": "ca826e51d2feee32f9ffe2ea1ed0b74e3c6aeeb454ecda372dba68e0ab407bb3"
+    }
+  },
+  "config_sha256": "13c2201958c986e422afcc5065fc746d827ce42542fcf7f426f95e615c7ecd85"
+}
