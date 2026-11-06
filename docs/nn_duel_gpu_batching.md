@@ -93,3 +93,41 @@ No extra package beyond the existing ML/simulator dependencies is required. Use
 a CUDA-enabled PyTorch build supporting the GPU. Changing source, software,
 backend or batch settings requires a fresh campaign; the historical validation
 data remains verifiable with its archived collector.
+
+## Human-readable notebook progress
+
+`PROGRESS_INTERVAL_SECONDS` defaults to **300 seconds**, exposed in the first cell
+and optionally overridden by `BVR_NN_PROGRESS_SECONDS`. A single reporting clock
+spans collection chunks, packaging, verification and LFS uploads. Long quiet stages
+still receive keepalives. Benchmark probes are labelled separately from main flights.
+
+Each update shows physical flights saved/target and percentage, aircraft perspectives,
+elapsed collection time, observed end-to-end rate and ETA, current stage, CPU/GPU
+backend, configured worker count, failed flights in the latest batch, and last
+verified/pushed backup with its age. An unavailable ETA or a command still awaiting
+its first completed-flight record is stated explicitly. Start, final completion
+and failures appear immediately; intermediate backup boundaries do not flood output.
+Completion is reported only after the final full verification passes.
+
+Raw child stdout/stderr goes directly to uniquely named files under
+`WORK/notebook_logs/`, including Git/LFS diagnostics. Human-readable updates also
+have a persistent transcript there. A command failure prints its log location and
+a short tail immediately. Notebook interruption terminates the command's own process
+group, including its workers, without targeting unrelated processes.
+
+Reporting runs outside the flight processes. A single blocked waiter thread in the
+notebook process detects command completion; the notebook otherwise sleeps until
+the next report. It reads the existing small `progress.json` only on heartbeats and
+collection-command completion. It adds no worker messages, trajectory scans,
+checksum passes, GPU polling or CUDA synchronization. Missing or temporarily unreadable
+counters retain the last known count. Optional transcript-write failures do not stop
+the collection. The flight collector and its saved source hashes are unchanged by
+this reporting update, so existing campaign resumption is preserved.
+
+Progress validation: eleven reporting tests cover cadence, quiet stages, benchmark
+isolation, missing counters, raw-output logging, immediate failures/completion and
+interruption cleanup. The combined collector/actor/schema/reporting suite passed
+35 tests with one CUDA-only skip. All notebook cells also executed with a one-second
+test interval using the existing four-flight sample, exercising final verification
+and confirming raw command JSON stays out of notebook output. No new flights were
+generated for that notebook check, and the full campaign remains unstarted here.

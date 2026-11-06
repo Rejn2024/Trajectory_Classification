@@ -11,6 +11,8 @@ exact-horizon skill-support audits. Collection and publication switches are in t
 first cell. The existing 09b corpus and preparation cache remain separate.
 See the [GPU batching guide](../docs/nn_duel_gpu_batching.md) for expected speedup,
 hardware assumptions and validation limits.
+Human-readable progress appears about every five minutes across rollout and backup
+stages; detailed command logs stay under the working directory's `notebook_logs/`.
 
 For the skill-forecasting improvement study, open
 [10_skill_forecasting_improvements.ipynb](10_skill_forecasting_improvements.ipynb).

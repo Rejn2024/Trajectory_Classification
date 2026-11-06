@@ -208,8 +208,10 @@ def test_notebook_is_valid_and_defaults_to_requested_campaign():
             assert cell.source.startswith("%%time\n")
             compile(cell.source.removeprefix("%%time\n"), str(path), "exec")
     assert '"10000"' in sources and '"BVR_NN_SECONDS", "300"' in sources
-    assert "duel.verify(OUTPUT, require_complete=True)" in sources
+    assert 'run("verify", full_verify=True)' in sources
     assert "central_cuda" in sources and "estimate_campaign" in sources
+    assert 'os.getenv("BVR_NN_PROGRESS_SECONDS", "300")' in sources
+    assert "updates.run(args" in sources and "updates.finish()" in sources
 
 
 def test_verification_receipt_skips_only_unchanged_indexed_payloads(campaign, monkeypatch):
