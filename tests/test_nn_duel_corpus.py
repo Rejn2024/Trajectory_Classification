@@ -275,3 +275,37 @@ def test_runtime_estimate_includes_upload_and_repeated_integrity_work():
 def test_central_backend_never_silently_changes_stochastic_sampling(tmp_path):
     with pytest.raises(ValueError, match="deterministic"):
         duel.prepare(tmp_path, flights=3, deterministic=False, inference_backend="central_cuda")
+
+
+@pytest.mark.parametrize("location", ["root", "notebooks", "external"])
+def test_notebook_loads_companions_by_file_path(tmp_path, location):
+    import subprocess
+
+    root = Path(__file__).parents[1]
+    notebook = json.loads((root / "notebooks/11_nn_vs_nn_training_data.ipynb").read_text())
+    cell = "".join(notebook["cells"][1]["source"])
+    bootstrap = cell[cell.index("# PyCharm's project index"):cell.index("FLIGHTS =")]
+    driver = '''
+import importlib.util
+import os
+import sys
+import types
+from pathlib import Path
+root, location, bootstrap = sys.argv[1:]
+if location == "external":
+    os.environ["BVR_NN_ROOT"] = root
+else:
+    os.environ.pop("BVR_NN_ROOT", None)
+# An already cached, unrelated module must not win over this checkout's file.
+sys.modules["generate_nn_duel_corpus"] = types.ModuleType("generate_nn_duel_corpus")
+exec(bootstrap)
+assert Path(duel.__file__).resolve() == Path(root) / "scripts/generate_nn_duel_corpus.py"
+assert sys.modules["generate_nn_duel_corpus"] is duel
+assert NotebookProgress.__module__ == "nn_duel_progress"
+'''
+    cwd = {"root": root, "notebooks": root / "notebooks", "external": tmp_path}[location]
+    result = subprocess.run(
+        [sys.executable, "-c", driver, str(root), location, bootstrap],
+        cwd=cwd, capture_output=True, text=True, check=False, timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
