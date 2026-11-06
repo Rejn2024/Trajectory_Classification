@@ -238,3 +238,28 @@ benchmarks, four eight-second flights, packaging and full verification) passed i
 the Linux environment. The Windows DLL collision and CUDA execution could not be
 validated on this Linux host; use the probe in the selected Windows kernel's
 Python environment before starting the full campaign.
+
+## Switching kernels after a failed setup
+
+`Resume configuration/source/software differs; use a new work directory` under
+`WORK/setup/<id>` can occur after installing the clean kernel: the old setup key
+included collector sources but omitted software versions and preparation settings.
+The notebook now derives that key from collector hashes, all recorded package and
+Python versions, flight count/seed/duration, deterministic policy and batch settings,
+and parent archive/manifest hashes. An identical configuration still reuses its setup;
+a changed environment or preparation request gets a separate setup directory.
+Previous setup configurations remain intact.
+
+After updating, rerun from the first notebook cell in the clean kernel. Old failed
+setup folders can remain in place. The collector's immutable configuration checks
+and source hashes are unchanged by this notebook-only fix. If the mismatch instead
+refers to the main `WORK/config.json`, select fresh `BVR_NN_WORK` and `BVR_NN_OUTPUT`
+paths before rerunning the first cell; keep the old campaign rather than editing its
+configuration to combine different software versions.
+
+Validation: the regression reproduces the reported `prepare` exception using a
+changed Torch version, then successfully prepares a separate setup while retaining
+the old setup and main campaign configurations. Version and preparation-setting
+cases fail with the old notebook key and pass with the new key. The focused suite
+passes 65 tests with one CUDA-only skip; all notebook cells also pass with a stale
+legacy setup retained, four short shared-CPU flights and final full verification.
