@@ -153,6 +153,8 @@ def test_child_exit_returns_immediately_and_failure_reports_log_tail(tmp_path):
             target=100,
         )
     assert error.value.returncode == 7
+    assert "EXAMPLE_FAILURE" in error.value.output
+    assert str(reporter.last_log) in error.value.output
     assert time.monotonic() - start < 10  # Do not wait five minutes after a command has exited.
     assert "FAILED: Verifying data" in messages[-1] and "EXAMPLE_FAILURE" in messages[-1]
 
