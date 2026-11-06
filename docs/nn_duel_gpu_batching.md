@@ -171,3 +171,70 @@ All notebook code cells also pass with four short flights, one/two-worker shared
 CPU benchmarks, final full verification and publication disabled. This check
 retains a deliberately stale pre-fix setup and uses the new source-keyed setup.
 Windows and CUDA execution still require validation on the user's machine.
+
+## Windows OpenMP startup failure (2026-11-06)
+
+`OMP: Error #15: Initializing libiomp5md.dll, but found libiomp5md.dll already
+initialized` is a native-library abort. The subsequent `BrokenProcessPool` and
+`OSError: handle is closed` messages are consequences of dead workers. Reducing
+worker counts does not repair two OpenMP runtimes inside each process. A common
+cause is a Conda MKL/Intel OpenMP installation combined with a pip PyTorch wheel
+that supplies another Intel OpenMP DLL; the log alone does not identify which
+packages supplied the two copies.
+
+The collector initializes Torch's CPU runtime before importing NumPy, Pandas,
+Arrow or the simulator on Windows, including when Windows spawn imports the
+collector in a new worker/owner. The inference module and notebook also load
+Torch before NumPy. The notebook first probes the native dependency mix in a
+separate process, before importing scientific libraries into the kernel or
+launching a pool. It exercises Torch, NumPy and SciPy BLAS matrix operations and
+OpenCV, and imports the simulator's runtime dependencies. Logs contain the kernel
+executable, candidate Intel OpenMP DLL paths, import stages, and (on success)
+loaded native thread-pool paths. A native abort is retained as the original
+error in a `WORK/notebook_logs/native_runtime_*.log` and stops setup immediately.
+If the Windows kernel/IDE already imported NumPy, the disposable probe also
+initializes NumPy before Torch, matching the existing kernel instead of assuming
+that restarting a cell can change its native-library load order. This can require
+a clean environment even when a fresh Torch-first worker probe succeeds.
+The standalone check is:
+
+```powershell
+python scripts/nn_duel_runtime.py check
+```
+
+Restart the kernel after updating. Import order fixes the startup collision when
+both libraries can reuse the first runtime; it cannot repair incompatible DLLs
+in an installed environment. If the probe still aborts, create a clean environment
+instead of deleting/renaming DLLs or setting `KMP_DUPLICATE_LIB_OK=TRUE`. That flag
+suppresses the runtime's protection and can leave crashes or incorrect results.
+For the reported RTX 5080, this is an example using CUDA 12.8 PyTorch wheels:
+
+```powershell
+conda create -n trajectory-nn-clean python=3.12 pip -y
+conda activate trajectory-nn-clean
+python -m pip install torch --index-url https://download.pytorch.org/whl/cu128
+python -m pip install -e ".[ml,video]"
+python scripts/nn_duel_runtime.py check
+python -m ipykernel install --user --name trajectory-nn-clean --display-name "Trajectory NN clean"
+```
+
+Run these from the repository root. Install the numerical/ML packages with pip in
+this new environment so NumPy/SciPy use their wheel-provided libraries rather than
+adding Conda MKL alongside PyTorch. Select **Trajectory NN clean** as the PyCharm
+notebook kernel and restart it. Check the printed `sys.executable` path. Use a
+current PyTorch CUDA wheel that supports the installed NVIDIA driver and GPU if
+choosing a different CUDA version. The old environment and data are retained.
+
+The runtime bootstrap is included in collector source hashes. Source-keyed setup
+and benchmark directories are regenerated automatically; an already initialized
+main campaign requires fresh work/output directories after source/software changes.
+
+Validation of this change: 51 focused tests passed with one CUDA-only skip. Tests
+exercise Windows bootstrap ordering, fail-fast notebook ordering, a child that
+terminates natively with an OpenMP error, and propagation of worker thread limits
+without adding a duplicate-runtime override. The real native probe, a six-worker
+CPU collection of six short flights, and every notebook cell (shared CPU actor
+benchmarks, four eight-second flights, packaging and full verification) passed in
+the Linux environment. The Windows DLL collision and CUDA execution could not be
+validated on this Linux host; use the probe in the selected Windows kernel's
+Python environment before starting the full campaign.

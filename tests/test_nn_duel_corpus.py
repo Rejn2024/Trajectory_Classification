@@ -284,8 +284,12 @@ def test_notebook_loads_companions_by_file_path(tmp_path, location):
     root = Path(__file__).parents[1]
     notebook = json.loads((root / "notebooks/11_nn_vs_nn_training_data.ipynb").read_text())
     cell = "".join(notebook["cells"][1]["source"])
-    bootstrap = cell[cell.index("# PyCharm's project index"):cell.index("FLIGHTS =")]
-    driver = '''
+    bootstrap = cell[cell.index("# PyCharm's project index") : cell.index("native_runtime =")]
+    bootstrap += (
+        'duel = load_companion("generate_nn_duel_corpus")\n'
+        'NotebookProgress = load_companion("nn_duel_progress").NotebookProgress\n'
+    )
+    driver = """
 import importlib.util
 import os
 import sys
@@ -302,10 +306,14 @@ exec(bootstrap)
 assert Path(duel.__file__).resolve() == Path(root) / "scripts/generate_nn_duel_corpus.py"
 assert sys.modules["generate_nn_duel_corpus"] is duel
 assert NotebookProgress.__module__ == "nn_duel_progress"
-'''
+"""
     cwd = {"root": root, "notebooks": root / "notebooks", "external": tmp_path}[location]
     result = subprocess.run(
         [sys.executable, "-c", driver, str(root), location, bootstrap],
-        cwd=cwd, capture_output=True, text=True, check=False, timeout=30,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
     )
     assert result.returncode == 0, result.stdout + result.stderr
