@@ -67,6 +67,7 @@ def collector_sources():
             "generate_nn_duel_corpus.py",
             "tactical_corpus_schema.py",
             "nn_duel_inference.py",
+            "nn_duel_source.py",
         )
     ]
 
@@ -301,12 +302,15 @@ def prepare(
 
 
 def initialize_worker(work, assignments=None, channels=None):
+    from nn_duel_source import activate_snapshot
+
     work = Path(work).resolve()
     job = work / "tactical_snapshot"
     source = job / "source"
     sys.path[:0] = [str(source), str(source / "bvr_sim_source")]
     os.environ["BVR_SIM_RESOURCE_DIR"] = str(source / "bvr_sim_source/bvr_sim/resources")
     os.environ["JSBSIM_DIR"] = str(source / "bvr_sim_source/bvr_sim/resources/jsbsim")
+    activate_snapshot(source)
     import bvr_sim.bvr_env as sim_module
     import torch
 
@@ -314,9 +318,9 @@ def initialize_worker(work, assignments=None, channels=None):
     from bvr_behavior_prediction.rl.multi_pilot import load_trained_pilot
 
     if not Path(pilot_module.__file__).resolve().is_relative_to(source):
-        raise ValueError("Wrong policy source imported; run the collector in a fresh subprocess")
+        raise ValueError(f"Wrong policy source imported: {pilot_module.__file__}; expected {source}")
     if not Path(sim_module.__file__).resolve().is_relative_to(source):
-        raise ValueError("Wrong simulator source imported")
+        raise ValueError(f"Wrong simulator source imported: {sim_module.__file__}; expected {source}")
     torch.set_num_threads(1)
     torch.set_num_interop_threads(1)
     STATE.update(work=work, config=read(work / "config.json"), models={}, loader=load_trained_pilot)

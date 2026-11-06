@@ -131,3 +131,43 @@ interruption cleanup. The combined collector/actor/schema/reporting suite passed
 test interval using the existing four-flight sample, exercising final verification
 and confirming raw command JSON stays out of notebook output. No new flights were
 generated for that notebook check, and the full campaign remains unstarted here.
+
+## Fix for frozen simulator import failures (2026-11-06)
+
+The Windows failure `Wrong simulator source imported` occurs during worker/owner
+initialization. Local CPU collection then reports `BrokenProcessPool`; shared CUDA
+collection reports `Central inference startup failed`. The final notebook error
+`Every rollout backend failed` is the consequence of those startup failures.
+
+Prepending the snapshot to `sys.path` cannot override packages already cached in
+`sys.modules` or an editable-install finder earlier in `sys.meta_path`. The collector
+now activates `nn_duel_source.py` inside each isolated worker and inference owner.
+Its finder resolves both `bvr_sim` and `bvr_behavior_prediction`, including their
+submodules, exclusively from the frozen snapshot. Cached copies of those packages
+are cleared first. Missing snapshot modules raise instead of falling through to an
+installed package; unrelated dependencies retain normal import resolution. The
+existing policy/simulator origin checks remain in place and report actual paths.
+The helper is included in the collector hashes and archived reproduction sources.
+
+The notebook reuses successful benchmark measurements and retries failed candidates.
+Failure rows and the final exception retain command log paths and output excerpts.
+Setup directories now include the collector source hash, as benchmark directories
+already did, so a failed pre-fix setup cannot block the repaired collector.
+
+After updating, restart the notebook kernel and Run All. The reported failure
+occurred before preparation of the main campaign, so the default paths can be
+reused. If `WORK/config.json` already exists for an older main campaign, select fresh
+`BVR_NN_WORK` and `BVR_NN_OUTPUT` paths first: the source hash change deliberately
+prevents combining collector versions in one immutable campaign. Keep prior
+collections and published manifests intact.
+
+Validation: the original initializer fails three installed-package collision cases;
+the repaired initializer passes all four combinations of cached packages and
+priority editable-install finders. The collector/actor/schema/progress/import and
+benchmark retry suites pass **41 tests**, with one CUDA-only skip. Real four-flight,
+eight-game-second runs pass with two simulator workers for both `local_cpu` and
+`central_cpu`; the shared owner passes its 80-history frozen-actor parity check.
+All notebook code cells also pass with four short flights, one/two-worker shared
+CPU benchmarks, final full verification and publication disabled. This check
+retains a deliberately stale pre-fix setup and uses the new source-keyed setup.
+Windows and CUDA execution still require validation on the user's machine.

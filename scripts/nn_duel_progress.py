@@ -249,10 +249,11 @@ class NotebookProgress:
         self._observe()
         self.report()
         if code:
+            tail = log_tail(self.last_log)
             self._say(
-                f"FAILED: {stage} (exit {code}). Detailed log: {self.last_log}\n{log_tail(self.last_log)}"
+                f"FAILED: {stage} (exit {code}). Detailed log: {self.last_log}\n{tail}"
             )
-            raise subprocess.CalledProcessError(code, args)
+            raise subprocess.CalledProcessError(code, args, output=f"Log: {self.last_log}\n{tail}")
         return code
 
     @staticmethod
