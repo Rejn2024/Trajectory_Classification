@@ -53,7 +53,11 @@ selected checkpoint receives final inline diagnostics on all three partitions.
 Validation is held out until that final report; test is used for model selection.
 The notebook includes setup, resumption instructions and performance recommendations.
 Every executable cell reports CPU and elapsed wall time using `%%time`, with CUDA
-synchronization before completion. A resource audit describes current batching,
+synchronization in cells that submit GPU work. Diagnostic figures use the
+noninteractive Agg backend, display the saved PNG bytes inline, and report each
+layout/render/write/display stage. See [diagnostic recovery](../docs/paired_skill_diagnostics.md)
+to regenerate the report from an existing run without retraining.
+A resource audit describes current batching,
 and the throughput recommendations include conditional speedup and memory estimates.
 CUDA defaults now use BF16 autocast, training/evaluation batches of 512/1024 and
 a normalized cache of unique frames on the GPU. CPU execution falls back to FP32
