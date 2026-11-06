@@ -73,7 +73,7 @@ def sha256(path):
 
 
 def durable_replace(temp, path):
-    with Path(temp).open("rb") as f:
+    with Path(temp).open("rb+") as f:
         os.fsync(f.fileno())
     for attempt in range(20):
         try:
@@ -95,7 +95,9 @@ def write(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(path.suffix + ".tmp")
-    temp.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+    temp.write_text(
+        json.dumps(value, indent=2, allow_nan=False) + "\n", encoding="utf-8", newline="\n"
+    )
     durable_replace(temp, path)
 
 
@@ -798,7 +800,7 @@ def package(work, output, config, shard_flights=100):
             "The existing 09b loader is fixed to its original corpus; it does not auto-discover this dataset.\n"
             "See notebooks/11_nn_vs_nn_training_data.ipynb for collection, verification, skill gaps and publication.\n"
         )
-        (output / "README.md").write_text(readme, encoding="utf-8")
+        (output / "README.md").write_text(readme, encoding="utf-8", newline="\n")
         for path in output.rglob("*"):
             if path.is_file() and path.name != "manifest.json" and path.suffix != ".tmp":
                 inventory[path.relative_to(output).as_posix()] = {

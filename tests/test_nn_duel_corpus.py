@@ -175,6 +175,28 @@ def test_lock_excludes_another_writer_and_releases_after_error(tmp_path):
     assert not (tmp_path / "collection.lock").exists()
 
 
+def test_metadata_stays_atomic_during_windows_reader_lock(tmp_path, monkeypatch):
+    target = tmp_path / "progress.json"
+    duel.write(target, {"completed": 1})
+    native_replace = duel.os.replace
+    attempts = []
+
+    def temporarily_locked(source, destination):
+        attempts.append(destination)
+        assert duel.read(target) == {"completed": 1}
+        if len(attempts) < 3:
+            raise PermissionError("Windows reader has the old document open")
+        native_replace(source, destination)
+
+    monkeypatch.setattr(duel.os, "replace", temporarily_locked)
+    monkeypatch.setattr(duel.time, "sleep", lambda _: None)
+    duel.write(target, {"completed": 2})
+    assert duel.read(target) == {"completed": 2}
+    assert len(attempts) == 3
+    assert b"\r" not in target.read_bytes()
+    assert not target.with_suffix(".json.tmp").exists()
+
+
 def test_notebook_is_valid_and_defaults_to_requested_campaign():
     nbformat = pytest.importorskip("nbformat")
     path = Path(__file__).parents[1] / "notebooks/11_nn_vs_nn_training_data.ipynb"
