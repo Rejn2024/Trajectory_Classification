@@ -1,0 +1,382 @@
+{
+  "schema_version": "nn-duels-v1",
+  "flights": 10,
+  "seed": 26122000,
+  "episode_limit_s": 300.0,
+  "sample_interval_s": 0.1,
+  "decision_interval_s": 1,
+  "deterministic_policy": true,
+  "pilots": {
+    "pilot_001": {
+      "checkpoint_sha256": "dee45270d89a1df7f6cba65dee927266d28ed7c2490970c9f3d3d98d716ba001",
+      "config_sha256": "f928fddb1e816a604e81730b51741ffde5313a7572a3764ebef0ec266145f2d5",
+      "history_steps": 20
+    },
+    "pilot_002": {
+      "checkpoint_sha256": "9ae0761607c3e70c42bcfd4aa25909d084c0656524699864ed82514a29c0592a",
+      "config_sha256": "9335df0b396835a0f49a18ca29c7073f8a6719e388ae566fa4e4ad5f97911ca5",
+      "history_steps": 20
+    },
+    "pilot_003": {
+      "checkpoint_sha256": "caeaefe2137e580379c3d01ec95ec65496513ae55d4da1a31c8543c6b556d875",
+      "config_sha256": "47571ea284b48ec13b38b0d5a2c35b607b7a673a155d4cd637bb1264d125e9de",
+      "history_steps": 20
+    },
+    "pilot_004": {
+      "checkpoint_sha256": "77c08f79a437b52fbd57d878d46bb05f129ef9e3656323be959c32a76e2eacb8",
+      "config_sha256": "061073a6edd99d10b380f8a5f7d78bd348c69b48bfedad7e56a1e72c9f4f11d8",
+      "history_steps": 20
+    },
+    "pilot_005": {
+      "checkpoint_sha256": "5791be7ae3e90ec8f247d7370b4d006f6bd32b300db25fa27bf807b21eaa74f8",
+      "config_sha256": "915338a5161df5ae7190908d2b48d71c7b467a6cbda0aa12536b471810bde4e1",
+      "history_steps": 20
+    },
+    "pilot_006": {
+      "checkpoint_sha256": "f13789f1a54ec9f06d94003dfcc886461cac8af6fce146f1f902803d41fd6df7",
+      "config_sha256": "6dc6e7097ad49a06a1adcd418d6783a7159edafdcc517e18748e7b8a0aed3c3c",
+      "history_steps": 20
+    },
+    "pilot_007": {
+      "checkpoint_sha256": "4835fd084c501372225cf1f44ce31bff3740611b71873338a2a35a63c879fc54",
+      "config_sha256": "4161d2ae21f17bdb0ee7b385c0286c9eeeaa21d8cc7e4c60c935183158edb2ac",
+      "history_steps": 20
+    },
+    "pilot_008": {
+      "checkpoint_sha256": "92aa526fd19a3ed7463244e5c749bf62f9f5b9b7dfc7de12f59249bdeb4a27f0",
+      "config_sha256": "bf0a86e39a53231e7abd19ebca35788ffd7497ad4f213694cb9acaa74e95c2f4",
+      "history_steps": 20
+    },
+    "pilot_009": {
+      "checkpoint_sha256": "c18033eff26c8ea96f4706176947fec5541ac0db01fc26afc829b2bdb2d3aa4d",
+      "config_sha256": "28d0a85c1878f65ed5379778b68946f0e1e5fa8bdea5c4d5843a0330c89fde65",
+      "history_steps": 20
+    },
+    "pilot_010": {
+      "checkpoint_sha256": "76ad0fbef45e0bfcf039919a90aced8f346bcf0e841f49cdfed195d66cab9ca2",
+      "config_sha256": "3f0549b1835c005749836599e9ebab57e986f270264372750a25df08518a9029",
+      "history_steps": 20
+    }
+  },
+  "cases": [
+    {
+      "episode_id": "nn_26122000_00000",
+      "scenario_group": "nn_26122000_00000",
+      "seed": 26122000,
+      "family": "mixed_aspect",
+      "pilots": {
+        "A01": "pilot_005",
+        "B01": "pilot_006"
+      },
+      "initial": {
+        "A01": {
+          "position": [
+            11675.223574796784,
+            11533.230886692727,
+            2627.2917333589967
+          ],
+          "heading_nwu_deg": 14.6862173047424,
+          "speed_mps": 324.5410976990276
+        },
+        "B01": {
+          "position": [
+            -8813.701464789245,
+            -13536.296363698006,
+            8434.663279373082
+          ],
+          "heading_nwu_deg": 138.52361712715702,
+          "speed_mps": 292.43420241849583
+        }
+      }
+    },
+    {
+      "episode_id": "nn_26122000_00001",
+      "scenario_group": "nn_26122000_00001",
+      "seed": 26122001,
+      "family": "crossing_left",
+      "pilots": {
+        "A01": "pilot_001",
+        "B01": "pilot_002"
+      },
+      "initial": {
+        "A01": {
+          "position": [
+            2019.5734229925483,
+            -2640.2264106284374,
+            4606.226168065399
+          ],
+          "heading_nwu_deg": 136.27560916649367,
+          "speed_mps": 211.7827396222172
+        },
+        "B01": {
+          "position": [
+            -4952.070770034898,
+            4692.974553558082,
+            2162.955313869293
+          ],
+          "heading_nwu_deg": 208.125264095271,
+          "speed_mps": 225.53813695808543
+        }
+      }
+    },
+    {
+      "episode_id": "nn_26122000_00002",
+      "scenario_group": "nn_26122000_00002",
+      "seed": 26122002,
+      "family": "crossing_right",
+      "pilots": {
+        "A01": "pilot_001",
+        "B01": "pilot_003"
+      },
+      "initial": {
+        "A01": {
+          "position": [
+            -23562.895150239947,
+            19758.793428583427,
+            2153.394388643526
+          ],
+          "heading_nwu_deg": 313.45568413146975,
+          "speed_mps": 342.1811442083688
+        },
+        "B01": {
+          "position": [
+            23667.722991248276,
+            -19832.17291728926,
+            7310.211403901426
+          ],
+          "heading_nwu_deg": 239.8410574206212,
+          "speed_mps": 244.2778686962949
+        }
+      }
+    },
+    {
+      "episode_id": "nn_26122000_00003",
+      "scenario_group": "nn_26122000_00003",
+      "seed": 26122003,
+      "family": "tail_chase",
+      "pilots": {
+        "A01": "pilot_001",
+        "B01": "pilot_008"
+      },
+      "initial": {
+        "A01": {
+          "position": [
+            -17779.255806092897,
+            -16681.030187183813,
+            9254.588961629428
+          ],
+          "heading_nwu_deg": 42.31396105644361,
+          "speed_mps": 377.5254766128222
+        },
+        "B01": {
+          "position": [
+            16251.528461725467,
+            17750.439328241013,
+            5306.185361408749
+          ],
+          "heading_nwu_deg": 58.96771638282092,
+          "speed_mps": 217.02688954455067
+        }
+      }
+    },
+    {
+      "episode_id": "nn_26122000_00004",
+      "scenario_group": "nn_26122000_00004",
+      "seed": 26122004,
+      "family": "cold_recommit",
+      "pilots": {
+        "A01": "pilot_002",
+        "B01": "pilot_007"
+      },
+      "initial": {
+        "A01": {
+          "position": [
+            -27942.38809217624,
+            -6390.124013076287,
+            6229.459362428323
+          ],
+          "heading_nwu_deg": 217.9832870100356,
+          "speed_mps": 234.1667824297083
+        },
+        "B01": {
+          "position": [
+            24020.245738715937,
+            9135.6236604985,
+            3965.6861536310553
+          ],
+          "heading_nwu_deg": 5.077959979811764,
+          "speed_mps": 349.3848479780634
+        }
+      }
+    },
+    {
+      "episode_id": "nn_26122000_00005",
+      "scenario_group": "nn_26122000_00005",
+      "seed": 26122005,
+      "family": "close_merge",
+      "pilots": {
+        "A01": "pilot_003",
+        "B01": "pilot_006"
+      },
+      "initial": {
+        "A01": {
+          "position": [
+            1287.9550050867515,
+            3167.7773339115893,
+            7543.142881199032
+          ],
+          "heading_nwu_deg": 116.76379887272572,
+          "speed_mps": 361.81610920758465
+        },
+        "B01": {
+          "position": [
+            2328.617007145157,
+            -5699.377742473925,
+            6368.807665772261
+          ],
+          "heading_nwu_deg": 62.025739043197234,
+          "speed_mps": 335.06832904725115
+        }
+      }
+    },
+    {
+      "episode_id": "nn_26122000_00006",
+      "scenario_group": "nn_26122000_00006",
+      "seed": 26122006,
+      "family": "low_energy_climb",
+      "pilots": {
+        "A01": "pilot_009",
+        "B01": "pilot_009"
+      },
+      "initial": {
+        "A01": {
+          "position": [
+            17722.99572664291,
+            9597.406063072267,
+            3891.0959549416657
+          ],
+          "heading_nwu_deg": 310.2374478849964,
+          "speed_mps": 221.76861048682494
+        },
+        "B01": {
+          "position": [
+            -15633.681940991311,
+            -11059.925713028384,
+            6746.747176771812
+          ],
+          "heading_nwu_deg": 214.473049260547,
+          "speed_mps": 322.4780366741216
+        }
+      }
+    },
+    {
+      "episode_id": "nn_26122000_00007",
+      "scenario_group": "nn_26122000_00007",
+      "seed": 26122007,
+      "family": "high_low",
+      "pilots": {
+        "A01": "pilot_003",
+        "B01": "pilot_009"
+      },
+      "initial": {
+        "A01": {
+          "position": [
+            -6220.388976205734,
+            2360.980819683747,
+            10882.812651102375
+          ],
+          "heading_nwu_deg": 245.16597011228237,
+          "speed_mps": 307.7651630682135
+        },
+        "B01": {
+          "position": [
+            7765.198056342647,
+            -3442.3471757795855,
+            3601.471832925473
+          ],
+          "heading_nwu_deg": 312.3504849654672,
+          "speed_mps": 287.16963469466833
+        }
+      }
+    },
+    {
+      "episode_id": "nn_26122000_00008",
+      "scenario_group": "nn_26122000_00008",
+      "seed": 26122008,
+      "family": "offset_support",
+      "pilots": {
+        "A01": "pilot_003",
+        "B01": "pilot_002"
+      },
+      "initial": {
+        "A01": {
+          "position": [
+            16221.887675845615,
+            -1018.8679496918143,
+            6889.923448546152
+          ],
+          "heading_nwu_deg": 203.0701613629888,
+          "speed_mps": 266.6020430613031
+        },
+        "B01": {
+          "position": [
+            -16734.696092487862,
+            1377.833841341387,
+            10618.441132031652
+          ],
+          "heading_nwu_deg": 338.57852776054756,
+          "speed_mps": 363.37475360273277
+        }
+      }
+    },
+    {
+      "episode_id": "nn_26122000_00009",
+      "scenario_group": "nn_26122000_00009",
+      "seed": 26122009,
+      "family": "defensive_beam",
+      "pilots": {
+        "A01": "pilot_003",
+        "B01": "pilot_001"
+      },
+      "initial": {
+        "A01": {
+          "position": [
+            170.11018355869783,
+            -6293.737419757534,
+            4149.50404483947
+          ],
+          "heading_nwu_deg": 203.50192127649908,
+          "speed_mps": 245.88386807866164
+        },
+        "B01": {
+          "position": [
+            -2430.2353242527956,
+            7875.825018243402,
+            10344.339120958677
+          ],
+          "heading_nwu_deg": 283.5304262679632,
+          "speed_mps": 254.71060120663583
+        }
+      }
+    }
+  ],
+  "parent_archive_sha256": "ca592273338d0cd9c45e543de24fda752045de090f6f6dbd23d319c5e44993f1",
+  "parent_manifest_sha256": "66e4a2e09ce3d8cf085cbca8c818ab4adbb4adaebaf47284fb3e845bb1e049e0",
+  "source_experiment": "20261010T200223_142625Z_tactical",
+  "collector_hashes": {
+    "generate_nn_duel_corpus.py": "03bcd93ea50de7c7b62dde555b50b1c52e5fc103b80cf0a52a24c6ee1346f6ff",
+    "tactical_corpus_schema.py": "f338e7f671452771c673abdac68757c97c0181f6075b6e5ddb8872e1ec031ce8"
+  },
+  "software": {
+    "numpy": "2.5.4",
+    "pandas": "2.2.3",
+    "pyarrow": "26.0.1",
+    "torch": "2.15.0+cpu",
+    "jsbsim": "1.3.3",
+    "gymnasium": "1.4.0",
+    "python": "3.12.14"
+  },
+  "inference_device": "cpu",
+  "inference_precision": "fp32",
+  "native_throttle_override": true
+}

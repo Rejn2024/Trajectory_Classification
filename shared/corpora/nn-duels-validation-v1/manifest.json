@@ -1,0 +1,71 @@
+{
+  "name": "nn-duels-validation-v1",
+  "complete": true,
+  "requested_flights": 10,
+  "physical_flights": 10,
+  "perspective_episodes": 20,
+  "files": {
+    "A01/observations/part-00000.parquet": {
+      "bytes": 2800172,
+      "sha256": "540758802bb4b961bcf8fdbc66b466679fd40f1772885e04e2c34a3ea4725401"
+    },
+    "A01/tracks/part-00000.parquet": {
+      "bytes": 2460526,
+      "sha256": "15e2e1b04ab29c853896a749b633a1041add227b00631462c410c04163bfd00d"
+    },
+    "A01/target_decisions/part-00000.parquet": {
+      "bytes": 119915,
+      "sha256": "0ac463eb4c9ebf54efecee33e9350df98c14836a9e6639a16606605d8df4b6cb"
+    },
+    "B01/observations/part-00000.parquet": {
+      "bytes": 2722864,
+      "sha256": "9d685eedfdea1ee4342f27dee33058af343a4295854980b72a6c63a2df0cfb58"
+    },
+    "B01/tracks/part-00000.parquet": {
+      "bytes": 2460526,
+      "sha256": "79a10426f1f1e74be013a1a0aa2f2a85a0ba1167cc8e96bdab766963ff89aba2"
+    },
+    "B01/target_decisions/part-00000.parquet": {
+      "bytes": 120484,
+      "sha256": "f3104f38467a7a02a1b73bdce47620d51589031ca48f9935f6baf291ae3e8ff1"
+    },
+    "skill_support.parquet": {
+      "bytes": 3703,
+      "sha256": "cf374d5737f3fdc9e5092a46a4cdaf9f770d6a3809726d00bc64a1a1786f63c9"
+    },
+    "tactical_reproduction.zip": {
+      "bytes": 5684794,
+      "sha256": "ca592273338d0cd9c45e543de24fda752045de090f6f6dbd23d319c5e44993f1"
+    },
+    "README.md": {
+      "bytes": 1453,
+      "sha256": "e0ee8325d8f7373396f2aa3494b99cba530967c19a3c2afc0f2a372ddfa47d79"
+    },
+    "schema.json": {
+      "bytes": 1375,
+      "sha256": "bda043848bf3ea4aaed72bdc738d885778fba67d7384aef090c55fd6916ed332"
+    },
+    "episodes.parquet": {
+      "bytes": 15496,
+      "sha256": "55fa025b3765a15cdba7ec67701580a60bd29b7e5828fcf1f39220304a714782"
+    },
+    "config.json": {
+      "bytes": 10991,
+      "sha256": "e963fa582cae3bdbcbb821344c49d28ed168926ee8c2b8c3a6540ef0e58a69a0"
+    },
+    "skill_support_by_pilot_family.parquet": {
+      "bytes": 6057,
+      "sha256": "1abce4bd2a0aa72306f8dcbc5ccb5bb502a840252d5df6d56d3e0d843b9fe1c5"
+    },
+    "collector/tactical_corpus_schema.py": {
+      "bytes": 4127,
+      "sha256": "f338e7f671452771c673abdac68757c97c0181f6075b6e5ddb8872e1ec031ce8"
+    },
+    "collector/generate_nn_duel_corpus.py": {
+      "bytes": 46150,
+      "sha256": "03bcd93ea50de7c7b62dde555b50b1c52e5fc103b80cf0a52a24c6ee1346f6ff"
+    }
+  },
+  "config_sha256": "e963fa582cae3bdbcbb821344c49d28ed168926ee8c2b8c3a6540ef0e58a69a0",
+  "purpose": "Ten-flight integration validation; excludes the future 10,000-flight campaign."
+}
