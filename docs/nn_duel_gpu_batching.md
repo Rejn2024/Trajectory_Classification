@@ -296,3 +296,67 @@ paths containing spaces, publication when downloads are disabled, local-only run
 without Git, early branch/staging checks, and an actual child that launches Git
 after discovery despite the original PATH omitting Git. All collector source files
 are byte-for-byte unchanged from the campaign-compatible base revision.
+
+## Git LFS lock verification blocks a saved backup (2026-11-07)
+
+The supplied `20261106T231411Z_add517_0041_publish.log` records local commit
+`e1bbbf1` with 1,400 physical flights (2,800 aircraft perspectives). Both
+`git lfs fsck` checks pass. The subsequent `git push` fails with
+`Fatal error: Unable to verify locks`, after reporting that origin does not
+support the Git LFS locking API. The Python `CalledProcessError` propagates this
+Git failure. The log does not establish whether that API is unsupported or
+inaccessible with the current credentials. The CRLF-to-LF notices are warnings;
+they did not cause the push failure. The 1,400-flight backup is committed locally;
+its upload is not confirmed by this log.
+
+This corpus writes immutable shards and does not use Git LFS file locks. Notebook
+publication setup now sets
+`lfs.https://github.com/Rejn2024/Trajectory_Classification.git/info/lfs.locksverify=false`
+in this checkout's local Git configuration, after the branch/staging checks and
+before collection. Global Git settings and other LFS endpoints retain their lock
+policy. Checksums, semantic verification, LFS integrity checks, the pre-push LFS
+upload hook, the explicit LFS push and remote-commit confirmation remain active.
+Authentication, quota, network and non-fast-forward failures still propagate.
+
+To recover the stopped run without collecting another batch, run this once in a
+terminal at the repository root:
+
+```powershell
+git config --local lfs.https://github.com/Rejn2024/Trajectory_Classification.git/info/lfs.locksverify false
+git pull --no-rebase origin forecasting_ed_261104
+```
+
+The pull merges the published code fix with the local, unpushed corpus backup;
+both commits are preserved. Run it while collection is stopped. Then run this in
+the existing notebook kernel:
+
+```python
+run("publish", backend=BACKEND)
+```
+
+After it succeeds, rerun the collection cell. Publication re-verifies the saved
+snapshot, reuses an existing commit when there are no new package changes, pushes
+through the normal LFS hook and checks that the remote branch matches local HEAD.
+Keep the same WORK and OUTPUT and the same kernel/software/campaign settings;
+completed flights are verified and skipped. All five collector source files and
+the archived corpora are unchanged by this notebook-only repair, preserving the
+existing campaign's source hashes. A fresh run applies the setting during setup.
+
+Apply the notebook-only change without replacing or normalizing the collector
+files in the stopped checkout. The published campaign records CRLF byte hashes
+for `tactical_corpus_schema.py`, `nn_duel_source.py` and `nn_duel_runtime.py`;
+their LF-normalized Git versions have different hashes. This pre-existing
+cross-platform difference is separate from the lock failure, and the repair
+leaves the original Windows collector bytes in place.
+
+Validation: 76 focused Git/setup/progress/benchmark/collector/import/runtime/
+actor/schema tests pass, with one CUDA-only skip. A real-Git regression first
+fails against the old notebook, then confirms that the repaired setup overrides
+an inherited endpoint lock setting and that the notebook's publication child
+sees `false`. Global settings, other endpoints and the pre-push hook are
+preserved; local-only setup changes no Git configuration. The notebook schema
+validates and all six code cells compile. All five collector source files are
+byte-for-byte unchanged from the branch base revision.
+
+The stopped Windows checkout and its unpushed commit are not available in the
+cloud environment. Recovery must run there, where the new LFS payloads exist.

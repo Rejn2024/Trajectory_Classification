@@ -185,3 +185,62 @@ def test_publication_child_finds_git_with_original_path_missing_git(tmp_path, mo
     scope["updates"] = SimpleNamespace(run=execute)
     scope["run"]("publish", backend="local_cpu")
     assert executed and "git version" in executed[0]
+
+
+@pytest.mark.parametrize("publish", [True, False])
+def test_publication_lock_setting_reaches_child_without_changing_other_repositories(
+    tmp_path, monkeypatch, publish
+):
+    git = shutil.which("git")
+    if not git or not shutil.which("git-lfs"):
+        pytest.skip("Git and Git LFS required for child-process integration")
+    endpoint = "https://github.com/Rejn2024/Trajectory_Classification.git/info/lfs"
+    key = f"lfs.{endpoint}.locksverify"
+    unrelated = "lfs.https://github.com/example/locked-assets.git/info/lfs.locksverify"
+    global_config = tmp_path / "global.gitconfig"
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(global_config))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.syspath_prepend(str(ROOT))
+
+    def git_run(*args):
+        return subprocess.run(
+            [git, *args], cwd=tmp_path, text=True, capture_output=True, check=True
+        ).stdout.strip()
+
+    git_run("init", "-b", "forecasting_ed_261104")
+    git_run("config", "--global", "lfs.locksverify", "true")
+    git_run("config", "--global", key, "true")
+    git_run("config", "--local", unrelated, "true")
+    original_global = global_config.read_bytes()
+    original_local = (tmp_path / ".git/config").read_bytes()
+    hook = tmp_path / ".git/hooks/pre-push"
+    hook.write_text("#!/bin/sh\ngit lfs pre-push \"$@\"\n", encoding="utf-8")
+    original_hook = hook.read_bytes()
+    scope, _ = namespace(tmp_path)
+    scope["PUBLISH"] = publish
+    bootstrap(scope)
+    assert git_run("config", "--bool", "--get", key) == ("false" if publish else "true")
+    assert git_run("config", "--bool", "--get", unrelated) == "true"
+    assert git_run("config", "--bool", "--get", "lfs.locksverify") == "true"
+    assert global_config.read_bytes() == original_global
+    assert hook.read_bytes() == original_hook
+    if not publish:
+        assert (tmp_path / ".git/config").read_bytes() == original_local
+        return
+
+    # Exercise the notebook's actual subprocess path, including inherited Git config.
+    child = tmp_path / "publication lock probe.py"
+    child.write_text(
+        "import subprocess\n"
+        f"value = subprocess.check_output(['git', 'config', '--bool', '--get', {key!r}], "
+        "text=True).strip()\n"
+        "assert value == 'false', value\n",
+        encoding="utf-8",
+    )
+    scope["SCRIPT"] = child
+
+    def execute(args, **kwargs):
+        subprocess.run(args, cwd=kwargs["cwd"], env=kwargs["env"], check=True)
+
+    scope["updates"] = SimpleNamespace(run=execute)
+    scope["run"]("publish", backend="local_cpu")
