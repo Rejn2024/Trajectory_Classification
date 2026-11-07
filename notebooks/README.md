@@ -2,13 +2,21 @@
 
 For additional manoeuvre forecasting data, open
 [11_nn_vs_nn_training_data.ipynb](11_nn_vs_nn_training_data.ipynb). **Run All collects
-10,000 new NN-versus-NN flights and pushes incremental Git LFS backups** on
+20,000 new NN-versus-NN pairings (40,000 aircraft perspectives) and pushes incremental Git LFS backups** on
 `forecasting_ed_261104`. It uses the frozen post-tactical notebook-07 population,
 new actual reset geometries, a 300-second/first-defeat limit, both observation
 perspectives, shared GPU actor batching with a CPU/GPU throughput benchmark,
 an end-to-end runtime estimate, resumable episode checkpoints and
 exact-horizon skill-support audits. Collection and publication switches are in the
 first cell. The existing 09b corpus and preparation cache remain separate.
+Every Run All creates a new series ID, seed, work directory and output directory;
+previous flights, benchmarks, verification receipts and logs are not reused.
+Defaults are `artifacts/nn_duels_20k_v1/<series-id>/` and
+`shared/corpora/nn-duels-20k-v1/<series-id>/`. `BVR_NN_WORK` and `BVR_NN_OUTPUT`
+override the parent directories; each still gets a fresh series subdirectory.
+Rerun only the collection cell to continue the series active in the same kernel.
+Earlier series remain intact. An explicit `BVR_NN_SEED` overrides random seed selection;
+`BVR_NN_FLIGHTS` permits smaller validation runs.
 See the [GPU batching guide](../docs/nn_duel_gpu_batching.md) for expected speedup,
 hardware assumptions and validation limits.
 Human-readable progress appears about every five minutes across rollout and backup

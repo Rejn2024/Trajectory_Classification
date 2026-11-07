@@ -31,6 +31,12 @@ shared/corpora/nn-duels-*/*.json text eol=lf
 shared/corpora/nn-duels-*/*.md text eol=lf
 shared/corpora/nn-duels-batched-v1/collector/*.py !filter !diff !merge text eol=lf
 
+# Fresh series get a subdirectory, including under an overridden NN corpus root.
+# Preserve metadata checksums and exact collector bytes, including Windows CRLF.
+shared/corpora/nn-duels-*/*/*.json text eol=lf
+shared/corpora/nn-duels-*/*/*.md text eol=lf
+shared/corpora/nn-duels-*/*/collector/*.py !filter !diff !merge -text
+
 # Keep the small offline video player and its provenance directly readable.
 shared/demonstrators/tactical-checkpoints-v1/index.html !filter !diff !merge text eol=lf
 shared/demonstrators/tactical-checkpoints-v1/*.json !filter !diff !merge text eol=lf

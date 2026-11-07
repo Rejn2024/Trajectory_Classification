@@ -1,10 +1,46 @@
 # Shared GPU rollout inference and estimated runtime
 
 The updated `notebooks/11_nn_vs_nn_training_data.ipynb` serves independent CPU/JSBSim
-worlds from one GPU actor process. The new default work/output paths are
-`artifacts/nn_duels_batched_v1` and `shared/corpora/nn-duels-batched-v1`. The original
-validation sample is preserved. The full 10,000-flight campaign has not been
-launched in the cloud; it is intended for the user's compute.
+worlds from one GPU actor process. Each Run All now starts **20,000 physical
+pairings and 40,000 recorded aircraft perspectives** from zero, using a fresh seed
+and a new series subdirectory under `artifacts/nn_duels_20k_v1/` and
+`shared/corpora/nn-duels-20k-v1/`. The original validation sample and prior campaigns
+are preserved. The full series is intended for the user's compute.
+
+## Fresh 20,000-pairing series (2026-11-07)
+
+Every execution of the first notebook cell creates a new timestamped series ID
+with a random suffix and a fresh default seed, then creates an empty work
+directory. This applies to Run All in the same kernel as well as after a kernel
+restart. Setup files, CPU/GPU benchmarks, collected episodes, verification
+receipts and progress logs all belong to that new series. Earlier series and the
+original 10,000-flight campaign are retained rather than deleted or counted
+toward the new target. The 100 ordered pilot pairs, including self-pairs, each
+receive 200 engagements in the default 20,000-pairing schedule.
+
+`BVR_NN_WORK` and `BVR_NN_OUTPUT` now override parent directories; a fresh series
+subdirectory is always appended, even when an override still names the old
+campaign. The first cell prints the series ID, seed and actual paths. An explicit
+`BVR_NN_SEED` requests a reproducible scenario schedule in a separate series.
+`BVR_NN_FLIGHTS` remains available for shorter validation runs.
+
+To continue the series active in a kernel, rerun only the collection cell. To
+retry its saved backup, call `run("publish", backend=BACKEND)` in that kernel.
+Executing the first cell again deliberately starts another series. Native
+runtime checks, frozen pilot verification, GPU parity checks, backup integrity
+checks and the scoped LFS lock-verification fix remain enabled.
+
+Git attributes cover the new per-series directories: metadata retains LF line
+endings and archived collectors retain their exact registered bytes, including
+Windows CRLF. Parquet payloads still use LFS. Attributes for the original
+campaign's files and all five collector source files are unchanged.
+
+Validation: 81 focused tests pass, with one CUDA-only skip. New checks execute
+startup twice with default and legacy overridden roots, retain previous partial
+data/caches unchanged, verify all 20,000 pairings and balanced pilot/family counts,
+and round-trip nested series through real Git/LFS with `core.autocrlf=true`.
+The notebook schema validates and all six code cells compile. The full
+20,000-engagement collection was not launched during this code change.
 
 ## Expected benefit
 
@@ -51,14 +87,15 @@ Dispatch sizes, padding and inference time are saved in `inference_metrics.json`
 
 ## Estimated complete duration
 
-For the **10 physical core / 16 thread Intel CPU and RTX 5080 reported in 09b**,
-budget roughly **4–8 hours end to end**, assuming about **20 Mbps sustained upload**.
-This is a provisional planning range. The old cloud serial benchmark took 80.75
+Use the notebook's measured estimate for the 20,000-pairing series on the
+**10 physical core / 16 thread Intel CPU and RTX 5080 reported in 09b**. The previous
+4–8 hour planning range was for 10,000 flights. The old cloud serial benchmark took 80.75
 seconds for ten flights, mean duration 222.56 game seconds. An idealized extrapolation
-to eight effective workers gives about 2.8 hours for acquisition before storage
+to eight effective workers gives about 5.6 hours for 20,000 acquisitions before storage
 and network overhead. GPU offload may reduce that modestly; JSBSim physics stays
-on CPU. CPU speed, thermal limits, flight durations and bandwidth can move the
-actual time outside this range.
+on CPU. CPU speed, thermal limits, flight durations and bandwidth affect the
+actual time. With fixed 100-flight backup intervals, doubling the campaign also
+approximately quadruples the total bytes read by repeated prefix checksum passes.
 
 The notebook replaces this extrapolation with measured whole-flight throughput
 and measured packaging/verification time. It separately budgets repeated prefix
@@ -68,7 +105,7 @@ assumptions. The sensitivity range varies compute/disk costs and is not a confid
 interval. Live collection cycles update the ETA using actual collection,
 verification and upload time.
 
-Expect about 10–15 GiB of compressed payload and reserve 40–55 GiB free for work,
+Expect about 20–30 GiB of compressed payload and reserve 80–110 GiB free for work,
 publication and LFS objects. Unchanged semantic checks use receipts keyed by actual
 payload hashes, configuration and episode index rows. Every payload byte is still
 checksummed; publication verifies each snapshot once, and final verification uses

@@ -29,7 +29,7 @@ def namespace(tmp_path):
         "ROOT": tmp_path,
         "WORK": tmp_path / "work",
         "OUTPUT": tmp_path / "output",
-        "FLIGHTS": 10000,
+        "FLIGHTS": 20000,
         "SEED": 42,
         "WORKERS": 12,
         "EPISODE_SECONDS": 300,
