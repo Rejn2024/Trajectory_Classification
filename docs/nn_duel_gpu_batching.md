@@ -9,8 +9,8 @@ are preserved. The full series is intended for the user's compute.
 
 ## Fresh 20,000-pairing series (2026-11-07)
 
-Every execution of the first notebook cell creates a new timestamped series ID
-with a random suffix and a fresh default seed, then creates an empty work
+Every execution of the first notebook cell creates a compact random series ID
+and a fresh default seed, then creates an empty work
 directory. This applies to Run All in the same kernel as well as after a kernel
 restart. Setup files, CPU/GPU benchmarks, collected episodes, verification
 receipts and progress logs all belong to that new series. Earlier series and the
@@ -41,6 +41,41 @@ data/caches unchanged, verify all 20,000 pairings and balanced pilot/family coun
 and round-trip nested series through real Git/LFS with `core.autocrlf=true`.
 The notebook schema validates and all six code cells compile. The full
 20,000-engagement collection was not launched during this code change.
+
+## Windows snapshot extraction path length
+
+The supplied `20261107T235225Z_b8ee22_0002_collect.log` fails in
+`zipfile.extractall()` while preparing the first CPU benchmark. The reported
+`Submarine_Scout_crew_ap.xml` destination is 261 characters long, beyond the
+traditional Windows file-path limit of 259 characters plus its terminating NUL.
+The extra series directory introduced this regression. The file exists in the
+verified pilot archive; this error occurs before any benchmark flight starts.
+
+Series IDs now use 12 hexadecimal characters, and benchmark directories use `b/`
+instead of `benchmarks/`. Across all 745 files in the verified archive, the longest
+path for the reported checkout and a 12-worker shared-CUDA benchmark is now 236
+characters. `scripts/nn_duel_paths.py` checks every archive member against setup,
+main-collection and the longest planned benchmark directories before the first
+snapshot is extracted. It counts UTF-16 units on Windows. A longer custom work
+root fails early with a direct instruction to set `BVR_NN_WORK` to a short parent
+such as `C:\bvrw`; output can stay inside the repository. No Windows registry or
+long-path policy change is required.
+
+After pulling this repair, restart the notebook kernel and Run All. It creates a
+new short-ID series with the same 20,000-pairing target and 40,000 perspectives.
+Old failed directories remain intact and are not reused. The five collector
+source files, pilot archive, frozen-pilot verification and LFS publication checks
+are unchanged.
+
+Validation: 85 focused tests pass, with one CUDA-only skip. The new regression
+fails against the old notebook layout and passes with compact IDs and benchmark
+directories, including legacy root overrides. The verified 745-file archive
+reproduces the 261-character overflow in the path check and fits the new layout.
+Tests also cover long custom work roots, fail-fast ordering and UTF-16 accounting.
+All six notebook code cells execute with one/two-worker shared-CPU benchmarks,
+four real eight-second engagements, eight perspectives, packaging and final full
+verification. Publication is disabled for that smoke run. Native Windows and CUDA
+execution still require validation on the user's machine.
 
 ## Expected benefit
 

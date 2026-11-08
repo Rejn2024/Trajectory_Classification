@@ -1,12 +1,13 @@
 """Every Run All starts a separate 20k series without reusing prior campaign data."""
 
+import ast
 import json
 import secrets
 import shutil
 import subprocess
 import sys
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
@@ -50,6 +51,23 @@ def test_first_cell_restarts_at_zero_and_retains_previous_series(tmp_path, monke
     )
     assert first_work.name == first_output.name == scope["SERIES_ID"]
     assert not list(first_work.iterdir()) and not first_output.exists()
+    # The exact layout must fit on the Windows checkout from the reported failure.
+    benchmark_source = "".join(notebook["cells"][5]["source"]).removeprefix("%%time\n")
+    benchmark_assignment = next(
+        node for node in ast.walk(ast.parse(benchmark_source))
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "bench_work" for target in node.targets)
+    )
+    windows_work = PureWindowsPath(r"C:\Users\theon\Trajectory_Classification") / first_work.relative_to(tmp_path)
+    benchmark_work = eval(  # Actual repository notebook expression.
+        compile(ast.Expression(benchmark_assignment.value), "benchmark directory", "eval"),
+        {"WORK": windows_work, "bench_id": "0cee00de7b2a", "backend": "central_cuda", "workers": 12},
+    )
+    member = (
+        "source/bvr_sim_source/bvr_sim/resources/jsbsim/aircraft/"
+        "Submarine_Scout/Systems/Submarine_Scout_crew_ap.xml"
+    )
+    assert len(str(benchmark_work / "tactical_snapshot" / member)) < 260
     # Simulate a partly acquired series and cached benchmark/verification state.
     first_output.mkdir(parents=True)
     for path in (

@@ -12,6 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
 import generate_nn_duel_corpus as duel
+import nn_duel_paths as duel_paths
 
 
 def select_setup(namespace):
@@ -47,6 +48,7 @@ def setup_environment(tmp_path, monkeypatch):
     monkeypatch.setattr(importlib.metadata, "version", lambda name: versions[name])
     namespace = {
         "duel": duel,
+        "duel_paths": duel_paths,
         "importlib": importlib,
         "hashlib": hashlib,
         "json": json,
@@ -58,6 +60,7 @@ def setup_environment(tmp_path, monkeypatch):
         "DETERMINISTIC": True,
         "BATCH_WAIT_MS": 2.0,
         "BATCH_MAX_REQUESTS": 32,
+        "WORKER_CANDIDATES": [1],
     }
     return namespace, versions
 

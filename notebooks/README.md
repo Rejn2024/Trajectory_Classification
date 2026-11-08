@@ -11,6 +11,9 @@ exact-horizon skill-support audits. Collection and publication switches are in t
 first cell. The existing 09b corpus and preparation cache remain separate.
 Every Run All creates a new series ID, seed, work directory and output directory;
 previous flights, benchmarks, verification receipts and logs are not reused.
+Series IDs use 12 hexadecimal characters and benchmark directories use `b/`
+to keep Windows snapshot paths short. Setup checks all archive destinations
+before extraction; a work root that is still too long reports how to shorten it.
 Defaults are `artifacts/nn_duels_20k_v1/<series-id>/` and
 `shared/corpora/nn-duels-20k-v1/<series-id>/`. `BVR_NN_WORK` and `BVR_NN_OUTPUT`
 override the parent directories; each still gets a fresh series subdirectory.
