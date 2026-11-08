@@ -633,12 +633,16 @@ class BatchPipeline:
 
 
 class PairedTransformer(nn.Module):
-    def __init__(self, num_classes=33, width=192, heads=6, layers=2, dropout=0.1):
+    def __init__(self, num_classes=33, width=192, heads=6, layers=2, dropout=0.1,
+                 input_features=len(FEATURES)):
         super().__init__()
         if width % heads:
             raise ValueError("Width must be divisible by attention heads")
+        if not isinstance(input_features, int) or isinstance(input_features, bool) or input_features < 1:
+            raise ValueError("input_features must be a positive integer")
         self.num_classes = num_classes
-        self.projection = nn.Linear(len(FEATURES), width)
+        self.input_features = input_features
+        self.projection = nn.Linear(input_features, width)
         self.position = nn.Parameter(torch.randn(1, HISTORY_STEPS, width) * 0.02)
         block = nn.TransformerEncoderLayer(width, heads, width * 4, dropout,
                                            activation="gelu", batch_first=True, norm_first=True)
@@ -652,8 +656,8 @@ class PairedTransformer(nn.Module):
                                   nn.Linear(width, 3 * num_classes))
 
     def forward(self, windows):
-        if windows.ndim != 3 or tuple(windows.shape[1:]) != (HISTORY_STEPS, len(FEATURES)):
-            raise ValueError("Expected (batch, 51, 54) trained-pilot histories")
+        if windows.ndim != 3 or tuple(windows.shape[1:]) != (HISTORY_STEPS, self.input_features):
+            raise ValueError(f"Expected (batch, {HISTORY_STEPS}, {self.input_features}) feature histories")
         encoded = self.encoder(self.projection(windows) + self.position)
         # Bidirectional attention is within the past-only window; no future tokens exist.
         return self.head(self.norm(encoded[:, -1])).reshape(-1, 3, self.num_classes)
@@ -783,7 +787,10 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
     cpu_threads = min(config["cpu_threads"], os.cpu_count() or 1)
     torch.set_num_threads(cpu_threads)
     precision = resolve_precision(device, config["precision"])
+    data_manifest = getattr(data, "manifest", {})
+    feature_names = list(data_manifest.get("features", FEATURES))
     architecture = {k: config[k] for k in ("width", "heads", "layers", "dropout")}
+    architecture["input_features"] = len(feature_names)
     base_model = PairedTransformer(num_classes=len(data.classes), **architecture).to(device)
     model = execution_model(base_model, config)
     optimizer = torch.optim.AdamW(base_model.parameters(), lr=config["learning_rate"],
@@ -791,6 +798,10 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
     rng = np.random.default_rng(config["seed"])
     manifest_hash = sha256(data.directory / "manifest.json")
     run = {"training": config, "model": architecture, "classes": data.classes,
+           "data_contract": data_manifest.get("data_contract", DATA_CONTRACT),
+           "feature_names": feature_names,
+           "input_contract": data_manifest.get("input_contract"),
+           "target_contract": data_manifest.get("target_contract"),
            "data_manifest_sha256": manifest_hash, "source_sha256": sha256(__file__),
            "tracking_source_sha256": sha256(Path(__file__).with_name("paired_skill_tracking.py")),
            "torch_version": str(torch.__version__), "numpy_version": np.__version__,
@@ -867,7 +878,11 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                            "optimizer_state": optimizer.state_dict(), "model_config": architecture,
                            "classes": data.classes, "mean": data.mean, "std": data.std,
                            "history_steps": HISTORY_STEPS, "horizons_s": HORIZONS,
-                           "feature_names": FEATURES, "best_loss": best, "best_epoch": best_epoch,
+                           "feature_names": feature_names,
+                           "data_contract": run["data_contract"],
+                           "input_contract": run["input_contract"],
+                           "target_contract": run["target_contract"],
+                           "best_loss": best, "best_epoch": best_epoch,
                            "test_nll": test_nll, "history": history, "numpy_rng": rng.bit_generator.state,
                            "epochs_without_improvement": epochs_without_improvement,
                            "early_stopped": stopped_early,
@@ -970,7 +985,8 @@ def benchmark_batches(data, config=None, device=None, batch_sizes=(512, 1024),
                         with torch.cuda.device(device):
                             torch.cuda.manual_seed(config["seed"])
                     base = PairedTransformer(num_classes=len(data.classes), **{
-                        k: config[k] for k in ("width", "heads", "layers", "dropout")}).to(device)
+                        k: config[k] for k in ("width", "heads", "layers", "dropout")},
+                        input_features=len(getattr(data, "manifest", {}).get("features", FEATURES))).to(device)
                     model = execution_model(base, {**config, "compile_model": compiled})
                     optimizer = torch.optim.AdamW(base.parameters(), lr=config["learning_rate"],
                                                   weight_decay=config["weight_decay"])

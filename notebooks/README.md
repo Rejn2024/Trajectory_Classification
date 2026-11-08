@@ -1,5 +1,18 @@
 # Notebooks
 
+For forecasts conditioned on the observing aircraft's own current skill, run
+[12_prepare_nn_duel_skill_forecasting.ipynb](12_prepare_nn_duel_skill_forecasting.ipynb),
+then [13_nn_duel_skill_forecasting.ipynb](13_nn_duel_skill_forecasting.ipynb).
+Notebook 12 reads notebook 11's latest complete NN-duel release and prepares both
+perspectives with 54 observation/acceleration features plus 33 own-skill indicators.
+For A observing B, A's current skill enters the inputs and B's future skill remains
+the target at +1/+2/+5 seconds. Whole flights stay together in 40/30/30 grouped splits.
+Notebook 13 trains new independently seeded networks with the 09b architecture,
+test-based checkpoint selection and final held-out validation. Both notebooks
+provide timed cells, provenance, support audits and reuse/resume controls.
+See the [workflow guide](../docs/nn_duel_skill_forecasting.md) for data alignment,
+resource requirements and configuration.
+
 For additional manoeuvre forecasting data, open
 [11_nn_vs_nn_training_data.ipynb](11_nn_vs_nn_training_data.ipynb). **Run All collects
 20,000 new NN-versus-NN pairings (40,000 aircraft perspectives) and pushes incremental Git LFS backups** on

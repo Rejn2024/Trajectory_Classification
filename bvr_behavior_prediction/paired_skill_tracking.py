@@ -83,7 +83,7 @@ class RunTracker:
                 experiment_id = experiment.experiment_id
             active = self.client.create_run(experiment_id, tags={
                 "mlflow.runName": self.settings.get("run_name", self.output.name),
-                "pipeline": "trained_pilot_skill_forecasting",
+                "pipeline": "paired_skill_forecasting",
                 "test_role": "checkpoint_selection", "validation_role": "held_out_until_final",
             })
             self.state = {"run_id": active.info.run_id, "experiment_id": experiment_id,
@@ -130,11 +130,16 @@ class RunTracker:
         if not self.enabled:
             return
         from mlflow.entities import Param
+        from .paired_skill_forecasting import DATA_CONTRACT
         self.classes = list(run["classes"])
+        contract = data.manifest.get("data_contract", run.get("data_contract", DATA_CONTRACT))
+        self.client.set_tag(self.state["run_id"], "data_contract", contract)
+        self.client.set_tag(self.state["run_id"], "pipeline",
+                            "trained_pilot_skill_forecasting" if contract == DATA_CONTRACT else contract)
         if self.previous is None:
             params = {f"training.{k}": _value(v) for k, v in run["training"].items()}
             params.update(dataset_manifest_sha256=run["data_manifest_sha256"],
-                          source_sha256=run["source_sha256"],
+                          source_sha256=run["source_sha256"], data_contract=contract,
                           tracking_source_sha256=_sha(__file__),
                           history_steps=51, raw_history_steps=56, input_features=len(data.manifest["features"]),
                           horizons_s="1,2,5", classes=len(self.classes),
@@ -301,9 +306,12 @@ class RunTracker:
             if export_format == "pt2":
                 shutil.copytree(root / "source", root / "model" / "source_snapshot")
             _write(root / "model" / "paired_input_schema.json", {
-                "input": f"Normalized trained-pilot feature histories, shape [batch,51,{input_features}]",
+                "input": f"Normalized feature histories, shape [batch,51,{input_features}]",
                 "output": "Raw logits, shape [batch,3,classes]; apply softmax on the last axis",
                 "classes": saved["classes"], "features": saved["feature_names"],
+                "data_contract": saved.get("data_contract"),
+                "input_contract": saved.get("input_contract"),
+                "target_contract": saved.get("target_contract"),
                 "mean": saved["mean"].tolist(), "std": saved["std"].tolist(),
                 "horizons_s": saved["horizons_s"], "selected_epoch": saved["epoch"],
                 "reported_evaluation_precision": saved.get("effective_precision", "fp32"),
