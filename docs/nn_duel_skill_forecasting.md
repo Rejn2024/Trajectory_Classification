@@ -16,6 +16,36 @@ manifest modification time. Partial packages are excluded. Set
 `BVR_NN_FORECAST_SOURCE` to select a particular packaged directory, or
 `BVR_NN_ROOT` to locate the checkout from a different kernel directory.
 
+## Windows PyArrow import failure
+
+`ImportError: DLL load failed while importing lib: An Application Control policy
+has blocked this file` means Windows rejected a native component while importing
+PyArrow. The traceback alone does not identify whether the blocked file is
+`pyarrow.lib` or a dependent DLL. This happens before any flight data is read.
+Both notebooks check the Parquet import first and report the active kernel's
+Python executable, environment prefix, installed PyArrow version and original error.
+
+Reproduce the import in the same environment from Anaconda Prompt:
+
+```bat
+conda run -n trajectory-nn-clean python -c "import sys; print(sys.executable); import pyarrow.parquet; import pyarrow; print(pyarrow.__version__)"
+```
+
+Immediately afterward, open Event Viewer > Applications and Services Logs > Microsoft
+> Windows > CodeIntegrity > Operational and inspect the corresponding block event.
+The machine's policy administrator can use that event's file path and signing details
+to supply a policy-approved PyArrow build or authorize the affected component.
+Installing another copy of the same blocked binary does not resolve the policy.
+If the approved replacement is distributed through Conda, install it into
+`trajectory-nn-clean` using the administrator's approved channel and build; the
+traceback alone does not establish which package manager supplied the current copy.
+
+After repair, rerun the import command above, restart the Jupyter kernel, and rerun
+the notebook. The early check improves the diagnosis; it cannot change Windows policy.
+Changing model settings, selecting CPU, or changing the flight-data directory does
+not resolve a native-library policy block. A missing-package or ordinary missing-DLL
+error receives separate instructions, rather than being labeled a policy rejection.
+
 ## What enters the model
 
 For A01 observing B01, the input is A01's 51 observations, the same three backward
