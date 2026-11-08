@@ -2,8 +2,8 @@
   "name": "nn-duels-v1",
   "complete": false,
   "requested_flights": 10000,
-  "physical_flights": 6600,
-  "perspective_episodes": 13200,
+  "physical_flights": 6700,
+  "perspective_episodes": 13400,
   "files": {
     "A01/observations/part-00000.parquet": {
       "bytes": 27349755,
@@ -1589,13 +1589,37 @@
       "bytes": 1172359,
       "sha256": "23a4044bac96ddf578d82198d773bb5b464a2bca58893b360a2fda797daef7c1"
     },
+    "A01/observations/part-00066.parquet": {
+      "bytes": 26650090,
+      "sha256": "43ebfc65fa9e03fea34ca5db24b22e44b7120b07dfae78f4562b1b8a62552a37"
+    },
+    "A01/tracks/part-00066.parquet": {
+      "bytes": 23803612,
+      "sha256": "43b536d8f7245c2b464906e9f6d4350c2a382c88b134fcc497473bdf63d0025a"
+    },
+    "A01/target_decisions/part-00066.parquet": {
+      "bytes": 1140802,
+      "sha256": "e322b7d16c242294befb8fce23b67734808d3452e13699c2739c509815a2bc47"
+    },
+    "B01/observations/part-00066.parquet": {
+      "bytes": 26615519,
+      "sha256": "4cfb239cb5ca6f3445179e532bf9ff6f6f192af203e3a9665fa7623b32b29cee"
+    },
+    "B01/tracks/part-00066.parquet": {
+      "bytes": 23803612,
+      "sha256": "2cf7fc673d9780125bf8e0db07e7de4149a30ca04add432dc744561246aa4215"
+    },
+    "B01/target_decisions/part-00066.parquet": {
+      "bytes": 1145562,
+      "sha256": "36004a55c985b978bd976dde10ff0e8a05fe30f1a8d5608ae5fbecf58c121b68"
+    },
     "config.json": {
       "bytes": 7677646,
       "sha256": "7ba30cc98afcaa7ceeefef79caa22df1a6705c87902dfa45468265f36cb9216a"
     },
     "episodes.parquet": {
-      "bytes": 1497982,
-      "sha256": "688f960b37cfac46fe55725db1ce81881797f43b35f3b2b0b5abdbf229ca8f8b"
+      "bytes": 1520188,
+      "sha256": "c070b5e5c283b6066fdea2ea46a5a874502ee13b057f1ef83e0981f50c5eb9b3"
     },
     "README.md": {
       "bytes": 1131,
@@ -1606,12 +1630,12 @@
       "sha256": "bda043848bf3ea4aaed72bdc738d885778fba67d7384aef090c55fd6916ed332"
     },
     "skill_support.parquet": {
-      "bytes": 4129,
-      "sha256": "639f0f7bfaabaf8de52ea89826362fe3acb64a7273ab92609e253ddf1ac5ac0f"
+      "bytes": 4128,
+      "sha256": "52e16a677ba3ba2a76452732dd9643b8e73baf30273202bf0274c4d9a3938683"
     },
     "skill_support_by_pilot_family.parquet": {
-      "bytes": 38281,
-      "sha256": "6a46e66e577e95e2d55344c1b1da11f23d657d1687624697160b76e62b52d703"
+      "bytes": 38311,
+      "sha256": "113af4bf06d5fc7048e1129542e4199f4a0209defd32a6e077136e5fea210a2b"
     },
     "tactical_reproduction.zip": {
       "bytes": 5684794,
