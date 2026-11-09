@@ -45,6 +45,7 @@ DEFAULT_TRAINING = {
     "l1_lambda": 0.0,
     "overtraining_shutdown": False, "overtraining_patience": 3,
     "overtraining_relative_increase": 0.05, "overtraining_min_gap": 0.1,
+    "class_weighting": "none", "max_class_weight_ratio": 5.0,
 }
 
 
@@ -666,10 +667,58 @@ class PairedTransformer(nn.Module):
         return self.head(self.norm(encoded[:, -1])).reshape(-1, 3, self.num_classes)
 
 
-def masked_loss(logits, targets):
+def fit_class_weighting(data, config):
+    """Fit per-horizon weights using only retained training targets.
+
+    Cap sqrt(max_count / count) before normalising its training-frequency
+    weighted mean to one. Thus the rare/common weight ratio is bounded and
+    the expected data-loss scale stays comparable with unweighted CE.
+    """
+    mode, cap = config["class_weighting"], config["max_class_weight_ratio"]
+    if mode not in ("none", "sqrt_inverse"):
+        raise ValueError("class_weighting must be none or sqrt_inverse")
+    if (isinstance(cap, bool) or not isinstance(cap, (int, float))
+            or not np.isfinite(cap) or cap < 1):
+        raise ValueError("max_class_weight_ratio must be finite and at least one")
+    if mode == "none":
+        return None
+    targets = np.asarray(data.targets[data.indices["train"]])
+    counts, weights = [], []
+    for h in range(len(HORIZONS)):
+        labels = targets[:, h]
+        count = np.bincount(labels[labels >= 0], minlength=len(data.classes))
+        present = count > 0
+        if not present.any():
+            raise ValueError(f"No retained training labels at +{HORIZONS[h]}s")
+        weight = np.zeros(len(data.classes), dtype=np.float64)
+        weight[present] = np.minimum(cap, np.sqrt(count.max() / count[present]))
+        weight /= np.dot(count, weight) / count.sum()
+        counts.append(count.tolist())
+        weights.append(weight.tolist())
+    return {"mode": mode, "max_class_weight_ratio": cap, "classes": list(data.classes),
+            "horizons_s": list(HORIZONS), "counts": counts, "weights": weights,
+            "fitted_on": "retained training labels only; missing=-1 excluded",
+            "normalisation": "training-frequency weighted mean one per horizon",
+            "zero_support": "zero positive-target weight; output classes retained"}
+
+
+def class_weight_table(state):
+    """Human-readable audit for the exact weights saved in each run."""
+    return pd.DataFrame([
+        {"horizon_s": horizon, "skill": skill, "training_support": state["counts"][h][c],
+         "training_frequency": state["counts"][h][c] / sum(state["counts"][h]),
+         "weight": state["weights"][h][c]}
+        for h, horizon in enumerate(state["horizons_s"]) for c, skill in enumerate(state["classes"])])
+
+
+def masked_loss(logits, targets, class_weights=None):
     # Same equal-horizon objective, without three Python/GPU mask synchronizations.
     losses = nn.functional.cross_entropy(logits.float().transpose(1, 2), targets,
                                          ignore_index=-1, reduction="none")
+    if class_weights is not None:
+        if tuple(class_weights.shape) != tuple(logits.shape[1:]):
+            raise ValueError("Expected per-horizon class weights with shape (3, classes)")
+        losses = losses * class_weights.gather(1, targets.clamp_min(0).T).T
     counts = (targets >= 0).sum(0)
     active = counts > 0
     per_horizon = losses.sum(0) / counts.clamp_min(1)
@@ -709,7 +758,8 @@ def metric_tables(targets, probabilities, classes, split, losses=None):
 
 
 @torch.inference_mode()
-def evaluate(model, data, split, device, batch_size=1024, precision="fp32", pipeline=None):
+def evaluate(model, data, split, device, batch_size=1024, precision="fp32", pipeline=None,
+             class_weights=None):
     model.eval()
     ids = data.indices[split]
     probabilities, losses = [], []
@@ -725,9 +775,16 @@ def evaluate(model, data, split, device, batch_size=1024, precision="fp32", pipe
         losses.append(ce.reshape(-1, 3).cpu().numpy())
         probabilities.append(logits.softmax(-1).cpu().numpy())
     p, loss = np.concatenate(probabilities), np.concatenate(losses)
-    summary, scores, cm = metric_tables(data.targets[ids], p, data.classes, split, loss)
+    targets = data.targets[ids]
+    summary, scores, cm = metric_tables(targets, p, data.classes, split, loss)
+    # Summary NLL and all selection/reporting metrics remain unweighted. Only
+    # this separate objective diagnostic uses the fixed training class weights.
+    data_loss = float(summary.nll.mean())
+    if class_weights is not None:
+        weighted = loss * np.asarray(class_weights)[np.arange(len(HORIZONS)), np.maximum(targets, 0)]
+        data_loss = float((weighted.sum(0) / (targets >= 0).sum(0)).mean())
     return {"summary": summary, "per_class": scores, "confusion": cm,
-            "probabilities": p, "targets": data.targets[ids], "sample_indices": ids}
+            "probabilities": p, "targets": targets, "sample_indices": ids, "data_loss": data_loss}
 
 
 def atomic_checkpoint(path, payload):
@@ -753,11 +810,12 @@ def l1_penalty(model):
                if p.requires_grad and p.ndim > 1)
 
 
-def fit_batch(model, optimizer, x, y, device, precision, gradient_clip, l1_lambda=0.0):
+def fit_batch(model, optimizer, x, y, device, precision, gradient_clip, l1_lambda=0.0,
+              class_weights=None):
     optimizer.zero_grad(set_to_none=True)
     with autocast_context(device, precision):
         logits = model(x)
-    loss = masked_loss(logits, y)
+    loss = masked_loss(logits, y, class_weights)
     if l1_lambda:
         loss = loss + l1_lambda * l1_penalty(model)
     if not torch.isfinite(loss):
@@ -800,8 +858,11 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
             or not isinstance(config["overtraining_patience"], int)
             or config["overtraining_patience"] < 1):
         raise ValueError("Overtraining shutdown requires a boolean switch and positive integer patience")
+    class_weighting = fit_class_weighting(data, config)
     output = Path(output)
     device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    weights = (None if class_weighting is None else
+               torch.tensor(class_weighting["weights"], dtype=torch.float32, device=device))
     random.seed(config["seed"])
     np.random.seed(config["seed"])
     torch.manual_seed(config["seed"])
@@ -830,14 +891,16 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
            "torch_version": str(torch.__version__), "numpy_version": np.__version__,
            "device": str(device), "selection": "Strict improvement of mean test NLL across horizons",
            "validation_policy": "Evaluated only after checkpoint selection",
-           "effective_precision": precision, "effective_cpu_threads": cpu_threads}
+           "effective_precision": precision, "effective_cpu_threads": cpu_threads,
+           "class_weighting": class_weighting}
     history, best, best_epoch, first = [], float("inf"), 0, 1
     epochs_without_improvement, stopped_early = 0, False
     overtraining_epochs, train_nll_at_best, stop_reason = 0, None, None
     if resume:
         saved_run = read_json(output / "run.json")
         if any(saved_run[k] != run[k] for k in ("training", "model", "classes",
-                                               "data_manifest_sha256", "source_sha256", "tracking_source_sha256")):
+                                               "data_manifest_sha256", "source_sha256", "tracking_source_sha256",
+                                               "class_weighting")):
             raise ValueError("Resume requires the same configuration, data and source")
         saved = torch.load(output / "last.pt", map_location=device, weights_only=False)
         base_model.load_state_dict(saved["model_state"])
@@ -859,6 +922,9 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
         (output / "checkpoints").mkdir(parents=True)
         (output / "epochs").mkdir()
         write_json(output / "run.json", run)
+        if class_weighting is not None:
+            write_json(output / "class_weights.json", class_weighting)
+            class_weight_table(class_weighting).to_csv(output / "class_weights.csv", index=False)
         shutil.copy2(__file__, output / "training_source.py")
     with RunTracker(output, tracking) as tracker:
         tracker.begin(run, data)
@@ -876,13 +942,16 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                 order = rng.permutation(data.indices["train"])
                 for x, y in pipeline.batches(order, config["batch_size"]):
                     fit_batch(model, optimizer, x, y, device, precision, config["gradient_clip"],
-                              config["l1_lambda"])
+                              config["l1_lambda"], weights)
                 results = [evaluate(model, data, s, device, config["evaluation_batch_size"],
-                                    precision=precision, pipeline=pipeline)
+                                    precision=precision, pipeline=pipeline,
+                                    class_weights=class_weighting["weights"]
+                                    if class_weighting is not None and s == "train" else None)
                            for s in ("train", "test")]
                 summary = pd.concat([r["summary"] for r in results], ignore_index=True)
                 scores = pd.concat([r["per_class"] for r in results], ignore_index=True)
                 train_nll, test_nll = [float(r["summary"].nll.mean()) for r in results]
+                train_data_loss = float(results[0].get("data_loss", train_nll))
                 if not np.isfinite([train_nll, test_nll]).all():
                     raise ValueError("Nonfinite evaluation loss")
                 improved = test_nll < best
@@ -909,7 +978,8 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                     penalty = (float(config["l1_lambda"] * l1_penalty(base_model))
                                if config["l1_lambda"] else 0.0)
                 row = {"epoch": epoch, "train_nll": train_nll, "test_nll": test_nll,
-                       "train_l1_penalty": penalty, "train_objective": train_nll + penalty,
+                       "train_data_loss": train_data_loss,
+                       "train_l1_penalty": penalty, "train_objective": train_data_loss + penalty,
                        "generalization_gap": generalization_gap,
                        "overtraining_detected": overtraining_detected,
                        "overtraining_epochs": overtraining_epochs, "stop_reason": stop_reason,
@@ -927,6 +997,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                            "history_steps": HISTORY_STEPS, "horizons_s": HORIZONS,
                            "feature_names": feature_names,
                            "data_contract": run["data_contract"],
+                           "class_weighting": class_weighting,
                            "input_contract": run["input_contract"],
                            "target_contract": run["target_contract"],
                            "best_loss": best, "best_epoch": best_epoch,
@@ -1019,6 +1090,9 @@ def benchmark_batches(data, config=None, device=None, batch_sizes=(512, 1024),
     if warmup < 1 or repeats < 1 or not batch_sizes or any(b < 1 for b in batch_sizes):
         raise ValueError("Use positive batch sizes and at least one warmup/repetition")
     device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    class_weighting = fit_class_weighting(data, config)
+    weights = (None if class_weighting is None else
+               torch.tensor(class_weighting["weights"], dtype=torch.float32, device=device))
     precision = resolve_precision(device, config["precision"])
     fork_devices = [device.index if device.index is not None else torch.cuda.current_device()] \
         if device.type == "cuda" else []
@@ -1056,7 +1130,7 @@ def benchmark_batches(data, config=None, device=None, batch_sizes=(512, 1024),
                             started = time.perf_counter()
                             x, y = next(iter(pipeline.batches(ids, batch_size)))
                             fit_batch(model, optimizer, x, y, device, precision, config["gradient_clip"],
-                                      config["l1_lambda"])
+                                      config["l1_lambda"], weights)
                             if device.type == "cuda":
                                 torch.cuda.synchronize(device)
                             elapsed = time.perf_counter() - started

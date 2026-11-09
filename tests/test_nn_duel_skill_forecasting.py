@@ -296,7 +296,12 @@ def test_nonoverlap_preparation_matches_dense_holdouts_scaling_and_retained_supp
         duel.NonoverlappingNNDuelData(sparse_path)
 
 
-def test_nonoverlap_notebooks_run_prepare_train_and_report(tmp_path, monkeypatch):
+@pytest.mark.parametrize("training_number,training_notebook", [
+    (15, "15_nonoverlap_nn_duel_skill_forecasting.ipynb"),
+    (16, "16_balanced_nonoverlap_nn_duel_skill_forecasting.ipynb"),
+])
+def test_nonoverlap_notebooks_run_prepare_train_and_report(tmp_path, monkeypatch,
+                                                          training_number, training_notebook):
     """Run their real Python cells on small data with the requested architecture."""
     import shutil
     import sys
@@ -315,13 +320,14 @@ def test_nonoverlap_notebooks_run_prepare_train_and_report(tmp_path, monkeypatch
     monkeypatch.setenv("BVR_NN_FORECAST_SOURCE", str(source))
     monkeypatch.setenv("BVR_NN_FORECAST_DOWNLOAD", "0")
     monkeypatch.setenv("BVR_NN_NONOVERLAP_MLFLOW", "0")
+    monkeypatch.setenv("BVR_NN_BALANCED_MLFLOW", "0")
     monkeypatch.delenv("BVR_NN_NONOVERLAP_DATA", raising=False)
     monkeypatch.setattr(sys, "path", sys.path.copy())
     displayed = []
     monkeypatch.setattr(IPython.display, "display", lambda *args: displayed.extend(args))
     namespace = {}
     for number, name in ((14, "14_prepare_nonoverlap_nn_duel_skill_forecasting.ipynb"),
-                         (15, "15_nonoverlap_nn_duel_skill_forecasting.ipynb")):
+                         (training_number, training_notebook)):
         notebook = nbformat.read(repository / "notebooks" / name, as_version=4)
         nbformat.validate(notebook)
         for index, cell in enumerate(notebook.cells):
@@ -330,12 +336,13 @@ def test_nonoverlap_notebooks_run_prepare_train_and_report(tmp_path, monkeypatch
             assert cell.source.startswith("%%time\n")
             code = compile(cell.source.removeprefix("%%time\n"), name, "exec")
             exec(code, namespace)
-            if number == 15 and index == 1:
+            if number == training_number and index == 1:
                 config = namespace["CONFIG"]
                 assert config["width"] == 96 and config["dropout"] == .25
                 assert config["heads"] == 6 and config["layers"] == 2
                 assert config["l1_lambda"] == 1e-6
                 assert config["early_stopping_min_epochs"] == 0 and config["overtraining_shutdown"]
+                assert config["class_weighting"] == ("sqrt_inverse" if training_number == 16 else "none")
                 # Only reduce run duration; retain the actual model and all three seeds.
                 config["epochs"] = 2
     assert isinstance(namespace["data"], duel.NonoverlappingNNDuelData)
@@ -345,10 +352,21 @@ def test_nonoverlap_notebooks_run_prepare_train_and_report(tmp_path, monkeypatch
         assert checkpoint["model_config"]["width"] == 96
         assert checkpoint["model_config"]["dropout"] == .25
         assert checkpoint["data_contract"] == duel.NONOVERLAP_DATA_CONTRACT
+        if training_number == 16:
+            state = duel.read_json(run / "class_weights.json")
+            assert checkpoint["class_weighting"] == state
+            assert (run / "class_weights.csv").is_file()
+            labels = namespace["data"].targets[namespace["data"].indices["train"]]
+            for h in range(3):
+                expected = np.bincount(labels[labels[:, h] >= 0, h], minlength=len(CLASSES))
+                np.testing.assert_array_equal(state["counts"][h], expected)
         assert (run / "final_validation.npz").is_file()
         assert (run / "training_frequency_baseline.csv").is_file()
     assert len(list((namespace["RUN"] / "diagnostics").glob("*.png"))) == 5
     assert not (tmp_path / "artifacts/nn_duel_skill_forecasting").exists()
+    if training_number == 16:
+        assert namespace["EXPERIMENT_ROOT"].name == "nn_duel_balanced_forecasting"
+        assert namespace["DATA_ROOT"].name == "nn_duel_nonoverlap_forecasting"
     # Preparation can be rerun without rewriting the existing completed dataset.
     prep = nbformat.read(repository / "notebooks/14_prepare_nonoverlap_nn_duel_skill_forecasting.ipynb", as_version=4)
     for index in (1, 4, 6):

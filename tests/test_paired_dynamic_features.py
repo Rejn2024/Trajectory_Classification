@@ -38,7 +38,8 @@ def prepared_data(tmp_path):
 
 
 @pytest.mark.parametrize("l1_lambda", [0.0, 1e-6])
-def test_expanded_features_train_resume_reload_and_benchmark(tmp_path, l1_lambda):
+@pytest.mark.parametrize("weighting", ["none", "sqrt_inverse"])
+def test_expanded_features_train_resume_reload_and_benchmark(tmp_path, l1_lambda, weighting):
     data = prepared_data(tmp_path)
     output = tmp_path / "run"
     config = {
@@ -47,18 +48,24 @@ def test_expanded_features_train_resume_reload_and_benchmark(tmp_path, l1_lambda
         "precision": "fp32", "data_backend": "direct",
         "l1_lambda": l1_lambda, "overtraining_shutdown": True,
         "early_stopping": True, "early_stopping_min_epochs": 0,
+        "class_weighting": weighting,
     }
     history = paired.train_model(data, output, config, device="cpu")
     if l1_lambda:
         assert (history.train_l1_penalty > 0).all()
     else:
         assert (history.train_l1_penalty == 0).all()
-    np.testing.assert_allclose(history.train_objective, history.train_nll + history.train_l1_penalty)
+    np.testing.assert_allclose(history.train_objective, history.train_data_loss + history.train_l1_penalty)
     saved = torch.load(output / "best.pt", map_location="cpu", weights_only=False)
     assert saved["model_config"]["input_features"] == len(data.manifest["features"])
     assert saved["feature_names"] == data.manifest["features"]
     assert saved["data_contract"] == data.manifest["data_contract"]
     run = paired.read_json(output / "run.json")
+    if weighting == "sqrt_inverse":
+        assert run["class_weighting"] == saved["class_weighting"] == paired.read_json(output / "class_weights.json")
+        assert (output / "class_weights.csv").is_file()
+    else:
+        assert run["class_weighting"] is None
     for field in ("data_contract", "input_contract", "target_contract"):
         assert run[field] == data.manifest[field]
     model = paired.PairedTransformer(num_classes=2, **saved["model_config"])
@@ -103,10 +110,10 @@ def test_tracking_records_overtraining_metrics_and_stop_reason(tmp_path, monkeyp
     row = {"epoch": 4, "train_nll": .6, "test_nll": 1.3,
            "train_macro_f1": .8, "test_macro_f1": .5, "seconds": 1,
            "epochs_without_improvement": 3, "improved": False,
-           "train_l1_penalty": .01, "train_objective": .61, "generalization_gap": .7,
+           "train_data_loss": .6, "train_l1_penalty": .01, "train_objective": .61, "generalization_gap": .7,
            "overtraining_epochs": 3, "overtraining_detected": True}
     tracker.epoch(row, pd.DataFrame(), pd.DataFrame())
-    for key in ("train_l1_penalty", "train_objective", "generalization_gap",
+    for key in ("train_data_loss", "train_l1_penalty", "train_objective", "generalization_gap",
                 "overtraining_epochs", "overtraining_detected"):
         assert recorded[f"epoch/{key}"] == row[key]
     paired.write_json(tmp_path / "training_status.json", {

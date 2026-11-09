@@ -154,6 +154,8 @@ class RunTracker:
         shutil.copy2(__file__, self.output / "tracking_source.py")
         self.artifact(self.output / "tracking_source.py", "source")
         self.artifact(self.output / "run.json", "metadata")
+        for name in ("class_weights.json", "class_weights.csv"):
+            self.artifact(self.output / name, "metadata")
         if self.settings.get("benchmark_path"):
             self.artifact(self.settings["benchmark_path"], "benchmarks")
 
@@ -201,7 +203,7 @@ class RunTracker:
                         "epoch/test/macro_f1": row["test_macro_f1"],
                         "epoch/fit_and_evaluation_seconds": row["seconds"],
                         "epoch/epochs_without_improvement": row["epochs_without_improvement"]})
-        for key in ("train_l1_penalty", "train_objective", "generalization_gap",
+        for key in ("train_data_loss", "train_l1_penalty", "train_objective", "generalization_gap",
                     "overtraining_epochs", "overtraining_detected"):
             if key in row:
                 metrics[f"epoch/{key}"] = row[key]

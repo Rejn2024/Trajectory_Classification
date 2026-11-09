@@ -58,6 +58,51 @@ The frame memory map remains about 13.7 GiB; window thinning reduces training wo
 and index size, not the raw frame-array storage. Existing prepared arrays consume
 additional disk space.
 
+## Class-weighted training
+
+Notebook 15 uses unweighted masked cross-entropy averaged equally over forecast
+horizons. Common skills still contribute more examples within each horizon. L1,
+dropout, non-overlap sampling and balanced split proportions do not compensate for
+unequal class contributions to that loss.
+
+After notebook 14, run
+`notebooks/16_balanced_nonoverlap_nn_duel_skill_forecasting.ipynb` to fit the same
+width-96, two-layer, six-head model with dropout 0.25 and training-only class weights.
+It reuses the exact same prepared dataset, receipt, three seeds and stopping rules.
+Each horizon gets its own counts from the retained training targets, excluding `-1`.
+For a supported class, `r = min(5, sqrt(max_count / class_count))`; divide these raw
+weights by their training-frequency weighted mean so the mean example weight is one.
+Thus a 16:1 count ratio gives rare examples four times the weight of common examples,
+and the rare/common weight ratio cannot exceed `max_class_weight_ratio=5.0`.
+The setting `class_weighting="sqrt_inverse"` enables this in notebook 16; shared
+trainer defaults leave it disabled for the earlier notebooks.
+
+The per-horizon data loss averages `weight[target] * cross_entropy` over valid labels,
+then averages represented horizons equally. It divides by the valid-label count,
+not by the minibatch sum of weights, so single-class minibatches retain their class
+weight. Training-frequency normalisation keeps the overall weighting scale comparable
+with L1. No training windows are duplicated or resampled. Classes absent from training
+receive zero positive-target weight and retain their output logits; weighting cannot
+supply their missing positive examples. The notebook displays all zero-support pairs.
+
+Counts and weights are written to `class_weights.json` and `class_weights.csv` in
+each run, recorded in `run.json` and checkpoints, and attached to MLflow. Resume
+requires unchanged settings, data and source. History/MLflow record the evaluation-mode
+weighted training CE as `train_data_loss` and its sum with L1 as `train_objective`.
+`train_nll`, `test_nll`, checkpoint selection, early stopping, the overtraining gap,
+final metrics and reliability plots all remain **unweighted**. Compare rare-class
+recall/F1 and supported macro-F1 alongside overall NLL, accuracy and calibration;
+weighting may trade some common-class accuracy or calibration for rare-class recall.
+
+The new runs and default MLflow database live in
+`artifacts/nn_duel_balanced_forecasting/`, using the
+`nn-duel-balanced-skill-forecasting` experiment. The dataset still comes from
+`artifacts/nn_duel_nonoverlap_forecasting/latest_dataset.json` or
+`BVR_NN_NONOVERLAP_DATA`. Disable tracking with `BVR_NN_BALANCED_MLFLOW=0`.
+Notebook 15 need not run first. Start fresh runs for the new objective; use the
+selection partition called "test" for comparisons, and keep final validation held
+out until every seed completes.
+
 ## Windows PyArrow import failure
 
 `ImportError: DLL load failed while importing lib: An Application Control policy

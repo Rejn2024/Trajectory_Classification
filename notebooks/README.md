@@ -1,5 +1,13 @@
 # Notebooks
 
+For class-imbalance compensation, run notebook 14 and then
+[16_balanced_nonoverlap_nn_duel_skill_forecasting.ipynb](16_balanced_nonoverlap_nn_duel_skill_forecasting.ipynb).
+Notebook 16 reuses the same non-overlapping dataset and width-96/dropout-0.25 model
+as notebook 15, with per-horizon capped inverse-square-root class weights fitted
+only on retained training labels. It saves weight/support audits and separate runs;
+checkpoint selection and evaluation NLL remain unweighted for comparison with 15.
+See the [weighting details](../docs/nn_duel_skill_forecasting.md#class-weighted-training).
+
 For non-overlapping training histories and a smaller model, run
 [14_prepare_nonoverlap_nn_duel_skill_forecasting.ipynb](14_prepare_nonoverlap_nn_duel_skill_forecasting.ipynb),
 then [15_nonoverlap_nn_duel_skill_forecasting.ipynb](15_nonoverlap_nn_duel_skill_forecasting.ipynb).
