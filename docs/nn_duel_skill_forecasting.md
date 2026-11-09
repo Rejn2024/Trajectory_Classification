@@ -16,6 +16,48 @@ manifest modification time. Partial packages are excluded. Set
 `BVR_NN_FORECAST_SOURCE` to select a particular packaged directory, or
 `BVR_NN_ROOT` to locate the checkout from a different kernel directory.
 
+## Non-overlapping training workflow
+
+Run `notebooks/14_prepare_nonoverlap_nn_duel_skill_forecasting.ipynb` and then
+`notebooks/15_nonoverlap_nn_duel_skill_forecasting.ipynb`. Notebook 14 prepares a
+separate dataset directly from the same notebook-11 source; notebook 12 is not a
+prerequisite. Notebook 15 uses **width 96, six heads, two layers and dropout 0.25**,
+with notebook 13's L1 regularisation, no 50-epoch minimum, and overtraining shutdown.
+
+The non-overlap policy covers the full raw input footprint: 51 model frames plus
+five backward-acceleration lookback frames, or the inclusive interval `[origin-55,
+origin]`. Fixed candidate origins 60, 120, 180, ... are six seconds apart, leaving
+four unused raw ticks between adjacent retained intervals. Slots alternate A01/B01;
+a stable SHA-256 hash of the split seed and flight ID determines the starting view.
+Thus even the two views of the same physical interval cannot both enter training.
+Missing or ineligible slots stay empty. Each view's origins are normally twelve
+seconds apart. Selection uses no skill labels beyond the existing eligibility mask.
+This removes shared input intervals, but adjacent forecast labels may lie in later
+histories and flights still contain correlated behaviour; it does not establish
+statistical independence.
+
+The same seeded 40/30/30 scenario assignments as notebook 12 are computed from all
+eligible candidates, then only training is thinned. Test/validation retain the
+original one-second stride and identical windows/labels. Scaling is refitted from
+retained training histories only; skill indicators remain unscaled. Both aircraft
+perspectives of every flight remain in the same partition. Rare skills may lose
+training support: `skill_support_before_split.csv` describes all candidates, while
+`skill_support_by_split.csv` describes retained examples. `window_sampling_audit.csv`
+reports eligible/retained/dropped counts per flight/view; `nonoverlap_audit.json`
+records verified raw-history disjointness. The loader rechecks this guarantee and
+the view schedule when reading the dataset.
+
+Outputs, the latest-dataset receipt and run directories live under
+`artifacts/nn_duel_nonoverlap_forecasting/`. Override the prepared path with
+`BVR_NN_NONOVERLAP_DATA`; source/download/root overrides are the same as notebook 12.
+The new `nn-duel-own-skill-nonoverlap-horizon-v1` contract rejects dense training
+caches. MLflow uses a separate `nn-duel-nonoverlap-skill-forecasting` experiment and
+local database; disable it with `BVR_NN_NONOVERLAP_MLFLOW=0`. Fresh runs are required
+for the new architecture/data. Resume requires unchanged source, data and settings.
+The frame memory map remains about 13.7 GiB; window thinning reduces training work
+and index size, not the raw frame-array storage. Existing prepared arrays consume
+additional disk space.
+
 ## Windows PyArrow import failure
 
 `ImportError: DLL load failed while importing lib: An Application Control policy
@@ -94,11 +136,31 @@ does not attempt to cache the full frame array on a 16 GiB GPU.
 
 ## Training and interpretation
 
-The architecture, optimizer, loss, batch sizes and early stopping follow 09b: two
+The architecture, optimizer, masked data loss and batch sizes follow 09b: two
 Transformer layers, width 192, six heads, dropout 0.1, AdamW, independent missing-label
 masks, and an equal mean over available horizon losses. The input projection derives
-its width from the prepared manifest. Each seed trains for up to 100 epochs; with
-early stopping enabled, the first 50 epochs always run and patience is ten afterward.
+its width from the prepared manifest. Notebook 13 adds L1 regularisation with
+`l1_lambda=1e-6`: the training loss includes this coefficient times the sum of
+absolute trainable matrix/tensor weights, including position embeddings but excluding
+biases and LayerNorm scales. AdamW weight decay remains 0.01. Evaluation NLL and
+checkpoint selection exclude L1; history records `train_l1_penalty`, the evaluation-mode
+`train_objective`, and the test-minus-train `generalization_gap` separately.
+
+Each seed trains for up to 100 epochs. Ordinary early stopping has no warmup
+(`early_stopping_min_epochs=0`): ten consecutive epochs without a new all-time
+minimum test NLL stop training, as early as epoch 11. Independently, the overtraining
+shutdown stops after three consecutive epochs with test NLL more than 5% above
+its all-time best, a test-minus-train gap greater than 0.1 NLL, and train NLL below
+its value at the best-test checkpoint. A recovery resets the overtraining counter.
+These configurable thresholds are starting values to assess on the selection partition.
+`best.pt` always retains the lowest-test-NLL checkpoint. History, resume checkpoints
+and `training_status.json` record the counter and stop reason (`overtraining` or
+`patience`). Disable both stopping switches to use the full epoch budget.
+
+Start fresh run directories after this change. The existing provenance guard rejects
+resume with changed source or configuration; old checkpoints cannot be resumed under
+the new objective. Shared-trainer defaults keep L1 and overtraining shutdown disabled
+for other notebooks; notebook 13 explicitly enables them.
 CUDA uses BF16 when available; CPU uses FP32.
 
 As in 09b, strict improvements in **test NLL** select checkpoints. Test results are

@@ -1,5 +1,15 @@
 # Notebooks
 
+For non-overlapping training histories and a smaller model, run
+[14_prepare_nonoverlap_nn_duel_skill_forecasting.ipynb](14_prepare_nonoverlap_nn_duel_skill_forecasting.ipynb),
+then [15_nonoverlap_nn_duel_skill_forecasting.ipynb](15_nonoverlap_nn_duel_skill_forecasting.ipynb).
+Notebook 14 keeps disjoint 56-frame raw training histories across both views of
+each physical flight, alternating views on six-second slots. It preserves notebook
+12's scenario splits and dense test/validation windows. Notebook 15 uses width 96,
+six heads, two layers and dropout 0.25, plus notebook 13's L1 and stopping controls.
+These notebooks use separate prepared data, runs and MLflow tracking; notebook 12
+is not a prerequisite. See the [sampling details](../docs/nn_duel_skill_forecasting.md#non-overlapping-training-workflow).
+
 For forecasts conditioned on the observing aircraft's own current skill, run
 [12_prepare_nn_duel_skill_forecasting.ipynb](12_prepare_nn_duel_skill_forecasting.ipynb),
 then [13_nn_duel_skill_forecasting.ipynb](13_nn_duel_skill_forecasting.ipynb).

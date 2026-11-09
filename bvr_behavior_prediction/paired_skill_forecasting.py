@@ -42,6 +42,9 @@ DEFAULT_TRAINING = {
     "precision": "bf16", "data_backend": "gpu_cache", "num_workers": 2,
     "prefetch_factor": 2, "cpu_threads": 4, "loader_timeout": 60,
     "compile_model": False, "compile_mode": "default",
+    "l1_lambda": 0.0,
+    "overtraining_shutdown": False, "overtraining_patience": 3,
+    "overtraining_relative_increase": 0.05, "overtraining_min_gap": 0.1,
 }
 
 
@@ -741,11 +744,22 @@ def execution_model(model, config):
             if config["compile_model"] else model)
 
 
-def fit_batch(model, optimizer, x, y, device, precision, gradient_clip):
+def l1_penalty(model):
+    """Sum absolute trainable matrix/tensor weights, including position embeddings.
+
+    Biases and LayerNorm scales are excluded. Accumulate in FP32 under BF16 too.
+    """
+    return sum(p.float().abs().sum() for p in model.parameters()
+               if p.requires_grad and p.ndim > 1)
+
+
+def fit_batch(model, optimizer, x, y, device, precision, gradient_clip, l1_lambda=0.0):
     optimizer.zero_grad(set_to_none=True)
     with autocast_context(device, precision):
         logits = model(x)
     loss = masked_loss(logits, y)
+    if l1_lambda:
+        loss = loss + l1_lambda * l1_penalty(model)
     if not torch.isfinite(loss):
         raise ValueError("Nonfinite training loss")
     loss.backward()
@@ -755,11 +769,11 @@ def fit_batch(model, optimizer, x, y, device, precision, gradient_clip):
 
 
 def train_model(data, output, config=None, callback=None, device=None, resume=False, tracking=None):
-    """Train up to the epoch limit, optionally stopping on post-warmup test-NLL patience.
+    """Fit with optional NLL patience and sustained-overtraining shutdown.
 
-    With minimum 50 and patience 10, counting starts at epoch 51 and the earliest
-    stop is epoch 60. Every strict improvement over the all-time test minimum
-    still receives a checkpoint, including during the first 50 epochs.
+    Both stopping rules use unregularised evaluation NLL. The overtraining rule
+    runs from epoch one, independently of the ordinary early-stopping warmup.
+    Every strict improvement in test NLL receives a checkpoint.
     """
     from .paired_skill_tracking import RunTracker
 
@@ -777,6 +791,15 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
             or not isinstance(minimum, int) or minimum < 0
             or not isinstance(patience, int) or patience < 1):
         raise ValueError("Early stopping requires a boolean switch, nonnegative minimum and positive patience")
+    for key in ("l1_lambda", "overtraining_relative_increase", "overtraining_min_gap"):
+        if (isinstance(config[key], bool) or not isinstance(config[key], (int, float))
+                or not np.isfinite(config[key]) or config[key] < 0):
+            raise ValueError(f"{key} must be finite and nonnegative")
+    if (not isinstance(config["overtraining_shutdown"], bool)
+            or isinstance(config["overtraining_patience"], bool)
+            or not isinstance(config["overtraining_patience"], int)
+            or config["overtraining_patience"] < 1):
+        raise ValueError("Overtraining shutdown requires a boolean switch and positive integer patience")
     output = Path(output)
     device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
     random.seed(config["seed"])
@@ -810,6 +833,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
            "effective_precision": precision, "effective_cpu_threads": cpu_threads}
     history, best, best_epoch, first = [], float("inf"), 0, 1
     epochs_without_improvement, stopped_early = 0, False
+    overtraining_epochs, train_nll_at_best, stop_reason = 0, None, None
     if resume:
         saved_run = read_json(output / "run.json")
         if any(saved_run[k] != run[k] for k in ("training", "model", "classes",
@@ -825,6 +849,9 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
         history, best, best_epoch = saved["history"], saved["best_loss"], saved["best_epoch"]
         epochs_without_improvement = saved.get("epochs_without_improvement", 0)
         stopped_early = saved.get("early_stopped", False)
+        overtraining_epochs = saved.get("overtraining_epochs", 0)
+        train_nll_at_best = saved.get("train_nll_at_best")
+        stop_reason = saved.get("stop_reason")
         first = config["epochs"] + 1 if stopped_early else saved["epoch"] + 1
     else:
         if output.exists() and any(output.iterdir()):
@@ -848,7 +875,8 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                 model.train()
                 order = rng.permutation(data.indices["train"])
                 for x, y in pipeline.batches(order, config["batch_size"]):
-                    fit_batch(model, optimizer, x, y, device, precision, config["gradient_clip"])
+                    fit_batch(model, optimizer, x, y, device, precision, config["gradient_clip"],
+                              config["l1_lambda"])
                 results = [evaluate(model, data, s, device, config["evaluation_batch_size"],
                                     precision=precision, pipeline=pipeline)
                            for s in ("train", "test")]
@@ -860,12 +888,31 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                 improved = test_nll < best
                 if improved:
                     best, best_epoch = test_nll, epoch
+                    train_nll_at_best = train_nll
                 if config["early_stopping"] and epoch > minimum:
                     epochs_without_improvement = 0 if improved else epochs_without_improvement + 1
                 else:
                     epochs_without_improvement = 0
-                stopped_early = config["early_stopping"] and epochs_without_improvement >= patience
+                generalization_gap = test_nll - train_nll
+                overtraining_detected = bool(
+                    config["overtraining_shutdown"] and not improved
+                    and train_nll_at_best is not None and train_nll < train_nll_at_best
+                    and test_nll > best * (1 + config["overtraining_relative_increase"])
+                    and generalization_gap > config["overtraining_min_gap"])
+                overtraining_epochs = overtraining_epochs + 1 if overtraining_detected else 0
+                stop_reason = (
+                    "overtraining" if overtraining_epochs >= config["overtraining_patience"] else
+                    "patience" if config["early_stopping"] and epochs_without_improvement >= patience
+                    else None)
+                stopped_early = stop_reason is not None
+                with torch.no_grad():
+                    penalty = (float(config["l1_lambda"] * l1_penalty(base_model))
+                               if config["l1_lambda"] else 0.0)
                 row = {"epoch": epoch, "train_nll": train_nll, "test_nll": test_nll,
+                       "train_l1_penalty": penalty, "train_objective": train_nll + penalty,
+                       "generalization_gap": generalization_gap,
+                       "overtraining_detected": overtraining_detected,
+                       "overtraining_epochs": overtraining_epochs, "stop_reason": stop_reason,
                        "train_macro_f1": float(results[0]["summary"].macro_f1.mean()),
                        "test_macro_f1": float(results[1]["summary"].macro_f1.mean()),
                        "improved": improved, "epochs_without_improvement": epochs_without_improvement,
@@ -886,6 +933,8 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                            "test_nll": test_nll, "history": history, "numpy_rng": rng.bit_generator.state,
                            "epochs_without_improvement": epochs_without_improvement,
                            "early_stopped": stopped_early,
+                           "overtraining_epochs": overtraining_epochs,
+                           "train_nll_at_best": train_nll_at_best, "stop_reason": stop_reason,
                            "effective_precision": precision,
                            "torch_rng": torch.get_rng_state(), "data_manifest_sha256": manifest_hash,
                            "cuda_rng": torch.cuda.get_rng_state_all() if device.type == "cuda" else None}
@@ -903,8 +952,9 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                 else:
                     print(row, flush=True)
                 if stopped_early:
-                    print(f"Early stopping after epoch {epoch}: {patience} consecutive epochs "
-                          f"without improved test loss after the first {minimum} epochs. "
+                    print(f"Early stopping after epoch {epoch}: {stop_reason}; "
+                          f"stale epochs={epochs_without_improvement}, "
+                          f"consecutive overtraining epochs={overtraining_epochs}. "
                           f"Best checkpoint: epoch {best_epoch}.", flush=True)
                     break
         write_json(output / "training_status.json", {
@@ -913,6 +963,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
             "early_stopping_enabled": config["early_stopping"],
             "early_stopping_min_epochs": minimum, "early_stopping_patience": patience,
             "epochs_without_improvement": epochs_without_improvement,
+            "stop_reason": stop_reason, "overtraining_epochs": overtraining_epochs,
             "best_epoch": best_epoch, "best_test_nll": best,
         })
         tracker.finish_training()
@@ -1004,7 +1055,8 @@ def benchmark_batches(data, config=None, device=None, batch_sizes=(512, 1024),
                                 torch.cuda.synchronize(device)
                             started = time.perf_counter()
                             x, y = next(iter(pipeline.batches(ids, batch_size)))
-                            fit_batch(model, optimizer, x, y, device, precision, config["gradient_clip"])
+                            fit_batch(model, optimizer, x, y, device, precision, config["gradient_clip"],
+                                      config["l1_lambda"])
                             if device.type == "cuda":
                                 torch.cuda.synchronize(device)
                             elapsed = time.perf_counter() - started

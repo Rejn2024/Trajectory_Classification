@@ -20,8 +20,20 @@ from .paired_skill_forecasting import (
 )
 
 DATA_CONTRACT = "nn-duel-own-skill-horizon-v1"
+NONOVERLAP_DATA_CONTRACT = "nn-duel-own-skill-nonoverlap-horizon-v1"
 SIDES = ("A01", "B01")
 DECISION_STEPS = 10
+# Round the complete raw input footprint up to the decision grid. Alternating
+# aircraft views on these slots also prevents repeated physical-flight intervals.
+NONOVERLAP_STRIDE_STEPS = ((RAW_HISTORY_STEPS + STRIDE_STEPS - 1)
+                          // STRIDE_STEPS) * STRIDE_STEPS
+NONOVERLAP_POLICY = {
+    "train": "disjoint raw histories across both aircraft views of each physical flight",
+    "train_origin_stride_steps": NONOVERLAP_STRIDE_STEPS,
+    "raw_history_steps": RAW_HISTORY_STEPS,
+    "views": "alternate A01/B01; seeded stable per-flight starting view",
+    "test_stride_steps": STRIDE_STEPS, "validation_stride_steps": STRIDE_STEPS,
+}
 
 
 def feature_names(classes):
@@ -327,8 +339,47 @@ def split_scenarios(analysis, seed=1729):
                    "range_stratum": int(strata[i])} for i, name in enumerate(names)}
 
 
-def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None):
-    """Write immutable memory-mapped frames, labels, group splits and train scaling."""
+def nonoverlapping_train_mask(ends, episode_id, observer_id, seed=1729):
+    """Keep six-second slots, assigning each slot to just one aircraft view.
+
+    The fixed schedule never depends on labels, losses or row order. Missing
+    origins leave gaps rather than moving another window into the reserved slot.
+    Histories (including acceleration lookback) are disjoint; future labels are
+    still exact +1/+2/+5 s decisions and may fall in a later input history.
+    """
+    import hashlib
+
+    if observer_id not in SIDES:
+        raise ValueError("Unknown observer aircraft")
+    ends = np.asarray(ends)
+    first = ((RAW_HISTORY_STEPS + STRIDE_STEPS - 1) // STRIDE_STEPS) * STRIDE_STEPS
+    digest = hashlib.sha256(f"{seed}:{episode_id}".encode()).digest()
+    starting_view = digest[0] % len(SIDES)
+    slot = (ends - first) // NONOVERLAP_STRIDE_STEPS
+    return ((ends >= first) & ((ends - first) % NONOVERLAP_STRIDE_STEPS == 0)
+            & ((slot + starting_view) % len(SIDES) == SIDES.index(observer_id)))
+
+
+def nonoverlap_audit(samples):
+    """Verify input disjointness across views using physical-flight time, not offsets."""
+    train = samples.loc[samples.split.eq("train")].sort_values(["episode_id", "step"])
+    spacing = train.groupby("episode_id").step.diff()
+    if spacing.lt(RAW_HISTORY_STEPS).any():
+        raise ValueError("Overlapping training raw histories in the same physical flight")
+    return {"training_windows": len(train),
+            "minimum_origin_spacing_steps": int(spacing.min()) if spacing.notna().any() else None,
+            "raw_history_steps": RAW_HISTORY_STEPS, "overlapping_pairs": 0}
+
+
+def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
+                    nonoverlapping_train=False):
+    """Write immutable frames, labels, grouped splits and training-only scaling.
+
+    Optional thinning applies only to training, after the original split is fixed.
+    Test/validation examples and scenario assignments match the dense preparation.
+    """
+    if not isinstance(nonoverlapping_train, bool):
+        raise ValueError("nonoverlapping_train must be boolean")
     root, output = Path(root).resolve(), Path(output)
     if output.exists() and any(output.iterdir()):
         raise ValueError("Choose an empty output directory or load the existing prepared dataset")
@@ -346,9 +397,21 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None):
                                          shape=(int(episodes.frames.sum()), len(names)))
     total, squares, count = np.zeros(len(names)), np.zeros(len(names)), 0
     anchors, targets, metadata, offset = [], [], [], 0
-    for _, row, (frame, ends, target) in _episodes(
+    retained_counts = np.zeros_like(analysis["counts"])
+    sampling_rows = []
+    for index, row, (frame, ends, target) in _episodes(
             source, {**source_manifest, "classes": classes}, episodes):
         features[offset:offset + len(frame)] = frame
+        eligible = len(ends)
+        if nonoverlapping_train and row.split == "train":
+            keep = nonoverlapping_train_mask(ends, row.episode_id, row.observer_id, split_seed)
+            ends, target = ends[keep], target[keep]
+        for horizon in range(len(HORIZONS)):
+            labels = target[:, horizon]
+            retained_counts[index, horizon] = np.bincount(labels[labels >= 0], minlength=len(classes))
+        sampling_rows.append({"episode_id": row.episode_id, "observer_id": row.observer_id,
+                              "split": row.split, "eligible_windows": eligible,
+                              "retained_windows": len(ends), "dropped_windows": eligible - len(ends)})
         if row.split == "train" and len(ends):
             used = np.zeros(len(frame), dtype=bool)
             for end in ends:
@@ -372,6 +435,7 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None):
     std = np.maximum(np.sqrt(np.maximum(squares / count - mean**2, 0)), .01)
     mean[len(BASE_FEATURES):], std[len(BASE_FEATURES):] = 0, 1
     samples, target = pd.DataFrame(metadata), np.concatenate(targets)
+    audit = nonoverlap_audit(samples) if nonoverlapping_train else None
     for split in SPLITS:
         if not ((target[samples.split.eq(split)] >= 0).sum(0) > 0).all():
             raise ValueError(f"No labels for one or more horizons in {split}")
@@ -384,13 +448,18 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None):
                                          "fitted_on": "unique train history frames only",
                                          "binary_skill_features": "unscaled", "frames": count})
     skill_support_table(analysis).to_csv(output / "skill_support_before_split.csv", index=False)
-    skill_support_table(analysis, groups).to_csv(output / "skill_support_by_split.csv", index=False)
+    skill_support_table({**analysis, "counts": retained_counts}, groups).to_csv(
+        output / "skill_support_by_split.csv", index=False)
+    if nonoverlapping_train:
+        pd.DataFrame(sampling_rows).to_csv(output / "window_sampling_audit.csv", index=False)
+        write_json(output / "nonoverlap_audit.json", audit)
     try:
         source_name = source.relative_to(root).as_posix()
     except ValueError:
         source_name = str(source)
     manifest = {
-        "data_contract": DATA_CONTRACT, "classes": classes, "features": names,
+        "data_contract": NONOVERLAP_DATA_CONTRACT if nonoverlapping_train else DATA_CONTRACT,
+        "classes": classes, "features": names,
         "history_steps": HISTORY_STEPS, "raw_history_steps": RAW_HISTORY_STEPS,
         "stride_steps": STRIDE_STEPS, "horizons_s": HORIZONS, "split_seed": split_seed,
         "split_strategy": "scenario-group range-quantile quota and bounded skill-horizon swaps",
@@ -412,6 +481,9 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None):
                        "labels_by_horizon": (target[samples.split.eq(s)] >= 0).sum(0).tolist()}
                    for s in SPLITS},
     }
+    if nonoverlapping_train:
+        # stride_steps above is the candidate/evaluation grid, not the training stride.
+        manifest["window_sampling"] = dict(NONOVERLAP_POLICY)
     manifest["files"] = {p.name: sha256(p) for p in sorted(output.iterdir()) if p.is_file()}
     write_json(output / "manifest.json", manifest)
     return manifest
@@ -420,13 +492,15 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None):
 class NNDuelData(PairedData):
     """09b trainer-compatible loader that refuses another prepared-data contract."""
 
+    data_contract = DATA_CONTRACT
+
     def __init__(self, directory):
         manifest = read_json(Path(directory) / "manifest.json")
-        if (manifest.get("data_contract") != DATA_CONTRACT
+        if (manifest.get("data_contract") != self.data_contract
                 or manifest.get("features") != feature_names(manifest["classes"])
                 or manifest.get("history_steps") != HISTORY_STEPS
                 or tuple(manifest.get("horizons_s", ())) != HORIZONS):
-            raise ValueError("Expected the notebook-12 own-skill-conditioned NN duel dataset")
+            raise ValueError(f"Expected own-skill-conditioned NN duel dataset: {self.data_contract}")
         super().__init__(directory)
         width = len(self.manifest["features"])
         if (self.features.ndim != 2 or self.features.shape[1] != width
@@ -440,3 +514,20 @@ class NNDuelData(PairedData):
         assignments = pd.read_csv(self.directory / "split_assignments.csv")
         if assignments.groupby("episode_id").split.nunique().gt(1).any():
             raise ValueError("Two perspectives of a physical flight cross partitions")
+
+
+class NonoverlappingNNDuelData(NNDuelData):
+    """Notebook-14 dataset with verified disjoint raw training histories."""
+
+    data_contract = NONOVERLAP_DATA_CONTRACT
+
+    def __init__(self, directory):
+        super().__init__(directory)
+        if self.manifest.get("window_sampling") != NONOVERLAP_POLICY:
+            raise ValueError("Expected the notebook-14 non-overlapping training-window policy")
+        nonoverlap_audit(self.samples)
+        train = self.samples.loc[self.samples.split.eq("train")]
+        for (episode_id, observer_id), rows in train.groupby(["episode_id", "observer_id"]):
+            if not nonoverlapping_train_mask(rows.step.to_numpy(), episode_id, observer_id,
+                                            self.manifest["split_seed"]).all():
+                raise ValueError("Training window violates the non-overlapping view schedule")

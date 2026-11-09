@@ -37,15 +37,23 @@ def prepared_data(tmp_path):
     return paired.PairedData(directory)
 
 
-def test_expanded_features_train_resume_reload_and_benchmark(tmp_path):
+@pytest.mark.parametrize("l1_lambda", [0.0, 1e-6])
+def test_expanded_features_train_resume_reload_and_benchmark(tmp_path, l1_lambda):
     data = prepared_data(tmp_path)
     output = tmp_path / "run"
     config = {
         "epochs": 2, "width": 12, "heads": 6, "layers": 1, "dropout": 0.0,
         "batch_size": 2, "evaluation_batch_size": 2, "cpu_threads": 1,
         "precision": "fp32", "data_backend": "direct",
+        "l1_lambda": l1_lambda, "overtraining_shutdown": True,
+        "early_stopping": True, "early_stopping_min_epochs": 0,
     }
     history = paired.train_model(data, output, config, device="cpu")
+    if l1_lambda:
+        assert (history.train_l1_penalty > 0).all()
+    else:
+        assert (history.train_l1_penalty == 0).all()
+    np.testing.assert_allclose(history.train_objective, history.train_nll + history.train_l1_penalty)
     saved = torch.load(output / "best.pt", map_location="cpu", weights_only=False)
     assert saved["model_config"]["input_features"] == len(data.manifest["features"])
     assert saved["feature_names"] == data.manifest["features"]
@@ -81,6 +89,33 @@ def test_model_uses_extra_channels_and_checks_input_width():
     assert model.projection.weight.grad[:, -2:].abs().sum() > 0
     with pytest.raises(ValueError, match="56"):
         model(windows[:, :, :-1])
+
+
+def test_tracking_records_overtraining_metrics_and_stop_reason(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from bvr_behavior_prediction.paired_skill_tracking import RunTracker
+
+    tracker = RunTracker(tmp_path, {"enabled": True, "log_per_class": False})
+    tracker.state = {"run_id": "fixture", "last_logged_epoch": 0}
+    recorded, tags = {}, {}
+    monkeypatch.setattr(tracker, "metrics", lambda values, step: recorded.update(values))
+    tracker.client = SimpleNamespace(set_tag=lambda run, key, value: tags.update({key: value}))
+    row = {"epoch": 4, "train_nll": .6, "test_nll": 1.3,
+           "train_macro_f1": .8, "test_macro_f1": .5, "seconds": 1,
+           "epochs_without_improvement": 3, "improved": False,
+           "train_l1_penalty": .01, "train_objective": .61, "generalization_gap": .7,
+           "overtraining_epochs": 3, "overtraining_detected": True}
+    tracker.epoch(row, pd.DataFrame(), pd.DataFrame())
+    for key in ("train_l1_penalty", "train_objective", "generalization_gap",
+                "overtraining_epochs", "overtraining_detected"):
+        assert recorded[f"epoch/{key}"] == row[key]
+    paired.write_json(tmp_path / "training_status.json", {
+        "completed_epochs": 4, "status": "early_stopped", "best_epoch": 1,
+        "best_test_nll": 1.0, "stop_reason": "overtraining"})
+    monkeypatch.setattr(tracker, "sync_artifacts", lambda: None)
+    monkeypatch.setattr(tracker, "save_model", lambda: None)
+    tracker.finish_training()
+    assert tags["stop_reason"] == "overtraining"
 
 
 @pytest.mark.parametrize("width", [0, -1, True, 1.5])

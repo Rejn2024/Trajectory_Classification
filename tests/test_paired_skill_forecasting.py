@@ -201,7 +201,7 @@ def test_notebook_schema_and_code_compile():
             compile(source, str(path), "exec")
 
 
-def controlled_training(tmp_path, monkeypatch, loss_at_epoch):
+def controlled_training(tmp_path, monkeypatch, loss_at_epoch, train_loss_at_epoch=None):
     """Drive the real fitting/checkpoint loop with a controlled test-loss sequence."""
     from types import SimpleNamespace
 
@@ -218,7 +218,8 @@ def controlled_training(tmp_path, monkeypatch, loss_at_epoch):
     def evaluate(model, data, split, device, batch_size, **kwargs):
         if split == "test":
             calls.append(split)
-        value = loss_at_epoch(len(calls)) if split == "test" else 1.0
+        value = (loss_at_epoch(len(calls)) if split == "test" else
+                 train_loss_at_epoch(len(calls) + 1) if train_loss_at_epoch else 1.0)
         return {"summary": pd.DataFrame({"nll": [value] * 3, "macro_f1": [0.0] * 3}),
                 "per_class": pd.DataFrame({"f1": [0.0]})}
 
@@ -290,6 +291,104 @@ def test_early_stopping_counter_survives_interruption(tmp_path, monkeypatch):
                                  callback=lambda *args: None)
     assert len(history) == len(calls) == 60
     assert history.iloc[-1].early_stopped
+
+
+def test_l1_changes_weight_gradients_without_penalising_biases_or_layernorm():
+    import copy
+
+    torch.manual_seed(42)
+    plain = paired.PairedTransformer(num_classes=2, width=6, heads=6, layers=1, dropout=0.0)
+    regularised = copy.deepcopy(plain)
+    x = torch.randn(2, 51, len(paired.FEATURES))
+    y = torch.tensor([[0, -1, 1], [1, 0, -1]])
+    losses = []
+    for model, coefficient in ((plain, 0.0), (regularised, .01)):
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.0)
+        losses.append(paired.fit_batch(model, optimizer, x, y, "cpu", "fp32", 1e6, coefficient))
+    expected = .01 * sum(p.abs().sum() for p in plain.parameters() if p.ndim > 1)
+    torch.testing.assert_close(losses[1] - losses[0], expected)
+    for p, q in zip(plain.parameters(), regularised.parameters()):
+        extra = .01 * p.sign() if p.ndim > 1 else torch.zeros_like(p)
+        torch.testing.assert_close(q.grad - p.grad, extra, atol=1e-6, rtol=1e-5)
+
+
+def test_no_minimum_epoch_delay(tmp_path, monkeypatch):
+    data, calls = controlled_training(tmp_path, monkeypatch, lambda epoch: 1.0)
+    config = {"width": 6, "heads": 6, "layers": 1, "early_stopping": True,
+              "early_stopping_min_epochs": 0, "early_stopping_patience": 10}
+    history = paired.train_model(data, tmp_path / "run", config, device="cpu")
+    assert len(history) == len(calls) == 11
+    assert history.iloc[1].epochs_without_improvement == 1
+    assert history.iloc[-1].stop_reason == "patience"
+
+
+@pytest.mark.parametrize("test_losses,train_losses,enabled,expected_epochs", [
+    ([1, 1.1, 1.2, 1.3, 1.4, 1.5], [1, .9, .8, .7, .6, .5], True, 4),
+    # A transient spike or a recovery must not accumulate a shutdown streak.
+    ([1, 1.2, 1, 1.2, 1.3, 1.4], [1, .8, .7, .6, .5, .4], True, 6),
+    # A new best resets the counter and anchors the new training-loss reference.
+    ([1, 1.2, .9, 1, 1.1, 1.2], [1, .8, .7, .6, .5, .4], True, 6),
+    # Rising train and test loss is not the improving-train overtraining signal.
+    ([1, 1.1, 1.2, 1.3, 1.4, 1.5], [1, 1, 1, 1, 1, 1], True, 6),
+    # Neither a small relative deterioration nor a small absolute gap triggers it.
+    ([1, 1.01, 1.02, 1.03, 1.04, 1.05], [1, .5, .5, .5, .5, .5], True, 6),
+    ([.1, .11, .11, .11, .11, .11], [.05, .04, .04, .04, .04, .04], True, 6),
+    ([1, 1.1, 1.2, 1.3, 1.4, 1.5], [1, .9, .8, .7, .6, .5], False, 6),
+])
+def test_overtraining_shutdown(tmp_path, monkeypatch, test_losses, train_losses,
+                              enabled, expected_epochs):
+    data, calls = controlled_training(tmp_path, monkeypatch,
+        lambda epoch: test_losses[epoch - 1], lambda epoch: train_losses[epoch - 1])
+    output = tmp_path / "run"
+    # Guard works independently of ordinary early stopping and its warmup.
+    config = {"epochs": 6, "width": 6, "heads": 6, "layers": 1,
+              "early_stopping": False, "early_stopping_min_epochs": 50,
+              "overtraining_shutdown": enabled}
+    history = paired.train_model(data, output, config, device="cpu")
+    assert len(history) == len(calls) == expected_epochs
+    stopped = bool(history.iloc[-1].overtraining_detected and
+                   history.iloc[-1].overtraining_epochs == 3)
+    status = paired.read_json(output / "training_status.json")
+    assert status["stop_reason"] == ("overtraining" if stopped else None)
+    assert status["status"] == ("early_stopped" if stopped else "completed")
+    best = torch.load(output / "best.pt", weights_only=False)
+    assert best["epoch"] == int(np.argmin(test_losses[:expected_epochs])) + 1
+    resumed = paired.train_model(data, output, config, device="cpu", resume=True)
+    pd.testing.assert_frame_equal(history, resumed)
+    assert len(calls) == expected_epochs
+
+
+def test_overtraining_shutdown_survives_interruption(tmp_path, monkeypatch):
+    data, calls = controlled_training(tmp_path, monkeypatch,
+                                     lambda epoch: 1 + .1 * epoch, lambda epoch: 1 / epoch)
+    output = tmp_path / "run"
+    config = {"epochs": 10, "width": 6, "heads": 6, "layers": 1,
+              "overtraining_shutdown": True}
+
+    def interrupt(row, *args):
+        if row["epoch"] == 3:
+            raise RuntimeError("Simulated interruption")
+
+    with pytest.raises(RuntimeError, match="Simulated"):
+        paired.train_model(data, output, config, callback=interrupt, device="cpu")
+    saved = torch.load(output / "last.pt", weights_only=False)
+    assert saved["overtraining_epochs"] == 2
+    assert saved["train_nll_at_best"] == 1.0
+    history = paired.train_model(data, output, config, device="cpu", resume=True)
+    assert len(history) == len(calls) == 4
+    assert history.iloc[-1].stop_reason == "overtraining"
+
+
+@pytest.mark.parametrize("setting,value", [
+    ("l1_lambda", -1), ("l1_lambda", float("nan")), ("l1_lambda", float("inf")),
+    ("overtraining_patience", 0), ("overtraining_patience", True),
+    ("overtraining_min_gap", -1), ("overtraining_relative_increase", float("nan")),
+    ("overtraining_shutdown", 1),
+])
+def test_invalid_overtraining_settings_fail_before_fitting(tmp_path, setting, value):
+    with pytest.raises(ValueError):
+        paired.train_model(None, tmp_path / "unused", {setting: value}, device="cpu")
+    assert not (tmp_path / "unused").exists()
 
 
 @pytest.fixture

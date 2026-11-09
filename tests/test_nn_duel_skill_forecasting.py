@@ -15,6 +15,36 @@ from bvr_behavior_prediction import nn_duel_skill_forecasting as duel
 CLASSES = ["defend", "turn"]
 
 
+def test_training_notebook_schema_code_and_stopping_defaults():
+    import ast
+    import nbformat
+    from bvr_behavior_prediction.paired_skill_forecasting import DEFAULT_TRAINING
+
+    path = Path(__file__).parents[1] / "notebooks/13_nn_duel_skill_forecasting.ipynb"
+    notebook = nbformat.read(path, as_version=4)
+    nbformat.validate(notebook)
+    namespace = {"DEFAULT_TRAINING": DEFAULT_TRAINING, "DEVICE": "cpu"}
+    for cell in notebook.cells:
+        if cell.cell_type != "code":
+            continue
+        tree = ast.parse(cell.source.removeprefix("%%time\n"), str(path))
+        compile(tree, str(path), "exec")
+        for statement in tree.body:
+            # Execute the actual notebook's CONFIG assignment/update in isolation.
+            if (isinstance(statement, ast.Assign) and
+                    any(isinstance(t, ast.Name) and t.id == "CONFIG" for t in statement.targets)
+                    or isinstance(statement, ast.Expr) and
+                    isinstance(statement.value, ast.Call) and
+                    isinstance(statement.value.func, ast.Attribute) and
+                    isinstance(statement.value.func.value, ast.Name) and
+                    statement.value.func.value.id == "CONFIG"):
+                exec(compile(ast.Module(body=[statement], type_ignores=[]), str(path), "exec"), namespace)
+    config = namespace["CONFIG"]
+    assert config["l1_lambda"] == 1e-6
+    assert config["early_stopping"] and config["early_stopping_min_epochs"] == 0
+    assert config["overtraining_shutdown"] and config["overtraining_patience"] == 3
+
+
 def frames_and_decisions(observer="A01", frames=121):
     key = {"episode_id": ["flight"] * frames, "step": np.arange(frames),
            "time_s": np.arange(frames) * .1}
@@ -70,7 +100,7 @@ def test_missing_exact_target_masked_without_forward_fill():
     assert 70 in dead_ends
 
 
-def write_source(root, flights=10):
+def write_source(root, flights=10, frames=121):
     source = root / "shared/corpora/nn-duels-fixture/series"
     source.mkdir(parents=True)
     cases, episodes = [], []
@@ -82,7 +112,7 @@ def write_source(root, flights=10):
                       "initial": {"A01": {"position": [0, 0, 0]},
                                   "B01": {"position": [1000 + i, 0, 0]}}})
         for side, target_id in (("A01", "B01"), ("B01", "A01")):
-            obs, track, decisions = frames_and_decisions(target_id)
+            obs, track, decisions = frames_and_decisions(target_id, frames=frames)
             for table in (obs, track, decisions):
                 table["episode_id"] = episode_id
             # Two viewpoints have deliberately different own-state features.
@@ -94,7 +124,8 @@ def write_source(root, flights=10):
                 tables[side, part].append(pa.Table.from_pandas(table, preserve_index=False))
             episodes.append({"episode_id": episode_id, "scenario_group": episode_id,
                              "observer_id": side, "target_id": target_id,
-                             "pilot_id": f"pilot_{target_id}", "frames": 121,
+                             "pilot_id": f"pilot_{target_id}", "frames": frames,
+                             "family": "fixture", "duration_s": (frames - 1) * .1,
                              "shard": "part-00000"})
     for (side, part), groups in tables.items():
         path = source / side / part / "part-00000.parquet"
@@ -174,3 +205,151 @@ def test_repeated_ranges_cannot_leave_an_unsplittable_stratum():
     groups = duel.split_scenarios(analysis)
     assert len(groups) == count
     assert {value["split"] for value in groups.values()} == set(duel.SPLITS)
+
+
+def test_nonoverlap_schedule_covers_raw_histories_across_views_without_label_selection():
+    ends = np.arange(60, 400, 10)
+    for episode_id in ("flight_a", "flight_b"):
+        chosen = []
+        for side in duel.SIDES:
+            mask = duel.nonoverlapping_train_mask(ends, episode_id, side)
+            chosen.extend((int(end), side) for end in ends[mask])
+            # Eligibility gaps must never shift later scheduled windows.
+            np.testing.assert_array_equal(
+                duel.nonoverlapping_train_mask(ends[2:], episode_id, side), mask[2:])
+        chosen.sort()
+        assert [end for end, _ in chosen] == list(range(60, 400, 60))
+        assert all(a[1] != b[1] for a, b in zip(chosen, chosen[1:]))
+        used = set()
+        for end, _ in chosen:
+            raw = set(range(end - 55, end + 1))
+            assert not raw & used
+            used.update(raw)
+
+
+@pytest.mark.parametrize("steps", [[60, 60], [60, 110], [60, 115]])
+def test_nonoverlap_audit_rejects_shared_acceleration_frames_and_paired_views(steps):
+    # Even disjoint 51-frame model inputs can share raw acceleration frames.
+    samples = pd.DataFrame({"episode_id": ["flight"] * 2,
+                            "observer_id": ["A01", "B01"],
+                            "split": ["train"] * 2, "step": steps})
+    with pytest.raises(ValueError, match="Overlapping training raw histories"):
+        duel.nonoverlap_audit(samples)
+
+
+def test_nonoverlap_preparation_matches_dense_holdouts_scaling_and_retained_support(tmp_path, monkeypatch):
+    monkeypatch.setattr(duel, "catalogue", lambda root: CLASSES)
+    source = write_source(tmp_path, frames=361)
+    analysis = duel.analyze_corpus(tmp_path, source)
+    dense_path, sparse_path = tmp_path / "dense", tmp_path / "sparse"
+    duel.prepare_dataset(tmp_path, dense_path, source, analysis=analysis)
+    manifest = duel.prepare_dataset(tmp_path, sparse_path, source, analysis=analysis,
+                                    nonoverlapping_train=True)
+    dense, sparse = duel.NNDuelData(dense_path), duel.NonoverlappingNNDuelData(sparse_path)
+    assert manifest["data_contract"] == duel.NONOVERLAP_DATA_CONTRACT
+    assert len(sparse.indices["train"]) < len(dense.indices["train"]) / 6
+    assert sparse.samples.groupby("episode_id").split.nunique().eq(1).all()
+    assert set(sparse.samples.loc[sparse.samples.split.eq("train"), "observer_id"]) == set(duel.SIDES)
+    assert duel.read_json(dense_path / "scenario_splits.json") == duel.read_json(sparse_path / "scenario_splits.json")
+    for split in ("test", "validation"):
+        a, b = dense.indices[split], sparse.indices[split]
+        pd.testing.assert_frame_equal(dense.samples.iloc[a].reset_index(drop=True),
+                                      sparse.samples.iloc[b].reset_index(drop=True))
+        np.testing.assert_array_equal(dense.anchors[a], sparse.anchors[b])
+        np.testing.assert_array_equal(dense.targets[a], sparse.targets[b])
+    train = sparse.samples.loc[sparse.samples.split.eq("train")]
+    for _, rows in train.groupby("episode_id"):
+        used = set()
+        for end in rows.step:
+            raw = set(range(end - 55, end + 1))
+            assert not raw & used
+            used.update(raw)
+    selected_frames = np.concatenate([
+        np.arange(end - 50, end + 1) for end in sparse.anchors[sparse.indices["train"]]])
+    expected = sparse.features[selected_frames, :54].astype(float)
+    np.testing.assert_allclose(sparse.mean[:54], expected.mean(0), atol=1e-6)
+    np.testing.assert_allclose(sparse.std[:54], np.maximum(expected.std(0), .01), atol=1e-6)
+    np.testing.assert_array_equal(sparse.mean[54:], [0, 0])
+    np.testing.assert_array_equal(sparse.std[54:], [1, 1])
+    support = pd.read_csv(sparse_path / "skill_support_by_split.csv")
+    for split in duel.SPLITS:
+        labels = sparse.targets[sparse.indices[split]]
+        for horizon, seconds in enumerate(duel.HORIZONS):
+            for label, skill in enumerate(CLASSES):
+                value = support.query("split == @split and horizon_s == @seconds and skill == @skill")
+                assert value.windows.item() == int((labels[:, horizon] == label).sum())
+    audit = pd.read_csv(sparse_path / "window_sampling_audit.csv").groupby("split").sum(numeric_only=True)
+    assert audit.loc["train", "retained_windows"] == len(sparse.indices["train"])
+    assert audit.loc["test", "dropped_windows"] == audit.loc["validation", "dropped_windows"] == 0
+    assert duel.nonoverlap_audit(sparse.samples)["minimum_origin_spacing_steps"] == 60
+    with pytest.raises(ValueError, match="Expected own-skill-conditioned"):
+        duel.NonoverlappingNNDuelData(dense_path)
+    with pytest.raises(ValueError, match="Expected own-skill-conditioned"):
+        duel.NNDuelData(sparse_path)
+    # The loader rechecks disjointness even if file hashes are updated.
+    damaged = sparse.samples.copy()
+    damaged.loc[sparse.indices["train"][1], "step"] = damaged.loc[sparse.indices["train"][0], "step"]
+    damaged.to_parquet(sparse_path / "samples.parquet", index=False)
+    manifest["files"]["samples.parquet"] = duel.sha256(sparse_path / "samples.parquet")
+    duel.write_json(sparse_path / "manifest.json", manifest)
+    with pytest.raises(ValueError, match="Overlapping training"):
+        duel.NonoverlappingNNDuelData(sparse_path)
+
+
+def test_nonoverlap_notebooks_run_prepare_train_and_report(tmp_path, monkeypatch):
+    """Run their real Python cells on small data with the requested architecture."""
+    import shutil
+    import sys
+    import nbformat
+    import torch
+    import IPython.display
+
+    repository = Path(__file__).parents[1]
+    monkeypatch.setattr(duel, "catalogue", lambda root: CLASSES)
+    source = write_source(tmp_path, frames=361)
+    package = tmp_path / "bvr_behavior_prediction"
+    package.mkdir()
+    for name in ("paired_skill_forecasting.py", "nn_duel_skill_forecasting.py"):
+        shutil.copy2(repository / "bvr_behavior_prediction" / name, package / name)
+    monkeypatch.setenv("BVR_NN_ROOT", str(tmp_path))
+    monkeypatch.setenv("BVR_NN_FORECAST_SOURCE", str(source))
+    monkeypatch.setenv("BVR_NN_FORECAST_DOWNLOAD", "0")
+    monkeypatch.setenv("BVR_NN_NONOVERLAP_MLFLOW", "0")
+    monkeypatch.delenv("BVR_NN_NONOVERLAP_DATA", raising=False)
+    monkeypatch.setattr(sys, "path", sys.path.copy())
+    displayed = []
+    monkeypatch.setattr(IPython.display, "display", lambda *args: displayed.extend(args))
+    namespace = {}
+    for number, name in ((14, "14_prepare_nonoverlap_nn_duel_skill_forecasting.ipynb"),
+                         (15, "15_nonoverlap_nn_duel_skill_forecasting.ipynb")):
+        notebook = nbformat.read(repository / "notebooks" / name, as_version=4)
+        nbformat.validate(notebook)
+        for index, cell in enumerate(notebook.cells):
+            if cell.cell_type != "code":
+                continue
+            assert cell.source.startswith("%%time\n")
+            code = compile(cell.source.removeprefix("%%time\n"), name, "exec")
+            exec(code, namespace)
+            if number == 15 and index == 1:
+                config = namespace["CONFIG"]
+                assert config["width"] == 96 and config["dropout"] == .25
+                assert config["heads"] == 6 and config["layers"] == 2
+                assert config["l1_lambda"] == 1e-6
+                assert config["early_stopping_min_epochs"] == 0 and config["overtraining_shutdown"]
+                # Only reduce run duration; retain the actual model and all three seeds.
+                config["epochs"] = 2
+    assert isinstance(namespace["data"], duel.NonoverlappingNNDuelData)
+    assert len(namespace["RUNS"]) == 3
+    for run in namespace["RUNS"].values():
+        checkpoint = torch.load(run / "best.pt", map_location="cpu", weights_only=False)
+        assert checkpoint["model_config"]["width"] == 96
+        assert checkpoint["model_config"]["dropout"] == .25
+        assert checkpoint["data_contract"] == duel.NONOVERLAP_DATA_CONTRACT
+        assert (run / "final_validation.npz").is_file()
+        assert (run / "training_frequency_baseline.csv").is_file()
+    assert len(list((namespace["RUN"] / "diagnostics").glob("*.png"))) == 5
+    assert not (tmp_path / "artifacts/nn_duel_skill_forecasting").exists()
+    # Preparation can be rerun without rewriting the existing completed dataset.
+    prep = nbformat.read(repository / "notebooks/14_prepare_nonoverlap_nn_duel_skill_forecasting.ipynb", as_version=4)
+    for index in (1, 4, 6):
+        exec(compile(prep.cells[index].source.removeprefix("%%time\n"), "reuse", "exec"), namespace)

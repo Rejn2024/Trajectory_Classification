@@ -147,7 +147,8 @@ class RunTracker:
                           selection="strict_minimum_mean_test_NLL")
             self.client.log_batch(self.state["run_id"], params=[Param(k, _value(v)) for k, v in params.items()])
         for name in ("manifest.json", "scaling.json", "scenario_splits.json", "split_assignments.csv",
-                     "skill_support_before_split.csv", "skill_support_by_split.csv"):
+                     "skill_support_before_split.csv", "skill_support_by_split.csv",
+                     "window_sampling_audit.csv", "nonoverlap_audit.json"):
             self.artifact(data.directory / name, "data_metadata")
         self.artifact(self.output / "training_source.py", "source")
         shutil.copy2(__file__, self.output / "tracking_source.py")
@@ -200,6 +201,10 @@ class RunTracker:
                         "epoch/test/macro_f1": row["test_macro_f1"],
                         "epoch/fit_and_evaluation_seconds": row["seconds"],
                         "epoch/epochs_without_improvement": row["epochs_without_improvement"]})
+        for key in ("train_l1_penalty", "train_objective", "generalization_gap",
+                    "overtraining_epochs", "overtraining_detected"):
+            if key in row:
+                metrics[f"epoch/{key}"] = row[key]
         if row["improved"]:
             metrics.update({"best/test_nll": row["test_nll"], "best/epoch": row["epoch"]})
         self.metrics(metrics, row["epoch"])
@@ -226,6 +231,8 @@ class RunTracker:
                       "best/epoch": status["best_epoch"], "best/test_nll": status["best_test_nll"]},
                      status["completed_epochs"])
         self.client.set_tag(self.state["run_id"], "training_status", status["status"])
+        if status.get("stop_reason"):
+            self.client.set_tag(self.state["run_id"], "stop_reason", status["stop_reason"])
         self.sync_artifacts()
         self.save_model()
         self.phase = "training_complete_validation_pending"
