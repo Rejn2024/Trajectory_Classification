@@ -103,6 +103,74 @@ Notebook 15 need not run first. Start fresh runs for the new objective; use the
 selection partition called "test" for comparisons, and keep final validation held
 out until every seed completes.
 
+## Enemy-missile features
+
+Run `notebooks/17_prepare_enemy_missile_nn_duel_skill_forecasting.ipynb`, then
+`notebooks/18_enemy_missile_nn_duel_skill_forecasting.ipynb`. Notebook 17 prepares
+a new dataset directly from notebook 11's complete two-view recordings; notebooks
+14–16 need not run first. The recordings already contain each aircraft's friendly
+missiles. This supplies four enemy slots for the other observer without rerunning
+flights or changing the NN pilots, simulator, original corpora or earlier datasets.
+
+Each slot has seven channels, analogous to the original friendly slots:
+relative North/West/Up position (3), relative North/West/Up velocity (3), and range
+(1). The new layout for the 33-skill catalogue is:
+
+| Channels (zero-based) | Meaning |
+| --- | --- |
+| 0–53 | Existing observation/energy and causal acceleration values |
+| 54–81 | Four enemy-missile slots, seven consecutive channels each |
+| 82–114 | Current own-skill indicators, one per catalogue entry |
+
+For A observing B, read B's friendly slots (`obs_19`–`obs_46`) at exactly the same
+flight, step and timestamp. Let `r_MB` and `v_MB` be a missile's position and velocity
+relative to B, and `r_BA`, `v_BA` the B-minus-A aircraft quantities already present
+in A's observation. Then `r_MA = r_MB + r_BA` and `v_MA = v_MB + v_BA`.
+The code translates world North/West/Up vectors; it does not rotate body-frame axes.
+Raw position components use `[50000, 50000, 10000]` metre scales. Aircraft relative
+velocities use 600 m/s, whereas missile-relative velocities use 1200 m/s, so the
+normalised missile velocity adds half the aircraft relative-velocity channels.
+Range is recomputed from physical position and divided by 50000 m, including the
+correct vertical scale. B observing A uses the same calculation with roles reversed.
+
+The original opposing friendly-slot ordering is retained; this is not a nearest-four
+range selection. If the source has more than four live friendly missiles, the same
+four source slots are represented. All-seven-zero source slots remain zero before
+standardisation, preventing phantom missiles at the opposing aircraft position.
+The compact interface's all-zero absence convention is preserved, with no added
+presence bit. These are idealised contemporaneous simulator quantities; live use
+requires equivalent observed enemy-missile tracks. Opponent decisions, future missile
+states, pilot identity and outcomes are not enemy-feature inputs.
+
+The dataset uses the same fixed scenario splits, non-overlapping training histories
+and target masks as notebook 14 for the same source/seed. Both input streams are
+aligned before transformation. Scaling uses retained training histories for all
+82 numeric channels; the final 33 skill indicators remain binary. Missing slots
+are zero in raw space; their normalised values follow the fitted means/scales.
+The loader verifies the new feature order and the
+`nn-duel-own-skill-enemy-missile-nonoverlap-horizon-v1` contract, and rejects older
+87-channel caches. `enemy_missile_audit.csv` reports raw-frame slot occupancy by
+flight/view and is logged to MLflow alongside the dataset manifest and other audits.
+
+Notebook 18 retains width 96, two layers, six heads, dropout 0.25, capped training-only
+class weights, L1 and both stopping controls. Its projection accepts 115 channels;
+output horizons and the catalogue vocabulary remain unchanged. Checkpoints store
+ordered feature names, scaling and input width; inference must reproduce that schema.
+`reconstruct_enemy_missiles(observer_raw, opposite_raw)` reproduces the 28 new
+channels when both raw views are available. The new numeric channels precede own
+skills, so old checkpoints cannot be used with the new dataset. Unweighted NLL
+continues to drive checkpoint selection, stopping and final reporting.
+
+Data, receipt, runs and default MLflow storage live under
+`artifacts/nn_duel_enemy_missile_forecasting/`, in the
+`nn-duel-enemy-missile-skill-forecasting` experiment. Override the data path with
+`BVR_NN_ENEMY_MISSILE_DATA`, or disable tracking with `BVR_NN_ENEMY_MISSILE_MLFLOW=0`.
+Source/root/download overrides are shared with notebook 14. Start fresh model runs.
+The separate 115-channel frame array is about 18.1 GiB for the archived release;
+allow at least 35 GB for source downloads and preparation, plus existing arrays,
+model checkpoints and reports. Streaming remains the default rather than caching
+the full array on a 16 GiB GPU.
+
 ## Windows PyArrow import failure
 
 `ImportError: DLL load failed while importing lib: An Application Control policy

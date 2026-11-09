@@ -100,6 +100,32 @@ def test_missing_exact_target_masked_without_forward_fill():
     assert 70 in dead_ends
 
 
+@pytest.mark.parametrize("failure", ["step", "time_s", "episode_id", "rows"])
+def test_enemy_features_reject_misaligned_opposite_observations(failure):
+    obs, tracks, own = frames_and_decisions("A01")
+    _, _, target = frames_and_decisions("B01")
+    opposite = obs.copy()
+    if failure == "rows":
+        opposite = opposite.iloc[:-1]
+    else:
+        opposite.loc[10, failure] = "another_flight" if failure == "episode_id" else 99
+    with pytest.raises(ValueError):
+        duel.episode_examples(obs, tracks, target, own, CLASSES, "A01", "B01",
+                             opposite_observations=opposite)
+
+
+def test_enemy_features_preserve_original_inputs_and_labels():
+    obs, tracks, own = frames_and_decisions("A01")
+    _, _, target = frames_and_decisions("B01")
+    base, ends, labels = duel.episode_examples(obs, tracks, target, own, CLASSES, "A01", "B01")
+    expanded, new_ends, new_labels = duel.episode_examples(
+        obs, tracks, target, own, CLASSES, "A01", "B01", opposite_observations=obs.copy())
+    np.testing.assert_array_equal(expanded[:, :54], base[:, :54])
+    np.testing.assert_array_equal(expanded[:, 82:], base[:, 54:])
+    np.testing.assert_array_equal(new_ends, ends)
+    np.testing.assert_array_equal(new_labels, labels)
+
+
 def write_source(root, flights=10, frames=121):
     source = root / "shared/corpora/nn-duels-fixture/series"
     source.mkdir(parents=True)
@@ -237,16 +263,22 @@ def test_nonoverlap_audit_rejects_shared_acceleration_frames_and_paired_views(st
         duel.nonoverlap_audit(samples)
 
 
-def test_nonoverlap_preparation_matches_dense_holdouts_scaling_and_retained_support(tmp_path, monkeypatch):
+@pytest.mark.parametrize("enemy_missiles", [False, True])
+def test_nonoverlap_preparation_matches_dense_holdouts_scaling_and_retained_support(tmp_path, monkeypatch,
+                                                                                 enemy_missiles):
     monkeypatch.setattr(duel, "catalogue", lambda root: CLASSES)
     source = write_source(tmp_path, frames=361)
     analysis = duel.analyze_corpus(tmp_path, source)
     dense_path, sparse_path = tmp_path / "dense", tmp_path / "sparse"
     duel.prepare_dataset(tmp_path, dense_path, source, analysis=analysis)
     manifest = duel.prepare_dataset(tmp_path, sparse_path, source, analysis=analysis,
-                                    nonoverlapping_train=True)
-    dense, sparse = duel.NNDuelData(dense_path), duel.NonoverlappingNNDuelData(sparse_path)
-    assert manifest["data_contract"] == duel.NONOVERLAP_DATA_CONTRACT
+                                    nonoverlapping_train=True, enemy_missiles=enemy_missiles)
+    loader = duel.EnemyMissileNNDuelData if enemy_missiles else duel.NonoverlappingNNDuelData
+    dense, sparse = duel.NNDuelData(dense_path), loader(sparse_path)
+    assert manifest["data_contract"] == loader.data_contract
+    numeric = 82 if enemy_missiles else 54
+    assert sparse.features.shape[1] == numeric + len(CLASSES)
+    np.testing.assert_array_equal(sparse.features[:, :54], dense.features[:, :54])
     assert len(sparse.indices["train"]) < len(dense.indices["train"]) / 6
     assert sparse.samples.groupby("episode_id").split.nunique().eq(1).all()
     assert set(sparse.samples.loc[sparse.samples.split.eq("train"), "observer_id"]) == set(duel.SIDES)
@@ -266,11 +298,16 @@ def test_nonoverlap_preparation_matches_dense_holdouts_scaling_and_retained_supp
             used.update(raw)
     selected_frames = np.concatenate([
         np.arange(end - 50, end + 1) for end in sparse.anchors[sparse.indices["train"]]])
-    expected = sparse.features[selected_frames, :54].astype(float)
-    np.testing.assert_allclose(sparse.mean[:54], expected.mean(0), atol=1e-6)
-    np.testing.assert_allclose(sparse.std[:54], np.maximum(expected.std(0), .01), atol=1e-6)
-    np.testing.assert_array_equal(sparse.mean[54:], [0, 0])
-    np.testing.assert_array_equal(sparse.std[54:], [1, 1])
+    expected = sparse.features[selected_frames, :numeric].astype(float)
+    np.testing.assert_allclose(sparse.mean[:numeric], expected.mean(0), atol=1e-6)
+    np.testing.assert_allclose(sparse.std[:numeric], np.maximum(expected.std(0), .01), atol=1e-6)
+    np.testing.assert_array_equal(sparse.mean[numeric:], [0, 0])
+    np.testing.assert_array_equal(sparse.std[numeric:], [1, 1])
+    if enemy_missiles:
+        assert manifest["features"][54:82] == duel.ENEMY_MISSILE_FEATURES
+        assert (sparse_path / "enemy_missile_audit.csv").is_file()
+        with pytest.raises(ValueError, match="Expected own-skill-conditioned"):
+            duel.NonoverlappingNNDuelData(sparse_path)
     support = pd.read_csv(sparse_path / "skill_support_by_split.csv")
     for split in duel.SPLITS:
         labels = sparse.targets[sparse.indices[split]]
@@ -293,12 +330,13 @@ def test_nonoverlap_preparation_matches_dense_holdouts_scaling_and_retained_supp
     manifest["files"]["samples.parquet"] = duel.sha256(sparse_path / "samples.parquet")
     duel.write_json(sparse_path / "manifest.json", manifest)
     with pytest.raises(ValueError, match="Overlapping training"):
-        duel.NonoverlappingNNDuelData(sparse_path)
+        loader(sparse_path)
 
 
 @pytest.mark.parametrize("training_number,training_notebook", [
     (15, "15_nonoverlap_nn_duel_skill_forecasting.ipynb"),
     (16, "16_balanced_nonoverlap_nn_duel_skill_forecasting.ipynb"),
+    (18, "18_enemy_missile_nn_duel_skill_forecasting.ipynb"),
 ])
 def test_nonoverlap_notebooks_run_prepare_train_and_report(tmp_path, monkeypatch,
                                                           training_number, training_notebook):
@@ -321,12 +359,17 @@ def test_nonoverlap_notebooks_run_prepare_train_and_report(tmp_path, monkeypatch
     monkeypatch.setenv("BVR_NN_FORECAST_DOWNLOAD", "0")
     monkeypatch.setenv("BVR_NN_NONOVERLAP_MLFLOW", "0")
     monkeypatch.setenv("BVR_NN_BALANCED_MLFLOW", "0")
+    monkeypatch.setenv("BVR_NN_ENEMY_MISSILE_MLFLOW", "0")
     monkeypatch.delenv("BVR_NN_NONOVERLAP_DATA", raising=False)
+    monkeypatch.delenv("BVR_NN_ENEMY_MISSILE_DATA", raising=False)
     monkeypatch.setattr(sys, "path", sys.path.copy())
     displayed = []
     monkeypatch.setattr(IPython.display, "display", lambda *args: displayed.extend(args))
     namespace = {}
-    for number, name in ((14, "14_prepare_nonoverlap_nn_duel_skill_forecasting.ipynb"),
+    prep_number = 17 if training_number == 18 else 14
+    prep_notebook = ("17_prepare_enemy_missile_nn_duel_skill_forecasting.ipynb" if training_number == 18
+                     else "14_prepare_nonoverlap_nn_duel_skill_forecasting.ipynb")
+    for number, name in ((prep_number, prep_notebook),
                          (training_number, training_notebook)):
         notebook = nbformat.read(repository / "notebooks" / name, as_version=4)
         nbformat.validate(notebook)
@@ -342,7 +385,7 @@ def test_nonoverlap_notebooks_run_prepare_train_and_report(tmp_path, monkeypatch
                 assert config["heads"] == 6 and config["layers"] == 2
                 assert config["l1_lambda"] == 1e-6
                 assert config["early_stopping_min_epochs"] == 0 and config["overtraining_shutdown"]
-                assert config["class_weighting"] == ("sqrt_inverse" if training_number == 16 else "none")
+                assert config["class_weighting"] == ("sqrt_inverse" if training_number >= 16 else "none")
                 # Only reduce run duration; retain the actual model and all three seeds.
                 config["epochs"] = 2
     assert isinstance(namespace["data"], duel.NonoverlappingNNDuelData)
@@ -351,8 +394,11 @@ def test_nonoverlap_notebooks_run_prepare_train_and_report(tmp_path, monkeypatch
         checkpoint = torch.load(run / "best.pt", map_location="cpu", weights_only=False)
         assert checkpoint["model_config"]["width"] == 96
         assert checkpoint["model_config"]["dropout"] == .25
-        assert checkpoint["data_contract"] == duel.NONOVERLAP_DATA_CONTRACT
-        if training_number == 16:
+        expected_contract = (duel.ENEMY_MISSILE_DATA_CONTRACT if training_number == 18
+                             else duel.NONOVERLAP_DATA_CONTRACT)
+        assert checkpoint["data_contract"] == expected_contract
+        assert checkpoint["model_config"]["input_features"] == (82 if training_number == 18 else 54) + len(CLASSES)
+        if training_number >= 16:
             state = duel.read_json(run / "class_weights.json")
             assert checkpoint["class_weighting"] == state
             assert (run / "class_weights.csv").is_file()
@@ -367,7 +413,11 @@ def test_nonoverlap_notebooks_run_prepare_train_and_report(tmp_path, monkeypatch
     if training_number == 16:
         assert namespace["EXPERIMENT_ROOT"].name == "nn_duel_balanced_forecasting"
         assert namespace["DATA_ROOT"].name == "nn_duel_nonoverlap_forecasting"
+    if training_number == 18:
+        assert isinstance(namespace["data"], duel.EnemyMissileNNDuelData)
+        assert namespace["EXPERIMENT_ROOT"].name == "nn_duel_enemy_missile_forecasting"
+        assert namespace["DATA_ROOT"] == namespace["EXPERIMENT_ROOT"]
     # Preparation can be rerun without rewriting the existing completed dataset.
-    prep = nbformat.read(repository / "notebooks/14_prepare_nonoverlap_nn_duel_skill_forecasting.ipynb", as_version=4)
+    prep = nbformat.read(repository / "notebooks" / prep_notebook, as_version=4)
     for index in (1, 4, 6):
         exec(compile(prep.cells[index].source.removeprefix("%%time\n"), "reuse", "exec"), namespace)

@@ -148,7 +148,7 @@ class RunTracker:
             self.client.log_batch(self.state["run_id"], params=[Param(k, _value(v)) for k, v in params.items()])
         for name in ("manifest.json", "scaling.json", "scenario_splits.json", "split_assignments.csv",
                      "skill_support_before_split.csv", "skill_support_by_split.csv",
-                     "window_sampling_audit.csv", "nonoverlap_audit.json"):
+                     "window_sampling_audit.csv", "nonoverlap_audit.json", "enemy_missile_audit.csv"):
             self.artifact(data.directory / name, "data_metadata")
         self.artifact(self.output / "training_source.py", "source")
         shutil.copy2(__file__, self.output / "tracking_source.py")

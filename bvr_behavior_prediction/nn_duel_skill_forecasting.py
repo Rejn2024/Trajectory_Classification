@@ -21,6 +21,19 @@ from .paired_skill_forecasting import (
 
 DATA_CONTRACT = "nn-duel-own-skill-horizon-v1"
 NONOVERLAP_DATA_CONTRACT = "nn-duel-own-skill-nonoverlap-horizon-v1"
+ENEMY_MISSILE_DATA_CONTRACT = "nn-duel-own-skill-enemy-missile-nonoverlap-horizon-v1"
+MISSILE_FIELDS = ("relative_position_n", "relative_position_w", "relative_position_u",
+                  "relative_velocity_n", "relative_velocity_w", "relative_velocity_u", "range")
+ENEMY_MISSILE_FEATURES = [f"observer_enemy_missile_{slot}_{field}"
+                          for slot in range(1, 5) for field in MISSILE_FIELDS]
+ENEMY_MISSILE_POLICY = {
+    "slots": 4, "fields": list(MISSILE_FIELDS),
+    "source": "same-timestamp opposite-view friendly missile slots, obs_19 through obs_46",
+    "ordering": "preserve opposing friendly-slot order; no nearest-range reorder",
+    "empty_slots": "all seven raw values zero, matching the compact source convention",
+    "position_scales_m": [50000, 50000, 10000], "velocity_scale_mps": 1200,
+    "range_scale_m": 50000, "coordinates": "observer-relative world North/West/Up",
+}
 SIDES = ("A01", "B01")
 DECISION_STEPS = 10
 # Round the complete raw input footprint up to the decision grid. Alternating
@@ -36,9 +49,33 @@ NONOVERLAP_POLICY = {
 }
 
 
-def feature_names(classes):
-    return [f"observer_{name}" for name in BASE_FEATURES] + [
+def feature_names(classes, enemy_missiles=False):
+    return ([f"observer_{name}" for name in BASE_FEATURES]
+            + (ENEMY_MISSILE_FEATURES if enemy_missiles else [])) + [
         f"own_skill::{name}" for name in classes]
+
+
+def reconstruct_enemy_missiles(observer_raw, opposite_raw):
+    """Translate opposing friendly slots into observer-relative enemy slots.
+
+    Both arrays are contemporaneous 51-channel compact+energy recordings. Only
+    the opponent's friendly slots and the observer's relative aircraft geometry
+    enter this calculation. Empty slots stay zero instead of becoming phantom
+    missiles at the opponent's aircraft position. Range is recomputed in metres.
+    """
+    raw, other = np.asarray(observer_raw, dtype=np.float64), np.asarray(opposite_raw, dtype=np.float64)
+    if (raw.ndim != 2 or raw.shape[1] != len(OBS_COLUMNS) or other.shape != raw.shape
+            or not np.isfinite(raw).all() or not np.isfinite(other).all()):
+        raise ValueError("Expected aligned finite (frames, 51) observation arrays")
+    friendly = other[:, 19:47].reshape(-1, 4, 7)
+    present = np.any(friendly != 0, axis=-1)
+    enemy = np.zeros_like(friendly)
+    enemy[:, :, :3] = friendly[:, :, :3] + raw[:, None, 9:12]
+    # Aircraft relative velocity uses /600; missile relative velocity uses /1200.
+    enemy[:, :, 3:6] = friendly[:, :, 3:6] + .5 * raw[:, None, 12:15]
+    enemy[:, :, 6] = np.linalg.norm(enemy[:, :, :3] * [50000, 50000, 10000], axis=-1) / 50000
+    enemy[~present] = 0
+    return enemy.reshape(-1, len(ENEMY_MISSILE_FEATURES)).astype(np.float32)
 
 
 def discover_corpus(root, source=None):
@@ -167,7 +204,7 @@ def current_own_skills(decisions, episode_id, observer_id, frames, classes):
 
 
 def episode_examples(observations, tracks, target_decisions, own_decisions, classes,
-                     observer_id, target_id):
+                     observer_id, target_id, opposite_observations=None):
     """Return per-frame features, eligible origins and future opponent labels."""
     episode_id, frames = tracks.episode_id.iloc[0], len(tracks)
     validate_frames(tracks, episode_id, frames)
@@ -176,7 +213,14 @@ def episode_examples(observations, tracks, target_decisions, own_decisions, clas
         raise ValueError("Observation/track keys differ")
     _validate_decisions(target_decisions, episode_id, target_id, frames, classes)
     own = current_own_skills(own_decisions, episode_id, observer_id, frames, classes)
-    features = np.concatenate([observation_features(observations[OBS_COLUMNS]), own], axis=1)
+    numeric = observation_features(observations[OBS_COLUMNS])
+    if opposite_observations is not None:
+        validate_frames(opposite_observations, episode_id, frames)
+        if not observations[KEYS].equals(opposite_observations[KEYS]):
+            raise ValueError("Opposite-view observation keys differ")
+        enemy = reconstruct_enemy_missiles(observations[OBS_COLUMNS], opposite_observations[OBS_COLUMNS])
+        numeric = np.concatenate([numeric, enemy], axis=1)
+    features = np.concatenate([numeric, own], axis=1)
     live = (tracks.observer_alive & tracks.target_alive).to_numpy(dtype=bool)
     first = ((RAW_HISTORY_STEPS + STRIDE_STEPS - 1) // STRIDE_STEPS) * STRIDE_STEPS
     ends = np.arange(first, frames, STRIDE_STEPS)
@@ -190,7 +234,7 @@ def episode_examples(observations, tracks, target_decisions, own_decisions, clas
     return features, ends[keep], target[keep]
 
 
-def _episodes(source, manifest, episodes, observations=True):
+def _episodes(source, manifest, episodes, observations=True, enemy_missiles=False):
     """Read one episode row group at a time; never load the whole corpus/window tensor."""
     for shard, subset in episodes.groupby("shard", sort=True):
         files = {}
@@ -223,11 +267,15 @@ def _episodes(source, manifest, episodes, observations=True):
             validate_frames(tracks, row.episode_id, int(row.frames))
             if observations:
                 obs = files[row.observer_id, "observations"].read_row_group(group).to_pandas()
+                opposite = (files[own_side, "observations"].read_row_group(own_group).to_pandas()
+                            if enemy_missiles else None)
             else:
                 obs = tracks[KEYS].copy()
                 obs[OBS_COLUMNS] = np.zeros((len(tracks), len(OBS_COLUMNS)), dtype=np.float32)
+                opposite = None
             yield index, row, episode_examples(obs, tracks, target, own, classes=manifest["classes"],
-                                              observer_id=row.observer_id, target_id=row.target_id)
+                                              observer_id=row.observer_id, target_id=row.target_id,
+                                              opposite_observations=opposite)
         print(f"Read {shard}: {len(subset):,} perspective episodes", flush=True)
 
 
@@ -372,7 +420,7 @@ def nonoverlap_audit(samples):
 
 
 def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
-                    nonoverlapping_train=False):
+                    nonoverlapping_train=False, enemy_missiles=False):
     """Write immutable frames, labels, grouped splits and training-only scaling.
 
     Optional thinning applies only to training, after the original split is fixed.
@@ -380,6 +428,8 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
     """
     if not isinstance(nonoverlapping_train, bool):
         raise ValueError("nonoverlapping_train must be boolean")
+    if not isinstance(enemy_missiles, bool) or (enemy_missiles and not nonoverlapping_train):
+        raise ValueError("enemy_missiles must be boolean and requires non-overlapping training")
     root, output = Path(root).resolve(), Path(output)
     if output.exists() and any(output.iterdir()):
         raise ValueError("Choose an empty output directory or load the existing prepared dataset")
@@ -389,7 +439,8 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
         raise ValueError("Source manifest changed; rerun the corpus analysis")
     source_manifest = read_json(source / "manifest.json")
     episodes, classes = analysis["episodes"].copy(), analysis["classes"]
-    names = feature_names(classes)
+    names = feature_names(classes, enemy_missiles)
+    numeric_features = len(BASE_FEATURES) + (len(ENEMY_MISSILE_FEATURES) if enemy_missiles else 0)
     groups = split_scenarios(analysis, split_seed)
     episodes["split"] = episodes.scenario_group.map(lambda name: groups[name]["split"])
     output.mkdir(parents=True, exist_ok=True)
@@ -399,9 +450,18 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
     anchors, targets, metadata, offset = [], [], [], 0
     retained_counts = np.zeros_like(analysis["counts"])
     sampling_rows = []
+    missile_rows = []
     for index, row, (frame, ends, target) in _episodes(
-            source, {**source_manifest, "classes": classes}, episodes):
+            source, {**source_manifest, "classes": classes}, episodes, enemy_missiles=enemy_missiles):
         features[offset:offset + len(frame)] = frame
+        if enemy_missiles:
+            slots = frame[:, len(BASE_FEATURES):numeric_features].reshape(-1, 4, 7)
+            present = np.any(slots != 0, axis=-1)
+            missile_rows.append({"episode_id": row.episode_id, "observer_id": row.observer_id,
+                                 "split": row.split, "raw_frames": len(frame),
+                                 "frames_with_enemy_missiles": int(present.any(1).sum()),
+                                 **{f"slot_{s+1}_nonempty_frames": int(present[:, s].sum())
+                                    for s in range(4)}})
         eligible = len(ends)
         if nonoverlapping_train and row.split == "train":
             keep = nonoverlapping_train_mask(ends, row.episode_id, row.observer_id, split_seed)
@@ -433,7 +493,7 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
         raise ValueError("No eligible training frames")
     mean = total / count
     std = np.maximum(np.sqrt(np.maximum(squares / count - mean**2, 0)), .01)
-    mean[len(BASE_FEATURES):], std[len(BASE_FEATURES):] = 0, 1
+    mean[numeric_features:], std[numeric_features:] = 0, 1
     samples, target = pd.DataFrame(metadata), np.concatenate(targets)
     audit = nonoverlap_audit(samples) if nonoverlapping_train else None
     for split in SPLITS:
@@ -453,12 +513,15 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
     if nonoverlapping_train:
         pd.DataFrame(sampling_rows).to_csv(output / "window_sampling_audit.csv", index=False)
         write_json(output / "nonoverlap_audit.json", audit)
+    if enemy_missiles:
+        pd.DataFrame(missile_rows).to_csv(output / "enemy_missile_audit.csv", index=False)
     try:
         source_name = source.relative_to(root).as_posix()
     except ValueError:
         source_name = str(source)
     manifest = {
-        "data_contract": NONOVERLAP_DATA_CONTRACT if nonoverlapping_train else DATA_CONTRACT,
+        "data_contract": (ENEMY_MISSILE_DATA_CONTRACT if enemy_missiles else
+                          NONOVERLAP_DATA_CONTRACT if nonoverlapping_train else DATA_CONTRACT),
         "classes": classes, "features": names,
         "history_steps": HISTORY_STEPS, "raw_history_steps": RAW_HISTORY_STEPS,
         "stride_steps": STRIDE_STEPS, "horizons_s": HORIZONS, "split_seed": split_seed,
@@ -484,6 +547,10 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
     if nonoverlapping_train:
         # stride_steps above is the candidate/evaluation grid, not the training stride.
         manifest["window_sampling"] = dict(NONOVERLAP_POLICY)
+    if enemy_missiles:
+        manifest["enemy_missiles"] = dict(ENEMY_MISSILE_POLICY)
+        manifest["own_skill_start_index"] = numeric_features
+        manifest["input_contract"] += " and four same-time observer-relative enemy missile slots"
     manifest["files"] = {p.name: sha256(p) for p in sorted(output.iterdir()) if p.is_file()}
     write_json(output / "manifest.json", manifest)
     return manifest
@@ -493,11 +560,13 @@ class NNDuelData(PairedData):
     """09b trainer-compatible loader that refuses another prepared-data contract."""
 
     data_contract = DATA_CONTRACT
+    enemy_missiles = False
+    numeric_features = len(BASE_FEATURES)
 
     def __init__(self, directory):
         manifest = read_json(Path(directory) / "manifest.json")
         if (manifest.get("data_contract") != self.data_contract
-                or manifest.get("features") != feature_names(manifest["classes"])
+                or manifest.get("features") != feature_names(manifest["classes"], self.enemy_missiles)
                 or manifest.get("history_steps") != HISTORY_STEPS
                 or tuple(manifest.get("horizons_s", ())) != HORIZONS):
             raise ValueError(f"Expected own-skill-conditioned NN duel dataset: {self.data_contract}")
@@ -508,8 +577,8 @@ class NNDuelData(PairedData):
                 or self.targets.shape != (len(self.samples), len(HORIZONS))
                 or self.anchors.shape != (len(self.samples),)):
             raise ValueError("Prepared feature/label/scaling dimensions differ from the manifest")
-        if (not np.array_equal(self.mean[len(BASE_FEATURES):], np.zeros(len(self.classes)))
-                or not np.array_equal(self.std[len(BASE_FEATURES):], np.ones(len(self.classes)))):
+        if (not np.array_equal(self.mean[self.numeric_features:], np.zeros(len(self.classes)))
+                or not np.array_equal(self.std[self.numeric_features:], np.ones(len(self.classes)))):
             raise ValueError("Own skill binary slots must remain unscaled")
         assignments = pd.read_csv(self.directory / "split_assignments.csv")
         if assignments.groupby("episode_id").split.nunique().gt(1).any():
@@ -531,3 +600,17 @@ class NonoverlappingNNDuelData(NNDuelData):
             if not nonoverlapping_train_mask(rows.step.to_numpy(), episode_id, observer_id,
                                             self.manifest["split_seed"]).all():
                 raise ValueError("Training window violates the non-overlapping view schedule")
+
+
+class EnemyMissileNNDuelData(NonoverlappingNNDuelData):
+    """Notebook-17 dataset with four additional enemy missile slots per frame."""
+
+    data_contract = ENEMY_MISSILE_DATA_CONTRACT
+    enemy_missiles = True
+    numeric_features = len(BASE_FEATURES) + len(ENEMY_MISSILE_FEATURES)
+
+    def __init__(self, directory):
+        super().__init__(directory)
+        if (self.manifest.get("enemy_missiles") != ENEMY_MISSILE_POLICY
+                or self.manifest.get("own_skill_start_index") != self.numeric_features):
+            raise ValueError("Expected the notebook-17 enemy-missile feature contract")

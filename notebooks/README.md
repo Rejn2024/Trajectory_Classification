@@ -1,5 +1,16 @@
 # Notebooks
 
+For four additional enemy-missile slots, run
+[17_prepare_enemy_missile_nn_duel_skill_forecasting.ipynb](17_prepare_enemy_missile_nn_duel_skill_forecasting.ipynb),
+then [18_enemy_missile_nn_duel_skill_forecasting.ipynb](18_enemy_missile_nn_duel_skill_forecasting.ipynb).
+Notebook 17 reconstructs four enemy slots from the opposite view's same-time friendly
+slots, changing the reference position/velocity and recomputing range. Each slot has
+seven values, giving 115 features per frame. It preserves the non-overlap policy,
+splits and targets. Notebook 18 retains notebook 16's class weighting, width 96,
+dropout 0.25, L1 and stopping controls. Both use separate data, receipts and runs.
+No new simulator collection is needed; live inference needs equivalent enemy tracks.
+See the [feature details](../docs/nn_duel_skill_forecasting.md#enemy-missile-features).
+
 For class-imbalance compensation, run notebook 14 and then
 [16_balanced_nonoverlap_nn_duel_skill_forecasting.ipynb](16_balanced_nonoverlap_nn_duel_skill_forecasting.ipynb).
 Notebook 16 reuses the same non-overlapping dataset and width-96/dropout-0.25 model
