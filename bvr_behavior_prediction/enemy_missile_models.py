@@ -34,22 +34,27 @@ class _TypedMessageBlock(nn.Module):
         self.norm = nn.LayerNorm(width)
 
     def forward(self, nodes, present, geometry, sources, destinations, relations):
+        # Residual states and autocast Linear outputs need not share a dtype.
+        # Keep reductions, their destinations and the max-mask sentinel in FP32;
+        # using an FP32 minimum to fill BF16 messages overflows before reduction.
+        nodes = nodes.float()
         source = nodes[:, sources]
         target = nodes[:, destinations]
         edge_type = self.relation(relations).to(nodes.dtype).expand(nodes.shape[0], -1, -1)
         features = torch.cat((source, target, geometry.to(nodes.dtype), edge_type), -1)
-        messages = self.message(features)
+        messages = self.message(features).float()
         mask = (present[:, sources] & present[:, destinations]).unsqueeze(-1)
         destinations = destinations[None, :, None].expand_as(messages)
         summed = torch.zeros_like(nodes).scatter_add(1, destinations, messages * mask)
         count = nodes.new_zeros((*nodes.shape[:2], 1)).scatter_add(
             1, destinations[..., :1], mask.to(nodes.dtype))
-        maximum = torch.full_like(nodes, torch.finfo(nodes.dtype).min).scatter_reduce(
-            1, destinations, messages.masked_fill(~mask, torch.finfo(nodes.dtype).min),
+        minimum = torch.finfo(messages.dtype).min
+        maximum = torch.full_like(nodes, minimum).scatter_reduce(
+            1, destinations, messages.masked_fill(~mask, minimum),
             reduce="amax", include_self=True)
         maximum = torch.where(count > 0, maximum, torch.zeros_like(maximum))
         aggregate = torch.cat((nodes, summed / count.clamp_min(1), maximum, count / 9), -1)
-        result = self.norm(nodes + self.update(aggregate))
+        result = self.norm(nodes + self.update(aggregate).float())
         return result * present.unsqueeze(-1)
 
 

@@ -171,6 +171,24 @@ allow at least 35 GB for source downloads and preparation, plus existing arrays,
 model checkpoints and reports. Streaming remains the default rather than caching
 the full array on a 16 GiB GPU.
 
+## BF16 graph mask/reduction overflow in notebook 20
+
+`RuntimeError: value cannot be converted to type c10::BFloat16 without overflow`
+at `_TypedMessageBlock`'s `masked_fill` is a graph reduction dtype mismatch. Under
+autocast, node residual states can be FP32 while the message MLP returns BF16.
+The old code used the FP32 minimum as the BF16 mask value, which is out of range;
+mixed source/destination dtypes can also fail the scatter operations.
+
+Graph message aggregation now explicitly uses FP32 messages, sum/max/count
+buffers and residual updates. Linear layers can still use BF16 autocast. The
+mask minimum is taken from the message tensor's actual reduction dtype. No graph
+edges, target masks, loss weights or prepared features are changed.
+
+After pulling the fix, restart the Jupyter kernel and rerun notebook 20's setup
+and training cells with `RESUME=False` and `EXISTING_RUNS={}` for new timestamped
+runs. Keep notebook 17's existing prepared data. This changes the graph source;
+do not bypass the source guard to resume an old graph run under changed code.
+
 ## Nonfinite evaluation in notebooks 18–20
 
 A first-epoch `ValueError: Nonfinite evaluation loss` means the selection/reporting

@@ -138,6 +138,66 @@ def test_bfloat16_autocast_keeps_empty_graph_finite(kind):
     assert all(torch.isfinite(p.grad).all() for p in network.parameters() if p.grad is not None)
 
 
+@pytest.mark.parametrize("node_dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("occupied", [False, True])
+def test_graph_bfloat16_messages_with_fp32_reductions(node_dtype, occupied):
+    """Reproduce CUDA's FP32 residual/BF16 message combination on CPU.
+
+    CPU full-model autocast alone can leave all nodes in BF16 and miss the
+    mixed-dtype scatter and mask-fill failures seen on CUDA.
+    """
+    raw, mean, std = example()
+    if not occupied:
+        raw[..., 19:47] = 0
+        raw[..., 54:82] = 0
+    graph = model(TypedGraphTransformer, mean, std)
+    normalized = (raw - mean) / std
+    raw, slots, nodes, present = graph._decode(normalized)
+    nodes = nodes.detach().to(node_dtype).requires_grad_()
+    message_dtypes = []
+    handles = [block.message.register_forward_hook(
+        lambda module, args, result: message_dtypes.append(result.dtype))
+        for block in graph.messages]
+    try:
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            updated = graph._spatial(raw, slots, nodes, present)
+        assert message_dtypes == [torch.bfloat16] * len(graph.messages)
+        assert updated.dtype == torch.float32 and torch.isfinite(updated).all()
+        assert not updated[~present].any()
+        updated.square().mean().backward()
+        assert torch.isfinite(nodes.grad).all()
+        assert not nodes.grad[~present].any()
+        assert all(torch.isfinite(p.grad).all() for p in graph.messages.parameters()
+                   if p.grad is not None)
+    finally:
+        for handle in handles:
+            handle.remove()
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA regression requires GPU")
+@pytest.mark.parametrize("occupied", [False, True])
+def test_cuda_bfloat16_graph_training_step(occupied):
+    if not torch.cuda.is_bf16_supported():
+        pytest.skip("CUDA BF16 is not supported on this device")
+    raw, mean, std = example()
+    if not occupied:
+        raw[..., 19:47] = 0
+        raw[..., 54:82] = 0
+    graph = model(TypedGraphTransformer, mean, std).cuda()
+    normalized = ((raw - mean) / std).cuda()
+    optimizer = torch.optim.AdamW(graph.parameters(), lr=3e-4)
+    with torch.autocast("cuda", dtype=torch.bfloat16):
+        logits = graph(normalized)
+    targets = torch.tensor([[0, -1, 1], [2, 0, -1]], device="cuda")
+    loss = torch.nn.functional.cross_entropy(logits.float().transpose(1, 2), targets,
+                                             ignore_index=-1)
+    loss.backward()
+    assert torch.isfinite(logits).all() and torch.isfinite(loss)
+    assert all(torch.isfinite(p.grad).all() for p in graph.parameters() if p.grad is not None)
+    optimizer.step()
+    assert all(torch.isfinite(p).all() for p in graph.parameters())
+
+
 @pytest.mark.parametrize("kind", [MissileSetTransformer, TypedGraphTransformer])
 def test_schema_and_scaling_are_validated(kind):
     with pytest.raises(ValueError, match="notebook-17"):
