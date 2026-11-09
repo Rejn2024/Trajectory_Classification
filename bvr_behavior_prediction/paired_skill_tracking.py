@@ -134,6 +134,7 @@ class RunTracker:
         self.classes = list(run["classes"])
         contract = data.manifest.get("data_contract", run.get("data_contract", DATA_CONTRACT))
         self.client.set_tag(self.state["run_id"], "data_contract", contract)
+        self.client.set_tag(self.state["run_id"], "architecture", run.get("architecture", "transformer"))
         self.client.set_tag(self.state["run_id"], "pipeline",
                             "trained_pilot_skill_forecasting" if contract == DATA_CONTRACT else contract)
         if self.previous is None:
@@ -151,6 +152,7 @@ class RunTracker:
                      "window_sampling_audit.csv", "nonoverlap_audit.json", "enemy_missile_audit.csv"):
             self.artifact(data.directory / name, "data_metadata")
         self.artifact(self.output / "training_source.py", "source")
+        self.artifact(self.output / "architecture_source.py", "source")
         shutil.copy2(__file__, self.output / "tracking_source.py")
         self.artifact(self.output / "tracking_source.py", "source")
         self.artifact(self.output / "run.json", "metadata")
@@ -280,19 +282,20 @@ class RunTracker:
         import torch
         from mlflow.models import ModelSignature
         from mlflow.types import Schema, TensorSpec
-        from .paired_skill_forecasting import PairedTransformer
+        from .paired_skill_forecasting import make_model
 
         saved = torch.load(checkpoint, map_location="cpu", weights_only=False)
         input_features = len(saved["feature_names"])
         with torch.random.fork_rng(devices=[]):
-            model = PairedTransformer(num_classes=len(saved["classes"]), **saved["model_config"])
+            model = make_model(len(saved["classes"]), saved["model_config"], saved["mean"], saved["std"])
             model.load_state_dict(saved["model_state"])
             model.eval()
         with tempfile.TemporaryDirectory(prefix="paired-mlflow-") as temporary:
             root = Path(temporary)
             package = root / "source" / "bvr_behavior_prediction"
             package.mkdir(parents=True)
-            for name in ("__init__.py", "paired_skill_forecasting.py", "paired_skill_tracking.py"):
+            for name in ("__init__.py", "paired_skill_forecasting.py", "paired_skill_tracking.py",
+                         "enemy_missile_models.py"):
                 shutil.copy2(Path(__file__).parent / name, package / name)
             signature = ModelSignature(
                 inputs=Schema([TensorSpec(np.dtype("float32"), (-1, 51, input_features))]),
@@ -318,6 +321,7 @@ class RunTracker:
                 "input": f"Normalized feature histories, shape [batch,51,{input_features}]",
                 "output": "Raw logits, shape [batch,3,classes]; apply softmax on the last axis",
                 "classes": saved["classes"], "features": saved["feature_names"],
+                "architecture": saved["model_config"].get("architecture", "transformer"),
                 "data_contract": saved.get("data_contract"),
                 "input_contract": saved.get("input_contract"),
                 "target_contract": saved.get("target_contract"),

@@ -667,6 +667,32 @@ class PairedTransformer(nn.Module):
         return self.head(self.norm(encoded[:, -1])).reshape(-1, 3, self.num_classes)
 
 
+def model_configuration(config, input_features):
+    """Keep historical Transformer checkpoint configuration compatible."""
+    name = config.get("architecture", "transformer")
+    if name not in ("transformer", "missile_set", "typed_graph"):
+        raise ValueError(f"Unknown forecasting architecture: {name}")
+    result = {k: config[k] for k in ("width", "heads", "layers", "dropout")}
+    result["input_features"] = input_features
+    if name != "transformer":
+        result.update(architecture=name, graph_width=config.get("graph_width", 64),
+                      graph_layers=config.get("graph_layers", 2))
+    return result
+
+
+def make_model(num_classes, model_config, mean=None, std=None):
+    """One constructor for training, benchmarks, checkpoint reload and export."""
+    settings = dict(model_config)
+    name = settings.pop("architecture", "transformer")
+    if name == "transformer":
+        return PairedTransformer(num_classes=num_classes, **settings)
+    from .enemy_missile_models import MissileSetTransformer, TypedGraphTransformer
+    constructors = {"missile_set": MissileSetTransformer, "typed_graph": TypedGraphTransformer}
+    if name not in constructors:
+        raise ValueError(f"Unknown forecasting architecture: {name}")
+    return constructors[name](num_classes=num_classes, mean=mean, std=std, **settings)
+
+
 def fit_class_weighting(data, config):
     """Fit per-horizon weights using only retained training targets.
 
@@ -873,15 +899,25 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
     precision = resolve_precision(device, config["precision"])
     data_manifest = getattr(data, "manifest", {})
     feature_names = list(data_manifest.get("features", FEATURES))
-    architecture = {k: config[k] for k in ("width", "heads", "layers", "dropout")}
-    architecture["input_features"] = len(feature_names)
-    base_model = PairedTransformer(num_classes=len(data.classes), **architecture).to(device)
+    architecture = model_configuration(config, len(feature_names))
+    architecture_name = config.get("architecture", "transformer")
+    if architecture_name != "transformer":
+        from .nn_duel_skill_forecasting import ENEMY_MISSILE_DATA_CONTRACT, feature_names as enemy_names
+        if (data_manifest.get("data_contract") != ENEMY_MISSILE_DATA_CONTRACT
+                or feature_names != enemy_names(data.classes, enemy_missiles=True)):
+            raise ValueError("Missile models require notebook 17's enemy-missile dataset contract")
+    base_model = make_model(len(data.classes), architecture, data.mean, data.std).to(device)
     model = execution_model(base_model, config)
     optimizer = torch.optim.AdamW(base_model.parameters(), lr=config["learning_rate"],
                                   weight_decay=config["weight_decay"])
     rng = np.random.default_rng(config["seed"])
     manifest_hash = sha256(data.directory / "manifest.json")
     run = {"training": config, "model": architecture, "classes": data.classes,
+           "architecture": architecture_name,
+           "parameter_count": sum(p.numel() for p in base_model.parameters()),
+           "horizons_s": list(HORIZONS), "history_steps": HISTORY_STEPS,
+           "architecture_source_sha256": (sha256(Path(__file__).with_name("enemy_missile_models.py"))
+                                          if architecture_name != "transformer" else None),
            "data_contract": data_manifest.get("data_contract", DATA_CONTRACT),
            "feature_names": feature_names,
            "input_contract": data_manifest.get("input_contract"),
@@ -900,7 +936,8 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
         saved_run = read_json(output / "run.json")
         if any(saved_run[k] != run[k] for k in ("training", "model", "classes",
                                                "data_manifest_sha256", "source_sha256", "tracking_source_sha256",
-                                               "class_weighting")):
+                                               "class_weighting")) or (
+                saved_run.get("architecture_source_sha256") != run["architecture_source_sha256"]):
             raise ValueError("Resume requires the same configuration, data and source")
         saved = torch.load(output / "last.pt", map_location=device, weights_only=False)
         base_model.load_state_dict(saved["model_state"])
@@ -926,6 +963,9 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
             write_json(output / "class_weights.json", class_weighting)
             class_weight_table(class_weighting).to_csv(output / "class_weights.csv", index=False)
         shutil.copy2(__file__, output / "training_source.py")
+        if architecture_name != "transformer":
+            shutil.copy2(Path(__file__).with_name("enemy_missile_models.py"),
+                         output / "architecture_source.py")
     with RunTracker(output, tracking) as tracker:
         tracker.begin(run, data)
         tracker.backfill()
@@ -1050,7 +1090,7 @@ def final_evaluation(data, output, device=None, tracking=None):
     saved = torch.load(output / "best.pt", map_location=device, weights_only=False)
     if saved["data_manifest_sha256"] != sha256(data.directory / "manifest.json"):
         raise ValueError("Checkpoint belongs to different prepared data")
-    model = PairedTransformer(num_classes=len(data.classes), **saved["model_config"]).to(device)
+    model = make_model(len(data.classes), saved["model_config"], saved["mean"], saved["std"]).to(device)
     model.load_state_dict(saved["model_state"])
     run = read_json(output / "run.json")
     config = {**DEFAULT_TRAINING, **run["training"]}
@@ -1109,9 +1149,9 @@ def benchmark_batches(data, config=None, device=None, batch_sizes=(512, 1024),
                     if device.type == "cuda":
                         with torch.cuda.device(device):
                             torch.cuda.manual_seed(config["seed"])
-                    base = PairedTransformer(num_classes=len(data.classes), **{
-                        k: config[k] for k in ("width", "heads", "layers", "dropout")},
-                        input_features=len(getattr(data, "manifest", {}).get("features", FEATURES))).to(device)
+                    base = make_model(len(data.classes), model_configuration(config,
+                        len(getattr(data, "manifest", {}).get("features", FEATURES))),
+                        data.mean, data.std).to(device)
                     model = execution_model(base, {**config, "compile_model": compiled})
                     optimizer = torch.optim.AdamW(base.parameters(), lr=config["learning_rate"],
                                                   weight_decay=config["weight_decay"])

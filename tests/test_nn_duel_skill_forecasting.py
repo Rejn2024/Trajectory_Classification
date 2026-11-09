@@ -337,6 +337,8 @@ def test_nonoverlap_preparation_matches_dense_holdouts_scaling_and_retained_supp
     (15, "15_nonoverlap_nn_duel_skill_forecasting.ipynb"),
     (16, "16_balanced_nonoverlap_nn_duel_skill_forecasting.ipynb"),
     (18, "18_enemy_missile_nn_duel_skill_forecasting.ipynb"),
+    (19, "19_enemy_missile_set_nn_duel_skill_forecasting.ipynb"),
+    (20, "20_enemy_missile_graph_nn_duel_skill_forecasting.ipynb"),
 ])
 def test_nonoverlap_notebooks_run_prepare_train_and_report(tmp_path, monkeypatch,
                                                           training_number, training_notebook):
@@ -366,8 +368,8 @@ def test_nonoverlap_notebooks_run_prepare_train_and_report(tmp_path, monkeypatch
     displayed = []
     monkeypatch.setattr(IPython.display, "display", lambda *args: displayed.extend(args))
     namespace = {}
-    prep_number = 17 if training_number == 18 else 14
-    prep_notebook = ("17_prepare_enemy_missile_nn_duel_skill_forecasting.ipynb" if training_number == 18
+    prep_number = 17 if training_number >= 18 else 14
+    prep_notebook = ("17_prepare_enemy_missile_nn_duel_skill_forecasting.ipynb" if training_number >= 18
                      else "14_prepare_nonoverlap_nn_duel_skill_forecasting.ipynb")
     for number, name in ((prep_number, prep_notebook),
                          (training_number, training_notebook)):
@@ -394,10 +396,10 @@ def test_nonoverlap_notebooks_run_prepare_train_and_report(tmp_path, monkeypatch
         checkpoint = torch.load(run / "best.pt", map_location="cpu", weights_only=False)
         assert checkpoint["model_config"]["width"] == 96
         assert checkpoint["model_config"]["dropout"] == .25
-        expected_contract = (duel.ENEMY_MISSILE_DATA_CONTRACT if training_number == 18
+        expected_contract = (duel.ENEMY_MISSILE_DATA_CONTRACT if training_number >= 18
                              else duel.NONOVERLAP_DATA_CONTRACT)
         assert checkpoint["data_contract"] == expected_contract
-        assert checkpoint["model_config"]["input_features"] == (82 if training_number == 18 else 54) + len(CLASSES)
+        assert checkpoint["model_config"]["input_features"] == (82 if training_number >= 18 else 54) + len(CLASSES)
         if training_number >= 16:
             state = duel.read_json(run / "class_weights.json")
             assert checkpoint["class_weighting"] == state
@@ -408,12 +410,19 @@ def test_nonoverlap_notebooks_run_prepare_train_and_report(tmp_path, monkeypatch
                 np.testing.assert_array_equal(state["counts"][h], expected)
         assert (run / "final_validation.npz").is_file()
         assert (run / "training_frequency_baseline.csv").is_file()
-    assert len(list((namespace["RUN"] / "diagnostics").glob("*.png"))) == 5
+        if training_number >= 18:
+            manifest = duel.read_json(run / "diagnostics" / "manifest.json")
+            for name in ("summary.csv", "per_class.csv", "reliability.csv", "samples.csv",
+                         "confusion_validation.png", "learning_curves.png"):
+                assert (run / "diagnostics" / name).is_file()
+                assert name in manifest["artifacts"]
+    if training_number < 18:
+        assert len(list((namespace["RUN"] / "diagnostics").glob("*.png"))) == 5
     assert not (tmp_path / "artifacts/nn_duel_skill_forecasting").exists()
     if training_number == 16:
         assert namespace["EXPERIMENT_ROOT"].name == "nn_duel_balanced_forecasting"
         assert namespace["DATA_ROOT"].name == "nn_duel_nonoverlap_forecasting"
-    if training_number == 18:
+    if training_number >= 18:
         assert isinstance(namespace["data"], duel.EnemyMissileNNDuelData)
         assert namespace["EXPERIMENT_ROOT"].name == "nn_duel_enemy_missile_forecasting"
         assert namespace["DATA_ROOT"] == namespace["EXPERIMENT_ROOT"]

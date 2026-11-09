@@ -2,12 +2,35 @@
 
 For four additional enemy-missile slots, run
 [17_prepare_enemy_missile_nn_duel_skill_forecasting.ipynb](17_prepare_enemy_missile_nn_duel_skill_forecasting.ipynb),
-then [18_enemy_missile_nn_duel_skill_forecasting.ipynb](18_enemy_missile_nn_duel_skill_forecasting.ipynb).
+then train the three architectures using the same prepared dataset:
+
+- [18: ordered Transformer](18_enemy_missile_nn_duel_skill_forecasting.ipynb) uses a dense frame projection.
+- [19: unordered missile sets](19_enemy_missile_set_nn_duel_skill_forecasting.ipynb) pools friendly/enemy missile embeddings without graph messages.
+- [20: typed graph](20_enemy_missile_graph_nn_duel_skill_forecasting.ipynb) passes geometry-conditioned messages between aircraft and missile nodes.
+- [21: saved-run comparison](21_compare_enemy_missile_nn_duel_skill_forecasting.ipynb) verifies matched datasets, protocols, seeds and prediction targets before comparing all three families. It does not train models or load the large prepared feature array.
+
 Notebook 17 reconstructs four enemy slots from the opposite view's same-time friendly
 slots, changing the reference position/velocity and recomputing range. Each slot has
 seven values, giving 115 features per frame. It preserves the non-overlap policy,
-splits and targets. Notebook 18 retains notebook 16's class weighting, width 96,
-dropout 0.25, L1 and stopping controls. Both use separate data, receipts and runs.
+splits and targets. Notebooks 18–20 retain notebook 16's class weighting, temporal
+width 96, six heads, two layers, dropout 0.25, L1 and stopping controls. Each trains
+seeds 42/43/44 in separate architecture-named run directories. The set and graph
+encoders respect raw-zero absence and do not assign temporal identity to missile
+slot numbers. All training notebooks persist diagnostic plots, calibration and
+per-class tables, sample identities and a manifest for **every** seed, alongside
+the final predictions. Their completed-family receipts live at
+`artifacts/nn_duel_enemy_missile_forecasting/comparisons/latest_<architecture>_runs.json`.
+Notebook 21 reads those receipts or explicit frozen run lists and writes a new
+timestamped comparison directory with CSV/PNG/JSON outputs and scenario-group
+bootstrap intervals. Checkpoint selection uses "test"; validation remains final
+descriptive evaluation, never a rule for choosing the best family or seed.
+
+For report-only runs of 18–20, set `TRAIN_MODEL=False`, provide `EXISTING_RUNS` for
+all configured seeds and leave `REEVALUATE_SAVED=False` to reuse existing final
+predictions. Set `BVR_NN_ENEMY_MISSILE_MLFLOW=0` to disable optional tracking.
+Keep the completed receipts or explicit paths to reproduce a historical comparison;
+each successful new family execution updates its latest receipt. Existing saved
+training source/configuration guards still apply to resume.
 No new simulator collection is needed; live inference needs equivalent enemy tracks.
 See the [feature details](../docs/nn_duel_skill_forecasting.md#enemy-missile-features).
 
