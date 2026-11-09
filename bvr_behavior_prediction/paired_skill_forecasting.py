@@ -12,7 +12,7 @@ import random
 import shutil
 import subprocess
 import time
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 import numpy as np
@@ -46,6 +46,7 @@ DEFAULT_TRAINING = {
     "overtraining_shutdown": False, "overtraining_patience": 3,
     "overtraining_relative_increase": 0.05, "overtraining_min_gap": 0.1,
     "class_weighting": "none", "max_class_weight_ratio": 5.0,
+    "evaluation_precision": "fp32", "evaluation_attention": "math",
 }
 
 
@@ -433,6 +434,10 @@ class PairedData:
         scaling = read_json(self.directory / "scaling.json")
         self.mean = np.asarray(scaling["mean"], dtype=np.float32)
         self.std = np.asarray(scaling["std"], dtype=np.float32)
+        if (self.mean.shape != (self.features.shape[1],) or self.std.shape != self.mean.shape
+                or not np.isfinite(self.mean).all() or not np.isfinite(self.std).all()
+                or np.any(self.std <= 0)):
+            raise ValueError("Prepared scaling must have finite means and positive finite standard deviations")
         self.indices = {s: np.flatnonzero(self.samples.split.eq(s)) for s in SPLITS}
         for a in SPLITS:
             for b in SPLITS:
@@ -460,6 +465,74 @@ def resolve_precision(device, requested):
 def autocast_context(device, precision):
     return (torch.autocast(device_type="cuda", dtype=torch.bfloat16)
             if precision == "bf16" and torch.device(device).type == "cuda" else nullcontext())
+
+
+@contextmanager
+def evaluation_context(device, attention="auto"):
+    """Select math attention explicitly, including disabling the fused MHA path.
+
+    CUDA training with dropout and evaluation without dropout can select different
+    kernels. A separate FP32/math evaluation policy avoids that mixed-precision
+    inference path without changing training precision or silently retrying batches.
+    """
+    if attention not in {"auto", "math"}:
+        raise ValueError("evaluation_attention must be auto or math")
+    if attention == "auto":
+        yield
+        return
+    previous = torch.backends.mha.get_fastpath_enabled()
+    torch.backends.mha.set_fastpath_enabled(False)
+    try:
+        try:
+            from torch.nn.attention import SDPBackend, sdpa_kernel
+            context = sdpa_kernel(SDPBackend.MATH)
+        except ImportError:  # PyTorch 2.1 compatibility.
+            context = torch.backends.cuda.sdp_kernel(
+                enable_flash=False, enable_math=True, enable_mem_efficient=False)
+        with context:
+            yield
+    finally:
+        torch.backends.mha.set_fastpath_enabled(previous)
+
+
+class NonfiniteEvaluationError(ValueError):
+    """A numerical failure with enough example identity to investigate it."""
+
+    def __init__(self, details):
+        self.details = details
+        super().__init__(
+            f"Nonfinite evaluation {details['stage']} in split={details['split']}, "
+            f"batch={details['batch_index']}, sample_indices={details['sample_indices']}. "
+            "No examples were dropped or replaced. See nonfinite_evaluation.json in the run directory.")
+
+
+def _check_evaluation_tensor(tensor, stage, split, batch_index, sample_ids, data, precision, attention):
+    finite = torch.isfinite(tensor)
+    if bool(finite.all()):
+        return
+    bad = (~finite).nonzero(as_tuple=False)
+    failing_rows = bad[:, 0].unique().cpu().tolist()
+    ids = np.asarray(sample_ids, dtype=np.int64)
+    selected = [int(ids[i]) for i in failing_rows[:16]]
+    values = tensor[finite]
+    details = {"stage": stage, "split": split, "batch_index": batch_index,
+               "sample_indices": selected, "affected_samples": len(failing_rows),
+               "nonfinite_count": int((~finite).sum().item()),
+               "shape": list(tensor.shape), "dtype": str(tensor.dtype),
+               "device": str(tensor.device), "evaluation_precision": precision,
+               "evaluation_attention": attention,
+               "finite_min": float(values.min().item()) if values.numel() else None,
+               "finite_max": float(values.max().item()) if values.numel() else None}
+    if stage == "inputs":
+        columns = bad[:, -1].unique().cpu().tolist()
+        names = getattr(data, "manifest", {}).get("features", [])
+        details["feature_indices"] = columns
+        details["feature_names"] = [names[i] for i in columns if i < len(names)]
+    if hasattr(data, "samples"):
+        columns = [c for c in ("episode_id", "observer_id", "scenario_group", "step", "time_s")
+                   if c in data.samples.columns]
+        details["samples"] = json.loads(data.samples.iloc[selected][columns].to_json(orient="records"))
+    raise NonfiniteEvaluationError(details)
 
 
 class TensorFrameCache:
@@ -771,7 +844,7 @@ def metric_tables(targets, probabilities, classes, split, losses=None):
         sums = np.bincount(y, weights=nll, minlength=c)
         cnll = np.divide(sums, support, out=np.full(c, np.nan), where=support > 0)
         summary.append({"split": split, "horizon_s": horizon, "count": len(y),
-                        "nll": float(nll.mean()), "accuracy": float(tp.sum()/len(y)),
+                        "nll": float(nll.mean(dtype=np.float64)), "accuracy": float(tp.sum()/len(y)),
                         "macro_f1": float(f1.mean()),
                         "supported_macro_f1": float(f1[support > 0].mean()),
                         "weighted_f1": float(np.dot(f1, support)/len(y))})
@@ -785,21 +858,35 @@ def metric_tables(targets, probabilities, classes, split, losses=None):
 
 @torch.inference_mode()
 def evaluate(model, data, split, device, batch_size=1024, precision="fp32", pipeline=None,
-             class_weights=None):
+             class_weights=None, evaluation_precision=None, evaluation_attention="auto"):
+    if evaluation_precision is not None:
+        precision = resolve_precision(device, evaluation_precision)
     model.eval()
     ids = data.indices[split]
     probabilities, losses = [], []
     batches = (pipeline.batches(ids, batch_size) if pipeline is not None else
                (data.batch(ids[start:start + batch_size], device)
                 for start in range(0, len(ids), batch_size)))
-    for x, y in batches:
-        with autocast_context(device, precision):
-            logits = model(x)
-        logits = logits.float()  # Probabilities, CE and reporting always use FP32.
-        ce = nn.functional.cross_entropy(logits.reshape(-1, model.num_classes),
-                                         y.reshape(-1), ignore_index=-1, reduction="none")
-        losses.append(ce.reshape(-1, 3).cpu().numpy())
-        probabilities.append(logits.softmax(-1).cpu().numpy())
+    offset = 0
+    with evaluation_context(device, evaluation_attention):
+        for batch_index, (x, y) in enumerate(batches):
+            sample_ids = ids[offset:offset + len(x)]
+            offset += len(x)
+            def check(tensor, stage):
+                _check_evaluation_tensor(tensor, stage, split, batch_index, sample_ids,
+                                         data, precision, evaluation_attention)
+            check(x, "inputs")
+            with autocast_context(device, precision):
+                logits = model(x)
+            logits = logits.float()  # Probabilities, CE and reporting always use FP32.
+            check(logits, "logits")
+            ce = nn.functional.cross_entropy(logits.reshape(-1, model.num_classes),
+                                             y.reshape(-1), ignore_index=-1, reduction="none").reshape(-1, 3)
+            check(ce, "loss")
+            p = logits.softmax(-1)
+            check(p, "probabilities")
+            losses.append(ce.cpu().numpy())
+            probabilities.append(p.cpu().numpy())
     p, loss = np.concatenate(probabilities), np.concatenate(losses)
     targets = data.targets[ids]
     summary, scores, cm = metric_tables(targets, p, data.classes, split, loss)
@@ -807,7 +894,7 @@ def evaluate(model, data, split, device, batch_size=1024, precision="fp32", pipe
     # this separate objective diagnostic uses the fixed training class weights.
     data_loss = float(summary.nll.mean())
     if class_weights is not None:
-        weighted = loss * np.asarray(class_weights)[np.arange(len(HORIZONS)), np.maximum(targets, 0)]
+        weighted = loss.astype(np.float64) * np.asarray(class_weights)[np.arange(len(HORIZONS)), np.maximum(targets, 0)]
         data_loss = float((weighted.sum(0) / (targets >= 0).sum(0)).mean())
     return {"summary": summary, "per_class": scores, "confusion": cm,
             "probabilities": p, "targets": targets, "sample_indices": ids, "data_loss": data_loss}
@@ -862,6 +949,10 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
     from .paired_skill_tracking import RunTracker
 
     config = {**DEFAULT_TRAINING, **(config or {})}
+    if config["evaluation_precision"] not in {"fp32", "bf16"}:
+        raise ValueError("evaluation_precision must be fp32 or bf16")
+    if config["evaluation_attention"] not in {"auto", "math"}:
+        raise ValueError("evaluation_attention must be auto or math")
     if config["epochs"] < 1:
         raise ValueError("Epoch count must be positive")
     for key in ("batch_size", "evaluation_batch_size", "prefetch_factor", "cpu_threads", "loader_timeout"):
@@ -897,6 +988,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
     cpu_threads = min(config["cpu_threads"], os.cpu_count() or 1)
     torch.set_num_threads(cpu_threads)
     precision = resolve_precision(device, config["precision"])
+    evaluation_precision = resolve_precision(device, config["evaluation_precision"])
     data_manifest = getattr(data, "manifest", {})
     feature_names = list(data_manifest.get("features", FEATURES))
     architecture = model_configuration(config, len(feature_names))
@@ -928,6 +1020,8 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
            "device": str(device), "selection": "Strict improvement of mean test NLL across horizons",
            "validation_policy": "Evaluated only after checkpoint selection",
            "effective_precision": precision, "effective_cpu_threads": cpu_threads,
+           "effective_evaluation_precision": evaluation_precision,
+           "evaluation_attention": config["evaluation_attention"],
            "class_weighting": class_weighting}
     history, best, best_epoch, first = [], float("inf"), 0, 1
     epochs_without_improvement, stopped_early = 0, False
@@ -976,6 +1070,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
             print(f"Runtime: {device}, {precision}, {pipeline.backend}, "
                   f"batch {config['batch_size']}, evaluation batch {config['evaluation_batch_size']}, "
                   f"frame cache {pipeline.cache_bytes / 2**30:.3f} GiB", flush=True)
+            print(f"Evaluation: {evaluation_precision}, {config['evaluation_attention']} attention", flush=True)
             for epoch in range(first, config["epochs"] + 1):
                 started = time.perf_counter()
                 model.train()
@@ -983,11 +1078,19 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                 for x, y in pipeline.batches(order, config["batch_size"]):
                     fit_batch(model, optimizer, x, y, device, precision, config["gradient_clip"],
                               config["l1_lambda"], weights)
-                results = [evaluate(model, data, s, device, config["evaluation_batch_size"],
-                                    precision=precision, pipeline=pipeline,
-                                    class_weights=class_weighting["weights"]
-                                    if class_weighting is not None and s == "train" else None)
-                           for s in ("train", "test")]
+                try:
+                    results = [evaluate(model, data, s, device, config["evaluation_batch_size"],
+                                        precision=evaluation_precision, pipeline=pipeline,
+                                        evaluation_attention=config["evaluation_attention"],
+                                        class_weights=class_weighting["weights"]
+                                        if class_weighting is not None and s == "train" else None)
+                               for s in ("train", "test")]
+                except NonfiniteEvaluationError as error:
+                    error.details.update(epoch=epoch, training_precision=precision,
+                        nonfinite_parameters=[name for name, parameter in base_model.named_parameters()
+                                              if not bool(torch.isfinite(parameter).all())])
+                    write_json(output / "nonfinite_evaluation.json", error.details)
+                    raise
                 summary = pd.concat([r["summary"] for r in results], ignore_index=True)
                 scores = pd.concat([r["per_class"] for r in results], ignore_index=True)
                 train_nll, test_nll = [float(r["summary"].nll.mean()) for r in results]
@@ -1047,6 +1150,8 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                            "overtraining_epochs": overtraining_epochs,
                            "train_nll_at_best": train_nll_at_best, "stop_reason": stop_reason,
                            "effective_precision": precision,
+                           "effective_evaluation_precision": evaluation_precision,
+                           "evaluation_attention": config["evaluation_attention"],
                            "torch_rng": torch.get_rng_state(), "data_manifest_sha256": manifest_hash,
                            "cuda_rng": torch.cuda.get_rng_state_all() if device.type == "cuda" else None}
                 if improved:
@@ -1096,6 +1201,12 @@ def final_evaluation(data, output, device=None, tracking=None):
     config = {**DEFAULT_TRAINING, **run["training"]}
     precision = resolve_precision(device, saved.get("effective_precision",
                                                     run.get("effective_precision", "fp32")))
+    # Old checkpoints retain their original evaluation policy when explicitly
+    # reloaded; new runs record evaluation independently of training autocast.
+    evaluation_precision = resolve_precision(device, saved.get("effective_evaluation_precision",
+        run["training"].get("evaluation_precision", precision)))
+    evaluation_attention = saved.get("evaluation_attention",
+                                    run["training"].get("evaluation_attention", "auto"))
     model = execution_model(model, config)
     with RunTracker(output, tracking) as tracker:
         tracker.begin(run, data)
@@ -1103,8 +1214,14 @@ def final_evaluation(data, output, device=None, tracking=None):
         if tracker.enabled and tracker.previous is None:
             tracker.finish_training()
         with BatchPipeline(data, device, config) as pipeline:
-            results = {s: evaluate(model, data, s, device, config["evaluation_batch_size"],
-                                   precision=precision, pipeline=pipeline) for s in SPLITS}
+            try:
+                results = {s: evaluate(model, data, s, device, config["evaluation_batch_size"],
+                                       precision=evaluation_precision, pipeline=pipeline,
+                                       evaluation_attention=evaluation_attention) for s in SPLITS}
+            except NonfiniteEvaluationError as error:
+                error.details.update(epoch=saved["epoch"], phase="final_evaluation")
+                write_json(output / "nonfinite_evaluation.json", error.details)
+                raise
         summary = pd.concat([r["summary"] for r in results.values()], ignore_index=True)
         scores = pd.concat([r["per_class"] for r in results.values()], ignore_index=True)
         summary.to_csv(output / "final_metrics.csv", index=False)

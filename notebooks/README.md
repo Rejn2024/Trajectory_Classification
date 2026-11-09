@@ -34,6 +34,12 @@ training source/configuration guards still apply to resume.
 No new simulator collection is needed; live inference needs equivalent enemy tracks.
 See the [feature details](../docs/nn_duel_skill_forecasting.md#enemy-missile-features).
 
+Notebooks 18–20 use FP32 evaluation with math attention, separately from optional
+CUDA BF16 training. After pulling an evaluation fix, restart the kernel and start
+fresh runs; notebook 17's prepared dataset can be reused. Persistent numerical
+failures save `nonfinite_evaluation.json` with stage/sample details. See
+[nonfinite-evaluation troubleshooting](../docs/nn_duel_skill_forecasting.md#nonfinite-evaluation-in-notebooks-1820).
+
 For class-imbalance compensation, run notebook 14 and then
 [16_balanced_nonoverlap_nn_duel_skill_forecasting.ipynb](16_balanced_nonoverlap_nn_duel_skill_forecasting.ipynb).
 Notebook 16 reuses the same non-overlapping dataset and width-96/dropout-0.25 model

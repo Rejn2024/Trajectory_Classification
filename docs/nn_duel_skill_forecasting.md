@@ -171,6 +171,39 @@ allow at least 35 GB for source downloads and preparation, plus existing arrays,
 model checkpoints and reports. Streaming remains the default rather than caching
 the full array on a 16 GiB GPU.
 
+## Nonfinite evaluation in notebooks 18–20
+
+A first-epoch `ValueError: Nonfinite evaluation loss` means the selection/reporting
+pass produced a nonfinite loss after fitting. The traceback alone does not establish
+whether inputs, parameters or GPU attention/precision kernels caused it. The shared
+trainer now checks evaluation stages and records persistent failures, including
+sample identities, in the run's `nonfinite_evaluation.json`.
+
+Notebooks 18–20 explicitly use `evaluation_precision="fp32"` and
+`evaluation_attention="math"`, while training can retain `precision="bf16"` on CUDA.
+The evaluation policy separates selection from BF16 and fused inference-attention
+kernels; it is a conservative starting policy rather than a confirmed diagnosis of
+the reported GPU failure. Cross-entropy, checkpoint NLL and final metrics remain
+unweighted and exclude L1. Use the same evaluation policy for all three architecture
+experiments; a comparison with earlier mixed-precision results changes the protocol.
+
+After pulling this fix, restart the Jupyter kernel so imported modules are refreshed.
+Rerun notebook setup and training with `RESUME=False` and `EXISTING_RUNS={}` to create
+fresh timestamped runs. A failure before epoch one completed can leave no usable
+epoch checkpoint. Resume still requires unchanged source, data and configuration;
+do not bypass those guards or delete a previous run to reuse its path. Notebook 17's
+existing verified dataset and receipt remain compatible, so no data preparation or
+flight collection is needed for this training/evaluation change.
+
+Complete historical final predictions can still be plotted using `TRAIN_MODEL=False`,
+`RESUME=False` and `REEVALUATE_SAVED=False`, with every configured seed supplied in
+`EXISTING_RUNS`. Only this saved-output path can ignore the newly introduced evaluation
+settings; it does not resume fitting or silently re-evaluate an old model under the
+new policy. Loss, dataset, catalogue and feature-order checks remain active. If a
+fresh run still fails, retain its numerical diagnostic file together with the printed
+runtime/device settings and report the failing stage/sample; do not replace nonfinite
+values or omit failed examples to obtain a score.
+
 ## Windows PyArrow import failure
 
 `ImportError: DLL load failed while importing lib: An Application Control policy

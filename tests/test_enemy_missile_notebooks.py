@@ -141,7 +141,8 @@ def test_historical_baseline_configuration_is_report_only_compatible(
     }))
     namespace = {
         "pd": pd, "RUNS": {42: run}, "CONFIG": config, "TRACKING": {},
-        "TRAIN_MODEL": False, "RESUME": resume, "DEVICE": "cpu", "DATA": data_path,
+        "TRAIN_MODEL": False, "RESUME": resume, "REEVALUATE_SAVED": False,
+        "SPLITS": ("train", "test", "validation"), "DEVICE": "cpu", "DATA": data_path,
         "data": SimpleNamespace(classes=["a", "b"], manifest={"features": ["f1", "f2"]}),
         "read_json": lambda path: json.loads(Path(path).read_text()), "sha256": digest,
         "display": lambda *args: None,
@@ -153,6 +154,36 @@ def test_historical_baseline_configuration_is_report_only_compatible(
     else:
         with pytest.raises(ValueError, match="Requested configuration differs"):
             exec(compile(executable, "report-only-baseline", "exec"), namespace)
+
+
+@pytest.mark.parametrize("architecture", tuple(NOTEBOOKS))
+@pytest.mark.parametrize("complete_finals,reevaluate,accepted", [
+    (True, False, True), (False, False, False), (True, True, False),
+])
+def test_historical_evaluation_settings_only_read_complete_saved_outputs(
+        tmp_path, architecture, complete_finals, reevaluate, accepted):
+    """A newly introduced evaluation policy must not silently replace old scores."""
+    config = {**recipe(architecture)["CONFIG"], "seed": 42}
+    historical = {k: v for k, v in config.items()
+                  if k not in {"evaluation_precision", "evaluation_attention"}}
+    if complete_finals:
+        for name in ("final_metrics.csv", "final_per_class.csv", "selection.json",
+                     "final_train.npz", "final_test.npz", "final_validation.npz"):
+            (tmp_path / name).touch()
+    source = code(load(NOTEBOOKS[architecture])["cells"][3])
+    start = source.index('    saved_training = dict(saved_run["training"])')
+    end = source.index('    display(histories[seed].tail())', start)
+    guard = "\n".join(line[4:] for line in source[start:end].splitlines())
+    namespace = {
+        "TRAIN_MODEL": False, "RESUME": False, "REEVALUATE_SAVED": reevaluate,
+        "SPLITS": ("train", "test", "validation"), "run": tmp_path, "seed": 42,
+        "config": config, "saved_run": {"training": historical},
+    }
+    if accepted:
+        exec(compile(guard, "historical-evaluation-policy", "exec"), namespace)
+    else:
+        with pytest.raises(ValueError):
+            exec(compile(guard, "historical-evaluation-policy", "exec"), namespace)
 
 
 def test_comparison_notebook_audits_its_input_run_receipt(tmp_path):

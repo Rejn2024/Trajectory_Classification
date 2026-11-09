@@ -70,7 +70,7 @@ def test_training_resume_reload_and_benchmark(tmp_path, architecture, monkeypatc
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
     x, _ = data.batch(data.indices["validation"], "cpu")
-    with torch.inference_mode():
+    with torch.inference_mode(), paired.evaluation_context("cpu", checkpoint["evaluation_attention"]):
         expected = model(x).softmax(-1).numpy()
     _, _, _, result = paired.final_evaluation(data, output, device="cpu")
     np.testing.assert_array_equal(result["validation"]["probabilities"], expected)

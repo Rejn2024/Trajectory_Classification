@@ -170,6 +170,9 @@ class RunTracker:
         for key in ("device", "torch_version", "numpy_version", "effective_precision",
                     "effective_data_backend", "effective_cpu_threads"):
             self.client.set_tag(self.state["run_id"], f"runtime.{key}", str(run[key]))
+        for key in ("effective_evaluation_precision", "evaluation_attention"):
+            if key in run:
+                self.client.set_tag(self.state["run_id"], f"runtime.{key}", str(run[key]))
         hardware = {"python": platform.python_version(), "cpu": platform.processor(),
                     "logical_cpus": os.cpu_count(), "cuda_runtime": torch.version.cuda}
         if torch.device(run["device"]).type == "cuda":
@@ -257,7 +260,8 @@ class RunTracker:
     def sync_artifacts(self):
         if not self.enabled:
             return
-        for name in ("run.json", "training_status.json", "selection.json", "mlflow.json"):
+        for name in ("run.json", "training_status.json", "selection.json", "mlflow.json",
+                     "nonfinite_evaluation.json"):
             self.artifact(self.output / name, "metadata")
         for name in ("history.csv", "final_metrics.csv", "final_per_class.csv", "training_frequency_baseline.csv", "mlflow_comparison.csv"):
             self.artifact(self.output / name, "metrics")
@@ -327,7 +331,9 @@ class RunTracker:
                 "target_contract": saved.get("target_contract"),
                 "mean": saved["mean"].tolist(), "std": saved["std"].tolist(),
                 "horizons_s": saved["horizons_s"], "selected_epoch": saved["epoch"],
-                "reported_evaluation_precision": saved.get("effective_precision", "fp32"),
+                "reported_evaluation_precision": saved.get("effective_evaluation_precision",
+                                                            saved.get("effective_precision", "fp32")),
+                "evaluation_attention": saved.get("evaluation_attention", "auto"),
                 "export_precision": "FP32; use matching CUDA autocast to reproduce BF16 evaluation",
                 "serialization_format": export_format,
             })

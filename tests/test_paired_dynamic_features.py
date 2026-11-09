@@ -72,7 +72,7 @@ def test_expanded_features_train_resume_reload_and_benchmark(tmp_path, l1_lambda
     model.load_state_dict(saved["model_state"])
     model.eval()
     windows, _ = data.batch(data.indices["validation"], "cpu")
-    with torch.inference_mode():
+    with torch.inference_mode(), paired.evaluation_context("cpu", saved["evaluation_attention"]):
         expected = model(windows).softmax(-1).numpy()
     _, _, _, results = paired.final_evaluation(data, output, device="cpu")
     np.testing.assert_allclose(results["validation"]["probabilities"], expected)
