@@ -159,6 +159,7 @@ class RunTracker:
         self.artifact(self.output / "training_source.py", "source")
         self.artifact(self.output / "architecture_source.py", "source")
         self.artifact(self.output / "intent_source.py", "source")
+        self.artifact(self.output / "evaluation_source.py", "source")
         shutil.copy2(__file__, self.output / "tracking_source.py")
         self.artifact(self.output / "tracking_source.py", "source")
         self.artifact(self.output / "run.json", "metadata")

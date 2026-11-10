@@ -204,6 +204,8 @@ def test_both_notebooks_prepare_one_fit_evaluate_reload_and_report(tmp_path, mon
                 assert namespace["CONFIG"]["family_reward"] == namespace["CONFIG"]["handedness_reward"] == 1.
                 assert namespace["CONFIG"]["class_weighting"] == "family_sqrt_inverse"
                 assert namespace["CONFIG"]["handedness_weighting"] == "sqrt_inverse"
+                assert namespace["CONFIG"]["epoch_streaming_metrics"] is True
+                assert namespace["CONFIG"]["evaluation_frame_cache"] is True
                 namespace["CONFIG"]["epochs"] = 2
     assert fit_count == [False]
     data, run = namespace["data"], namespace["RUN"]
@@ -216,6 +218,8 @@ def test_both_notebooks_prepare_one_fit_evaluate_reload_and_report(tmp_path, mon
     assert checkpoint["hierarchical_objective"] == {"hierarchical_loss": "partial_credit",
                                                      "family_reward": 1., "handedness_reward": 1.}
     assert checkpoint["scheduler_state"] is not None
+    assert (run / "evaluation_source.py").is_file()
+    assert checkpoint["evaluation_source_sha256"] == paired.sha256(run / "evaluation_source.py")
     assert checkpoint["handedness_weighting"] == namespace["HANDEDNESS_WEIGHTING"]
     assert checkpoint["class_weighting"]["weighting_level"] == "skill_family"
     assert (run / "handedness_weights.json").is_file() and (run / "handedness_weights.csv").is_file()

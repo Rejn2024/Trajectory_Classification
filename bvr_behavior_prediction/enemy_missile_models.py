@@ -227,7 +227,10 @@ class _MissileTransformer(nn.Module):
     def _decode(self, windows):
         if windows.ndim != 3 or tuple(windows.shape[1:]) != (HISTORY_STEPS, self.input_features):
             raise ValueError(f"Expected (batch, 51, {self.input_features}) feature histories")
-        x = windows.reshape(-1, self.input_features).float()
+        return self._decode_rows(windows.reshape(-1, self.input_features))
+
+    def _decode_rows(self, frames):
+        x = frames.float()
         raw = x * self.feature_std + self.feature_mean
         offset = 3 if self.observer_acceleration else 0
         slot_indices = torch.cat((torch.arange(19 - offset, 47 - offset, device=x.device),
@@ -261,18 +264,40 @@ class _MissileTransformer(nn.Module):
     def encode_frames(self, windows):
         """Encode frames independently; missile slot histories are never joined."""
         raw, slots, nodes, present = self._decode(windows)
+        return self._encode_decoded_frames(raw, slots, nodes, present).reshape(
+            windows.shape[0], HISTORY_STEPS, -1)
+
+    def encode_frame_rows(self, frames):
+        """Encode unique normalized feature rows, without temporal positions or padding."""
+        if frames.ndim != 2 or frames.shape[1] != self.input_features:
+            raise ValueError(f"Expected (frames, {self.input_features}) normalized features")
+        return self._encode_decoded_frames(*self._decode_rows(frames))
+
+    def _encode_decoded_frames(self, raw, slots, nodes, present):
         nodes = self._spatial(raw, slots, nodes, present)
         readout = torch.cat((nodes[:, 0], nodes[:, 1],
                              masked_summary(nodes[:, 2:6], present[:, 2:6]),
                              masked_summary(nodes[:, 6:], present[:, 6:])), -1)
-        return self.projection(readout).reshape(windows.shape[0], HISTORY_STEPS, -1)
+        return self.projection(readout)
 
     def encode_history(self, windows):
-        encoded = self.encoder(self.encode_frames(windows) + self.position)
+        return self.encode_history_from_frames(self.encode_frames(windows))
+
+    def encode_history_from_frames(self, frames):
+        if frames.ndim != 3 or tuple(frames.shape[1:]) != tuple(self.position.shape[1:]):
+            raise ValueError("Expected (batch, 51, temporal width) frame encodings")
+        encoded = self.encoder(frames + self.position)
         return self.norm(encoded[:, -1])
 
+    def forward_from_frame_encodings(self, frames, **kwargs):
+        """Evaluation readout of cached frame encodings; cache lifetime is one frozen pass."""
+        return self._readout(self.encode_history_from_frames(frames), **kwargs)
+
+    def _readout(self, shared):
+        return self.head(shared).reshape(-1, 3, self.num_classes)
+
     def forward(self, windows):
-        return self.head(self.encode_history(windows)).reshape(-1, 3, self.num_classes)
+        return self._readout(self.encode_history(windows))
 
 
 class MissileSetTransformer(_MissileTransformer):
@@ -465,7 +490,9 @@ class HGTIntentTransformer(HGTTransformer):
                                          nn.Dropout(kwargs.get("dropout", .25)), nn.Linear(width, 3 * num_intents))
 
     def forward(self, windows, return_intent=False):
-        shared = self.encode_history(windows)
+        return self._readout(self.encode_history(windows), return_intent=return_intent)
+
+    def _readout(self, shared, return_intent=False):
         skill_logits = self.head(shared).reshape(-1, 3, self.num_classes)
         if return_intent:
             return skill_logits, self.intent_head(shared).reshape(-1, 3, self.num_intents)
@@ -538,7 +565,10 @@ class HGTHierarchicalIntentTransformer(HGTIntentTransformer):
         return result
 
     def forward(self, windows, return_intent=False, return_hierarchy=False):
-        shared = self.encode_history(windows)
+        return self._readout(self.encode_history(windows), return_intent=return_intent,
+                             return_hierarchy=return_hierarchy)
+
+    def _readout(self, shared, return_intent=False, return_hierarchy=False):
         family_logits = self.family_head(shared).reshape(-1, 3, self.num_families)
         direction_logits = (self.direction_head(shared).reshape(-1, 3, self.num_pair_families, 2)
                             if self.direction_head is not None else

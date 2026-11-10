@@ -48,6 +48,8 @@ DEFAULT_TRAINING = {
     "overtraining_relative_increase": 0.05, "overtraining_min_gap": 0.1,
     "class_weighting": "none", "max_class_weight_ratio": 5.0,
     "evaluation_precision": "fp32", "evaluation_attention": "math",
+    "epoch_streaming_metrics": False, "evaluation_frame_cache": False,
+    "evaluation_frame_batch_size": 8192, "evaluation_cache_max_frames": 65536,
 }
 
 
@@ -534,6 +536,17 @@ def _check_evaluation_tensor(tensor, stage, split, batch_index, sample_ids, data
                    if c in data.samples.columns]
         details["samples"] = json.loads(data.samples.iloc[selected][columns].to_json(orient="records"))
     raise NonfiniteEvaluationError(details)
+
+
+def _check_evaluation_tensors(tensors, split, batch_index, sample_ids, data, precision, attention,
+                              diagnose=None):
+    """Transfer stage flags together; retain detailed stage/sample diagnostics on failure."""
+    flags = torch.stack([torch.isfinite(tensor).all() for _, tensor in tensors]).cpu().tolist()
+    for (stage, tensor), finite in zip(tensors, flags):
+        if not finite:
+            if diagnose is not None:
+                diagnose(tensor, stage)
+            _check_evaluation_tensor(tensor, stage, split, batch_index, sample_ids, data, precision, attention)
 
 
 class TensorFrameCache:
@@ -1074,12 +1087,63 @@ def metric_tables(targets, probabilities, classes, split, losses=None, allow_emp
 
 
 @torch.inference_mode()
+def _evaluation_batch(model, x, y, data, sample_ids, device, precision, split, batch_index,
+                       attention, hierarchy_mapping=None, frame_encodings=False):
+    """Common tensor computations for full-prediction and streaming evaluators."""
+    input_stage = "frame_encodings" if frame_encodings else "inputs"
+    _check_evaluation_tensors([(input_stage, x)], split, batch_index, sample_ids, data, precision, attention)
+    checks = []
+    forward = model.forward_from_frame_encodings if frame_encodings else model
+    multitask = getattr(model, "num_intents", 0) == 3
+    with autocast_context(device, precision):
+        if hierarchy_mapping is not None:
+            output = forward(x, return_hierarchy=True)
+            logits, intent_logits = output["skill_log_probs"], output["intent_logits"]
+        elif multitask:
+            logits, intent_logits = forward(x, return_intent=True)
+        else:
+            logits = forward(x)
+    logits = logits.float()
+    ce = nn.functional.cross_entropy(logits.flatten(0, 1), y.flatten(),
+                                     ignore_index=-1, reduction="none").reshape(-1, len(HORIZONS))
+    probability = logits.softmax(-1)
+    checks.extend((("logits", logits), ("loss", ce), ("probabilities", probability)))
+    tasks = {"skill": {"probabilities": probability, "losses": ce, "targets": y}}
+    if hierarchy_mapping is not None:
+        family, direction = output["family_logits"], output["direction_logits"]
+        family_ce, direction_ce, family_y, direction_y, selected = hierarchical_target_losses(
+            family, direction, y, hierarchy_mapping)
+        checks.extend((("family_logits", family), ("direction_logits", direction),
+                       ("family_loss", family_ce), ("direction_loss", direction_ce)))
+        tasks["family"] = {"probabilities": family.float().softmax(-1), "losses": family_ce, "targets": family_y}
+        tasks["direction"] = {"probabilities": selected.float().softmax(-1),
+                               "losses": direction_ce, "targets": direction_y}
+    if multitask:
+        intent_logits = intent_logits.float()
+        intent_y = torch.as_tensor(data.intent_targets[sample_ids], dtype=torch.long, device=device)
+        intent_ce = nn.functional.cross_entropy(intent_logits.flatten(0, 1), intent_y.flatten(),
+                                                ignore_index=-1, reduction="none").reshape(-1, len(HORIZONS))
+        intent_p = intent_logits.softmax(-1)
+        checks.extend((("intent_logits", intent_logits), ("intent_loss", intent_ce), ("intent_probabilities", intent_p)))
+        tasks["intent"] = {"probabilities": intent_p, "losses": intent_ce, "targets": intent_y}
+    _check_evaluation_tensors(checks, split, batch_index, sample_ids, data, precision, attention)
+    return tasks
+
+
+@torch.inference_mode()
 def evaluate(model, data, split, device, batch_size=1024, precision="fp32", pipeline=None,
              class_weights=None, evaluation_precision=None, evaluation_attention="auto", intent_loss_weight=0.0,
-             hierarchical_loss="joint_nll", family_reward=1.0, handedness_reward=1.0, handedness_weights=None):
+             hierarchical_loss="joint_nll", family_reward=1.0, handedness_reward=1.0, handedness_weights=None,
+             streaming=False, frame_cache=False, frame_batch_size=8192, cache_max_frames=65536):
+    from .forecasting_evaluation import evaluation_batches, evaluate_streaming
+
     if evaluation_precision is not None:
         precision = resolve_precision(device, evaluation_precision)
     model.eval()
+    if streaming:
+        return evaluate_streaming(model, data, split, device, batch_size, precision, pipeline,
+            class_weights, evaluation_attention, intent_loss_weight, hierarchical_loss, family_reward,
+            handedness_reward, handedness_weights, frame_cache, frame_batch_size, cache_max_frames)
     ids = data.indices[split]
     probabilities, losses = [], []
     multitask = getattr(model, "num_intents", 0) == 3
@@ -1090,58 +1154,22 @@ def evaluate(model, data, split, device, batch_size=1024, precision="fp32", pipe
         hierarchy_mapping = {"family": model.skill_family_index,
                              "pair": torch.where(model.directional_skills, model.skill_pair_index, -1),
                              "direction": model.skill_direction_index}
-    batches = (pipeline.batches(ids, batch_size) if pipeline is not None else
-               (data.batch(ids[start:start + batch_size], device)
-                for start in range(0, len(ids), batch_size)))
-    offset = 0
+    batches = evaluation_batches(model, data, split, device, batch_size, precision, pipeline,
+                                  evaluation_attention, frame_cache, frame_batch_size, cache_max_frames)
     with evaluation_context(device, evaluation_attention):
-        for batch_index, (x, y) in enumerate(batches):
-            sample_ids = ids[offset:offset + len(x)]
-            offset += len(x)
-            def check(tensor, stage):
-                _check_evaluation_tensor(tensor, stage, split, batch_index, sample_ids,
-                                         data, precision, evaluation_attention)
-            check(x, "inputs")
-            with autocast_context(device, precision):
-                if hierarchical:
-                    hierarchy_output = model(x, return_hierarchy=True)
-                    logits, intent_logits = hierarchy_output["skill_log_probs"], hierarchy_output["intent_logits"]
-                elif multitask:
-                    logits, intent_logits = model(x, return_intent=True)
-                else:
-                    logits = model(x)
-            logits = logits.float()  # Probabilities, CE and reporting always use FP32.
-            check(logits, "logits")
-            ce = nn.functional.cross_entropy(logits.reshape(-1, model.num_classes),
-                                             y.reshape(-1), ignore_index=-1, reduction="none").reshape(-1, 3)
-            check(ce, "loss")
-            p = logits.softmax(-1)
-            check(p, "probabilities")
-            losses.append(ce.cpu().numpy())
-            probabilities.append(p.cpu().numpy())
+        for batch_index, (sample_ids, x, y, encoded) in enumerate(batches):
+            tasks = _evaluation_batch(model, x, y, data, sample_ids, device, precision, split,
+                                       batch_index, evaluation_attention, hierarchy_mapping if hierarchical else None, encoded)
+            losses.append(tasks["skill"]["losses"].cpu().numpy())
+            probabilities.append(tasks["skill"]["probabilities"].cpu().numpy())
             if hierarchical:
-                family_logits, direction_logits = hierarchy_output["family_logits"], hierarchy_output["direction_logits"]
-                check(family_logits, "family_logits")
-                check(direction_logits, "direction_logits")
-                family_ce, direction_ce, _, _, selected = hierarchical_target_losses(
-                    family_logits, direction_logits, y, hierarchy_mapping)
-                check(family_ce, "family_loss")
-                check(direction_ce, "direction_loss")
-                family_probabilities.append(family_logits.float().softmax(-1).cpu().numpy())
-                direction_probabilities.append(selected.float().softmax(-1).cpu().numpy())
-                family_losses.append(family_ce.cpu().numpy())
-                direction_losses.append(direction_ce.cpu().numpy())
+                family_probabilities.append(tasks["family"]["probabilities"].cpu().numpy())
+                direction_probabilities.append(tasks["direction"]["probabilities"].cpu().numpy())
+                family_losses.append(tasks["family"]["losses"].cpu().numpy())
+                direction_losses.append(tasks["direction"]["losses"].cpu().numpy())
             if multitask:
-                intent_logits = intent_logits.float()
-                intent_y = torch.as_tensor(data.intent_targets[sample_ids], dtype=torch.long, device=device)
-                check(intent_logits, "intent_logits")
-                intent_ce = nn.functional.cross_entropy(intent_logits.flatten(0, 1), intent_y.flatten(),
-                                                         ignore_index=-1, reduction="none").reshape(-1, 3)
-                intent_p = intent_logits.softmax(-1)
-                check(intent_ce, "intent_loss")
-                check(intent_p, "intent_probabilities")
-                intent_losses.append(intent_ce.cpu().numpy())
-                intent_probabilities.append(intent_p.cpu().numpy())
+                intent_losses.append(tasks["intent"]["losses"].cpu().numpy())
+                intent_probabilities.append(tasks["intent"]["probabilities"].cpu().numpy())
     p, loss = np.concatenate(probabilities), np.concatenate(losses)
     targets = data.targets[ids]
     summary, scores, cm = metric_tables(targets, p, data.classes, split, loss)
@@ -1337,9 +1365,16 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
         raise ValueError("evaluation_attention must be auto or math")
     if config["epochs"] < 1:
         raise ValueError("Epoch count must be positive")
-    for key in ("batch_size", "evaluation_batch_size", "prefetch_factor", "cpu_threads", "loader_timeout"):
-        if not isinstance(config[key], int) or config[key] < 1:
+    for key in ("batch_size", "evaluation_batch_size", "prefetch_factor", "cpu_threads", "loader_timeout",
+                 "evaluation_frame_batch_size", "evaluation_cache_max_frames"):
+        if isinstance(config[key], bool) or not isinstance(config[key], int) or config[key] < 1:
             raise ValueError(f"{key} must be a positive integer")
+    if (not isinstance(config["epoch_streaming_metrics"], bool)
+            or not isinstance(config["evaluation_frame_cache"], bool)
+            or config["evaluation_cache_max_frames"] < HISTORY_STEPS):
+        raise ValueError("Evaluation switches must be boolean and the frame cache cap must be at least 51")
+    if config["evaluation_frame_cache"] and config.get("architecture", "transformer") == "transformer":
+        raise ValueError("Frame caching requires a frame-local missile architecture")
     if (not isinstance(config["num_workers"], int) or config["num_workers"] < 0
             or not isinstance(config["compile_model"], bool)):
         raise ValueError("num_workers must be nonnegative and compile_model must be boolean")
@@ -1452,6 +1487,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
            "target_contract": data_manifest.get("target_contract"),
            "data_manifest_sha256": manifest_hash, "source_sha256": sha256(__file__),
            "tracking_source_sha256": sha256(Path(__file__).with_name("paired_skill_tracking.py")),
+           "evaluation_source_sha256": sha256(Path(__file__).with_name("forecasting_evaluation.py")),
            "torch_version": str(torch.__version__), "numpy_version": np.__version__,
            "device": str(device), "selection": "Strict improvement of mean test NLL across horizons",
            "validation_policy": "Evaluated only after checkpoint selection",
@@ -1481,9 +1517,12 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                                                "class_weighting")) or (
                 saved_run.get("architecture_source_sha256") != run["architecture_source_sha256"]
                 or saved_run.get("intent_source_sha256") != run.get("intent_source_sha256")
+                or saved_run.get("evaluation_source_sha256") != run["evaluation_source_sha256"]
                 or saved_run.get("handedness_weighting") != handedness_weighting):
             raise ValueError("Resume requires the same configuration, data and source")
         saved = torch.load(output / "last.pt", map_location=device, weights_only=False)
+        if saved.get("evaluation_source_sha256") != run["evaluation_source_sha256"]:
+            raise ValueError("Resume requires the original evaluation source")
         if saved.get("handedness_weighting") != handedness_weighting:
             raise ValueError("Resume requires the original training-fitted handedness weights")
         base_model.load_state_dict(saved["model_state"])
@@ -1520,6 +1559,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
             write_json(output / "handedness_weights.json", handedness_weighting)
             handedness_weight_table(handedness_weighting).to_csv(output / "handedness_weights.csv", index=False)
         shutil.copy2(__file__, output / "training_source.py")
+        shutil.copy2(Path(__file__).with_name("forecasting_evaluation.py"), output / "evaluation_source.py")
         if architecture_name != "transformer":
             shutil.copy2(Path(__file__).with_name("enemy_missile_models.py"),
                          output / "architecture_source.py")
@@ -1556,6 +1596,10 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                     results = [evaluate(model, data, s, device, config["evaluation_batch_size"],
                                         precision=evaluation_precision, pipeline=pipeline,
                                         evaluation_attention=config["evaluation_attention"],
+                                        streaming=config["epoch_streaming_metrics"],
+                                        frame_cache=config["evaluation_frame_cache"],
+                                        frame_batch_size=config["evaluation_frame_batch_size"],
+                                        cache_max_frames=config["evaluation_cache_max_frames"],
                                         **({"intent_loss_weight": intent_loss_weight} if multitask else {}),
                                         **hierarchy_settings,
                                         **({"handedness_weights": intent_options["handedness_weights"]} if hierarchical else {}),
@@ -1639,6 +1683,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                            "feature_names": feature_names,
                            "data_contract": run["data_contract"],
                            "class_weighting": class_weighting,
+                           "evaluation_source_sha256": run["evaluation_source_sha256"],
                            "handedness_weighting": handedness_weighting,
                            "input_contract": run["input_contract"],
                            "target_contract": run["target_contract"],
@@ -1706,6 +1751,8 @@ def final_evaluation(data, output, device=None, tracking=None):
     config = {**DEFAULT_TRAINING, **run["training"]}
     if saved.get("handedness_weighting") != run.get("handedness_weighting"):
         raise ValueError("Checkpoint handedness weights differ from run metadata")
+    if saved.get("evaluation_source_sha256") != run.get("evaluation_source_sha256"):
+        raise ValueError("Checkpoint evaluation source differs from run metadata")
     precision = resolve_precision(device, saved.get("effective_precision",
                                                     run.get("effective_precision", "fp32")))
     # Old checkpoints retain their original evaluation policy when explicitly
@@ -1725,6 +1772,9 @@ def final_evaluation(data, output, device=None, tracking=None):
                 results = {s: evaluate(model, data, s, device, config["evaluation_batch_size"],
                                        precision=evaluation_precision, pipeline=pipeline,
                                        evaluation_attention=evaluation_attention,
+                                       frame_cache=config["evaluation_frame_cache"],
+                                       frame_batch_size=config["evaluation_frame_batch_size"],
+                                       cache_max_frames=config["evaluation_cache_max_frames"],
                                        **({"intent_loss_weight": config["intent_loss_weight"]}
                                           if config.get("architecture") in ("hgt_intent", "hgt_hierarchical_intent") else {}),
                                        **(hierarchical_loss_settings(config) if config.get("architecture") == "hgt_hierarchical_intent"

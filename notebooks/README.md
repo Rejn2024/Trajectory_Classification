@@ -59,6 +59,19 @@ selects the family first and then its side; primary metrics use joint leaf argma
 Separate direction reports condition on the true paired family and mask singletons.
 Start fresh hierarchical runs; flat-head checkpoints cannot resume as this architecture.
 
+Notebook 27 enables bounded, pass-local frame reuse during evaluation: overlapping
+histories share their HGT/frame readouts, with at most 65,536 cached unique rows
+and 8,192 rows per graph inference batch. Caches are rebuilt for each frozen
+evaluation pass and preserve original row/observer identity and temporal positions.
+Epoch metrics accumulate on the device, with small totals copied after each split;
+full prediction arrays remain available from final evaluation. Fail-fast input
+checks are retained; output-stage flags share one status transfer per batch, with
+detailed failure diagnostics.
+FP32/math evaluation, the loss and per-epoch checkpoint selection are preserved.
+Per-class tables are displayed every five epochs and at training completion,
+including early stopping; every epoch's CSV reports are still saved. These
+execution settings require fresh runs under the source/config resume checks.
+
 For missile positions measured from the opposing aircraft, run
 [24: prepare target-relative missile positions](24_prepare_target_relative_missile_nn_duel_skill_forecasting.ipynb),
 then [25: train the HGT](25_target_relative_missile_graph_nn_duel_skill_forecasting.ipynb).
