@@ -139,7 +139,8 @@ def test_no_directional_skills_and_empty_direction_horizons_are_valid():
 
 
 @pytest.mark.parametrize("autocast", [False, True])
-def test_forward_joint_loss_shared_gradients_and_factory_reload(autocast):
+@pytest.mark.parametrize("objective", ["joint_nll", "partial_credit"])
+def test_forward_joint_loss_shared_gradients_and_factory_reload(autocast, objective):
     raw, mean, std = target_example()
     model = network(mean=mean, std=std).eval()
     x = (raw - mean) / std
@@ -150,7 +151,8 @@ def test_forward_joint_loss_shared_gradients_and_factory_reload(autocast):
     policy = model.skill_hierarchy
     labels = torch.full((2, 3), policy["classes"].index("notch_right"), dtype=torch.long)
     loss = paired.masked_hierarchical_skill_loss(outputs["family_logits"], outputs["direction_logits"], labels,
-                                                paired.hierarchy_mapping_tensors(policy, "cpu"))
+                                                paired.hierarchy_mapping_tensors(policy, "cpu"),
+                                                hierarchical_loss=objective)
     loss = loss + .25 * paired.masked_loss(outputs["intent_logits"], torch.ones_like(labels))
     loss.backward()
     assert model.family_head[-1].weight.grad.abs().sum() > 0

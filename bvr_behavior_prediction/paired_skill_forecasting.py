@@ -881,9 +881,41 @@ def hierarchical_target_losses(family_logits, direction_logits, targets, mapping
     return family_ce, direction_ce, family_y, direction_y, selected
 
 
-def masked_hierarchical_skill_loss(family_logits, direction_logits, targets, mapping, class_weights=None):
-    family_ce, direction_ce, _, _, _ = hierarchical_target_losses(family_logits, direction_logits, targets, mapping)
-    combined = family_ce + direction_ce
+def hierarchical_loss_settings(config):
+    mode = config.get("hierarchical_loss", "joint_nll")
+    if mode not in ("joint_nll", "partial_credit"):
+        raise ValueError("hierarchical_loss must be joint_nll or partial_credit")
+    result = {"hierarchical_loss": mode}
+    for name, default in (("family_reward", 1.0), ("handedness_reward", 1.0)):
+        value = config.get(name, default)
+        if (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+                or value < 0 or (name == "family_reward" and value == 0)):
+            raise ValueError(f"{name} must be finite and {'positive' if name == 'family_reward' else 'nonnegative'}")
+        result[name] = float(value)
+    return result
+
+
+def hierarchical_example_loss(family_ce, direction_ce, paired, hierarchical_loss="joint_nll",
+                              family_reward=1.0, handedness_reward=1.0):
+    """Partial credit C=P(family)*(a+b*P(side|family))/(a+b), or joint NLL."""
+    if hierarchical_loss == "joint_nll":
+        return family_ce + direction_ce
+    if handedness_reward == 0:
+        return family_ce
+    log_family, log_direction = math.log(family_reward), math.log(handedness_reward)
+    normalizer = float(np.logaddexp(log_family, log_direction))
+    # Stable even when the true-side probability underflows or is effectively zero.
+    log_credit_given_family = torch.logaddexp(direction_ce.new_tensor(log_family), log_direction - direction_ce)
+    side_penalty = (normalizer - log_credit_given_family).clamp_min(0)
+    return family_ce + torch.where(paired, side_penalty, 0)
+
+
+def masked_hierarchical_skill_loss(family_logits, direction_logits, targets, mapping, class_weights=None,
+                                    hierarchical_loss="joint_nll", family_reward=1.0, handedness_reward=1.0):
+    settings = hierarchical_loss_settings({"hierarchical_loss": hierarchical_loss,
+                                            "family_reward": family_reward, "handedness_reward": handedness_reward})
+    family_ce, direction_ce, _, direction_y, _ = hierarchical_target_losses(family_logits, direction_logits, targets, mapping)
+    combined = hierarchical_example_loss(family_ce, direction_ce, direction_y >= 0, **settings)
     if class_weights is not None:
         combined = combined * class_weights.gather(1, targets.clamp_min(0).T).T
     counts = (targets >= 0).sum(0)
@@ -940,7 +972,8 @@ def metric_tables(targets, probabilities, classes, split, losses=None, allow_emp
 
 @torch.inference_mode()
 def evaluate(model, data, split, device, batch_size=1024, precision="fp32", pipeline=None,
-             class_weights=None, evaluation_precision=None, evaluation_attention="auto", intent_loss_weight=0.0):
+             class_weights=None, evaluation_precision=None, evaluation_attention="auto", intent_loss_weight=0.0,
+             hierarchical_loss="joint_nll", family_reward=1.0, handedness_reward=1.0):
     if evaluation_precision is not None:
         precision = resolve_precision(device, evaluation_precision)
     model.eval()
@@ -1034,6 +1067,43 @@ def evaluate(model, data, split, device, batch_size=1024, precision="fp32", pipe
             table, per_class, matrix = metric_tables(labels, prob, classes, split, ce, allow_empty=name == "direction")
             result[name] = {"summary": table, "per_class": per_class, "confusion": matrix,
                             "probabilities": prob, "targets": labels, "sample_indices": ids, "losses": ce}
+        settings = hierarchical_loss_settings({"hierarchical_loss": hierarchical_loss,
+                                                "family_reward": family_reward, "handedness_reward": handedness_reward})
+        family_ce, direction_ce = np.concatenate(family_losses), np.concatenate(direction_losses)
+        paired = data.direction_targets[ids] >= 0
+        objective = hierarchical_example_loss(torch.from_numpy(family_ce), torch.from_numpy(direction_ce),
+                                               torch.from_numpy(paired), **settings).numpy()
+        weighted = objective.astype(np.float64)
+        if class_weights is not None:
+            weighted *= np.asarray(class_weights)[np.arange(len(HORIZONS)), np.maximum(targets, 0)]
+        skill_data_loss = float((weighted.sum(0) / (targets >= 0).sum(0)).mean())
+        previous = result.get("skill_data_loss", result["data_loss"])
+        result["joint_skill_data_loss"] = previous
+        result["skill_data_loss"] = skill_data_loss
+        result["data_loss"] += skill_data_loss - previous
+        # Rewards are normalized to [0,1]. Handedness adds credit only when the
+        # predicted family is correct; singleton families have no handedness bonus.
+        log_a = math.log(family_reward)
+        log_b = math.log(handedness_reward) if handedness_reward else -float("inf")
+        log_total = float(np.logaddexp(log_a, log_b))
+        a, b = math.exp(log_a - log_total), math.exp(log_b - log_total)
+        family_correct = np.concatenate(family_probabilities).argmax(-1) == data.family_targets[ids]
+        side_correct = np.concatenate(direction_probabilities).argmax(-1) == data.direction_targets[ids]
+        credit = np.where(paired, family_correct * (a + b * side_correct), family_correct)
+        expected = np.where(paired, a * np.exp(-family_ce) + b * np.exp(-family_ce - direction_ce),
+                            np.exp(-family_ce))
+        credit_loss = hierarchical_example_loss(torch.from_numpy(family_ce), torch.from_numpy(direction_ce),
+            torch.from_numpy(paired), hierarchical_loss="partial_credit", family_reward=family_reward,
+            handedness_reward=handedness_reward).numpy()
+        reward_rows = []
+        for h, horizon in enumerate(HORIZONS):
+            valid = targets[:, h] >= 0
+            reward_rows.append({"split": split, "horizon_s": horizon, "count": int(valid.sum()),
+                                "family_accuracy": float(family_correct[valid, h].mean()),
+                                "hierarchical_credit": float(credit[valid, h].mean()),
+                                "expected_hierarchical_credit": float(expected[valid, h].mean()),
+                                "hierarchical_credit_loss": float(credit_loss[valid, h].mean())})
+        result["hierarchical_reward"] = pd.DataFrame(reward_rows)
     return result
 
 
@@ -1061,7 +1131,8 @@ def l1_penalty(model):
 
 
 def fit_batch(model, optimizer, x, y, device, precision, gradient_clip, l1_lambda=0.0,
-              class_weights=None, intent_mapping=None, intent_loss_weight=0.0, hierarchy_mapping=None):
+              class_weights=None, intent_mapping=None, intent_loss_weight=0.0, hierarchy_mapping=None,
+              hierarchical_loss="joint_nll", family_reward=1.0, handedness_reward=1.0):
     optimizer.zero_grad(set_to_none=True)
     with autocast_context(device, precision):
         if hierarchy_mapping is not None:
@@ -1073,7 +1144,8 @@ def fit_batch(model, optimizer, x, y, device, precision, gradient_clip, l1_lambd
             logits = model(x)
     if hierarchy_mapping is not None:
         loss = masked_hierarchical_skill_loss(hierarchy["family_logits"], hierarchy["direction_logits"],
-                                              y, hierarchy_mapping, class_weights)
+                                              y, hierarchy_mapping, class_weights, hierarchical_loss=hierarchical_loss,
+                                              family_reward=family_reward, handedness_reward=handedness_reward)
         intent_targets = torch.where(y >= 0, intent_mapping[y.clamp_min(0)], -1)
         loss = loss + intent_loss_weight * masked_loss(intent_logits, intent_targets)
     else:
@@ -1136,6 +1208,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
     config = {**DEFAULT_TRAINING, **(config or {})}
     multitask = config.get("architecture") in ("hgt_intent", "hgt_hierarchical_intent")
     hierarchical = config.get("architecture") == "hgt_hierarchical_intent"
+    hierarchy_settings = hierarchical_loss_settings(config) if hierarchical else {}
     if multitask:
         config.setdefault("intent_loss_weight", .25)
     intent_loss_weight = config.get("intent_loss_weight", 0.0)
@@ -1231,6 +1304,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                        "intent_loss_weight": intent_loss_weight} if multitask else {})
     if hierarchical:
         intent_options["hierarchy_mapping"] = hierarchy_mapping_tensors(data_manifest["skill_hierarchy"], device)
+        intent_options.update(hierarchy_settings)
     model = execution_model(base_model, config)
     optimizer = torch.optim.AdamW(base_model.parameters(), lr=config["learning_rate"],
                                   weight_decay=config["weight_decay"])
@@ -1275,7 +1349,11 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
         run["training_objective"] = "weighted skill CE + intent_loss_weight * unweighted intent CE + L1"
     if hierarchical:
         run["skill_hierarchy"] = data_manifest["skill_hierarchy"]
-        run["training_objective"] = "leaf-weighted (family CE + paired-direction CE) + intent_loss_weight * intent CE + L1"
+        run["hierarchical_objective"] = hierarchy_settings
+        run["training_objective"] = (
+            "leaf-weighted negative log normalized (family reward + correct-handedness bonus) + intent CE + L1"
+            if hierarchy_settings["hierarchical_loss"] == "partial_credit" else
+            "leaf-weighted (family CE + paired-direction CE) + intent_loss_weight * intent CE + L1")
     history, best, best_epoch, first = [], float("inf"), 0, 1
     epochs_without_improvement, stopped_early = 0, False
     overtraining_epochs, train_nll_at_best, stop_reason = 0, None, None
@@ -1356,6 +1434,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                                         precision=evaluation_precision, pipeline=pipeline,
                                         evaluation_attention=config["evaluation_attention"],
                                         **({"intent_loss_weight": intent_loss_weight} if multitask else {}),
+                                        **hierarchy_settings,
                                         class_weights=class_weighting["weights"]
                                         if class_weighting is not None and s == "train" else None)
                                for s in ("train", "test")]
@@ -1416,7 +1495,11 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                     row.update(train_family_nll=float(results[0]["family"]["summary"].nll.mean()),
                                test_family_nll=float(results[1]["family"]["summary"].nll.mean()),
                                train_direction_nll=float(results[0]["direction"]["summary"].nll.mean()),
-                               test_direction_nll=float(results[1]["direction"]["summary"].nll.mean()))
+                               test_direction_nll=float(results[1]["direction"]["summary"].nll.mean()),
+                               train_hierarchical_credit=float(results[0]["hierarchical_reward"].hierarchical_credit.mean()),
+                               test_hierarchical_credit=float(results[1]["hierarchical_reward"].hierarchical_credit.mean()),
+                               train_expected_hierarchical_credit=float(results[0]["hierarchical_reward"].expected_hierarchical_credit.mean()),
+                               test_expected_hierarchical_credit=float(results[1]["hierarchical_reward"].expected_hierarchical_credit.mean()))
                 history.append(row)
                 scores.to_csv(output / "epochs" / f"epoch_{epoch:03d}_per_class.csv", index=False)
                 summary.to_csv(output / "epochs" / f"epoch_{epoch:03d}_summary.csv", index=False)
@@ -1447,6 +1530,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                     payload["intent_supervision"] = data_manifest["intent_supervision"]
                 if hierarchical:
                     payload["skill_hierarchy"] = data_manifest["skill_hierarchy"]
+                    payload["hierarchical_objective"] = hierarchy_settings
                 if improved:
                     path = output / "checkpoints" / f"epoch_{epoch:03d}.pt"
                     atomic_checkpoint(path, payload)
@@ -1513,7 +1597,9 @@ def final_evaluation(data, output, device=None, tracking=None):
                                        precision=evaluation_precision, pipeline=pipeline,
                                        evaluation_attention=evaluation_attention,
                                        **({"intent_loss_weight": config["intent_loss_weight"]}
-                                          if config.get("architecture") in ("hgt_intent", "hgt_hierarchical_intent") else {})) for s in SPLITS}
+                                          if config.get("architecture") in ("hgt_intent", "hgt_hierarchical_intent") else {}),
+                                       **(hierarchical_loss_settings(config) if config.get("architecture") == "hgt_hierarchical_intent"
+                                          else {})) for s in SPLITS}
             except NonfiniteEvaluationError as error:
                 error.details.update(epoch=saved["epoch"], phase="final_evaluation")
                 write_json(output / "nonfinite_evaluation.json", error.details)
@@ -1536,6 +1622,11 @@ def final_evaluation(data, output, device=None, tracking=None):
             tracker.metrics({f"final/intent/{row.split}/h{int(row.horizon_s)}/{key}": float(getattr(row, key))
                              for row in intent_summary.itertuples() for key in ("nll", "accuracy", "macro_f1")}, saved["epoch"])
         if config.get("architecture") == "hgt_hierarchical_intent":
+            credit_metrics = pd.concat([r["hierarchical_reward"] for r in results.values()], ignore_index=True)
+            credit_metrics.to_csv(output / "final_hierarchical_credit_metrics.csv", index=False)
+            tracker.metrics({f"final/{row.split}/h{int(row.horizon_s)}/{key}": float(getattr(row, key))
+                             for row in credit_metrics.itertuples()
+                             for key in ("hierarchical_credit", "expected_hierarchical_credit")}, saved["epoch"])
             for name in ("family", "direction"):
                 tables = pd.concat([r[name]["summary"] for r in results.values()], ignore_index=True)
                 per_class = pd.concat([r[name]["per_class"] for r in results.values()], ignore_index=True)
@@ -1573,6 +1664,7 @@ def benchmark_batches(data, config=None, device=None, batch_sizes=(512, 1024),
                       if config.get("architecture") in ("hgt_intent", "hgt_hierarchical_intent") else {})
     if config.get("architecture") == "hgt_hierarchical_intent":
         intent_options["hierarchy_mapping"] = hierarchy_mapping_tensors(data.manifest["skill_hierarchy"], device)
+        intent_options.update(hierarchical_loss_settings(config))
     class_weighting = fit_class_weighting(data, config)
     weights = (None if class_weighting is None else
                torch.tensor(class_weighting["weights"], dtype=torch.float32, device=device))

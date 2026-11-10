@@ -218,7 +218,8 @@ class RunTracker:
                     "overtraining_epochs", "overtraining_detected", "learning_rate", "learning_rate_start",
                     "next_learning_rate", "optimizer_steps", "train_skill_data_loss", "train_intent_nll",
                     "test_intent_nll", "train_intent_accuracy", "test_intent_accuracy", "train_family_nll",
-                    "test_family_nll", "train_direction_nll", "test_direction_nll"):
+                    "test_family_nll", "train_direction_nll", "test_direction_nll", "train_hierarchical_credit",
+                    "test_hierarchical_credit", "train_expected_hierarchical_credit", "test_expected_hierarchical_credit"):
             if key in row:
                 metrics[f"epoch/{key}"] = row[key]
         if row["improved"]:
@@ -277,7 +278,7 @@ class RunTracker:
         for name in ("final_intent_metrics.csv", "final_intent_per_class.csv", "training_frequency_intent_baseline.csv"):
             self.artifact(self.output / name, "metrics")
         for name in ("final_family_metrics.csv", "final_family_per_class.csv", "final_direction_metrics.csv",
-                     "final_direction_per_class.csv"):
+                     "final_direction_per_class.csv", "final_hierarchical_credit_metrics.csv"):
             self.artifact(self.output / name, "metrics")
         self.artifact(self.output / "best.pt", "checkpoints")
         for name in ("epochs", "diagnostics", "intent_diagnostics"):

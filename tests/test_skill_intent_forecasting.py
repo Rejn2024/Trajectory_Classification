@@ -200,6 +200,8 @@ def test_both_notebooks_prepare_one_fit_evaluate_reload_and_report(tmp_path, mon
                 assert "TRAINING_SEEDS" not in namespace and "RUNS" not in namespace
                 assert namespace["CONFIG"]["intent_loss_weight"] == .25
                 assert namespace["CONFIG"]["architecture"] == "hgt_hierarchical_intent"
+                assert namespace["CONFIG"]["hierarchical_loss"] == "partial_credit"
+                assert namespace["CONFIG"]["family_reward"] == namespace["CONFIG"]["handedness_reward"] == 1.
                 namespace["CONFIG"]["epochs"] = 2
     assert fit_count == [False]
     data, run = namespace["data"], namespace["RUN"]
@@ -209,6 +211,8 @@ def test_both_notebooks_prepare_one_fit_evaluate_reload_and_report(tmp_path, mon
     checkpoint = torch.load(run / "best.pt", map_location="cpu", weights_only=False)
     assert checkpoint["intent_supervision"] == data.manifest["intent_supervision"]
     assert checkpoint["skill_hierarchy"] == data.manifest["skill_hierarchy"]
+    assert checkpoint["hierarchical_objective"] == {"hierarchical_loss": "partial_credit",
+                                                     "family_reward": 1., "handedness_reward": 1.}
     assert checkpoint["scheduler_state"] is not None
     restored = paired.make_model(len(data.classes), checkpoint["model_config"], checkpoint["mean"], checkpoint["std"])
     restored.load_state_dict(checkpoint["model_state"])
@@ -227,10 +231,15 @@ def test_both_notebooks_prepare_one_fit_evaluate_reload_and_report(tmp_path, mon
         np.testing.assert_array_equal(stored["targets"], data.direction_targets[data.indices["validation"]])
     receipt = intent.read_json(namespace["EXPERIMENT_ROOT"] / "comparisons/latest_hgt_hierarchical_intent_run.json")
     assert receipt["seed"] == 42 and receipt["run"] == str(run)
+    assert (run / "final_hierarchical_credit_metrics.csv").is_file()
     history = pd.read_csv(run / "history.csv")
     np.testing.assert_allclose(history.train_data_loss,
                                history.train_skill_data_loss + .25 * history.train_intent_nll)
     assert checkpoint["test_nll"] == pytest.approx(history.test_nll.min())
+    assert ((history.test_hierarchical_credit >= 0) & (history.test_hierarchical_credit <= 1)).all()
+    evaluated = paired.evaluate(restored, data, "validation", "cpu", intent_loss_weight=.25,
+                                 **checkpoint["hierarchical_objective"])
+    assert evaluated["skill_data_loss"] < evaluated["joint_skill_data_loss"]
     # Reuse and report-only cells must not fit another seed or rewrite the prepared data.
     before = paired.sha256(data.directory / "manifest.json")
     prep = nbformat.read(ROOT / "notebooks" / PREP, as_version=4)

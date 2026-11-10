@@ -18,9 +18,18 @@ Notebook 27 fits **one network once, with seed 42**, using notebook 25's HGT-v2
 and temporal encoder. Its skill readout predicts 29 families and left/right
 conditioned on each of the four mirrored families. Singleton families have no
 direction prediction. Joint probabilities reconstruct the original 33 classes.
-The original leaf's weight applies to `family CE + paired-direction CE`, with both
-terms averaged over all valid skill labels; this equals weighted joint skill NLL.
+The skill objective awards base family credit plus an additional handedness bonus:
+for mirrored labels, `C = (a*P(family) + b*P(family,side))/(a+b)`; for singletons,
+`C=P(family)`. The original leaf's weight multiplies `-log(C)`, averaged over all
+valid labels/horizons. Default `a=b=1` gives half credit for correct family/wrong
+side and full credit for both correct. The extra side penalty is bounded by
+`log(2)`; wrong-family side predictions do not earn bonus credit. Reward weights
+are configurable as `family_reward` and `handedness_reward`.
 Direction supervision selects the true family, never a hard family prediction.
+The joint 33-skill NLL remains the checkpoint selection metric; it is separate
+from the modified partial-credit training loss. Reward metrics are saved in
+`final_hierarchical_credit_metrics.csv`. Existing notebook-26 v2 data can be reused,
+but start fresh notebook-27 runs when changing the objective.
 The auxiliary intent loss remains `0.25 * intent CE`, with L1 as before.
 Unweighted joint skill test NLL still selects checkpoints. Reports compare intent-head
 predictions with grouped skill probabilities and training-frequency baselines.
