@@ -22,15 +22,23 @@ The new contract rejects older caches and uses the separate artifact root
 `BVR_NN_TARGET_RELATIVE_MISSILE_MLFLOW=0` to disable optional tracking.
 Run notebook 24 before 25; neither notebook 22 nor new simulator collection is required.
 
-Notebook 25 now uses two HGT layers (width 64, four graph attention heads), with
-node-type-specific projections, relation-specific attention/message transforms,
-and geometry-conditioned edge attention. Missile–target edges in both directions
-receive the prior `((d_min + 1000) / (d_i + 1000)) ** 1.0`, using distances to the
-same target and ignoring absent slots. Its logarithm biases learned attention
-before a per-destination, per-head softmax; owner edges retain unit prior.
-The temporal Transformer keeps width 96 and six temporal attention heads. Existing
-v2 prepared data can be reused, but HGT requires fresh training runs. HGT checkpoints
-retain all distance settings and publish `comparisons/latest_hgt_runs.json`.
+Notebook 25 uses HGT model version 2: two layers (width 64, four graph heads),
+with separate attention/aggregation for aircraft, ownership and targeting
+families. Learned masked gates combine the three family summaries. Eighteen edge
+features include relative position/velocity, distance/closing speed, bounded
+closest-approach time/distance, bearing alignment, relative speed, and both
+endpoints' kinetic, gravitational potential and total specific energy (J/kg).
+A trainable per-head threat prior combines a physical distance/CPA/alignment score
+with a learned residual from all edge features. It biases missile–target edges
+in both directions; empty slots are excluded throughout.
+
+AdamW warms up over 5% of planned optimizer updates from 10% of the peak `3e-4`,
+then cosine-decays to 5% of peak. Both stopping rules wait until after epoch 20.
+Scheduler state and optimizer-update count are checkpointed for exact resume.
+The temporal Transformer remains width 96 with six temporal heads. Existing v2
+prepared data can be reused; start fresh HGT-v2 training runs. Older HGT-v1
+checkpoints retain their original factory reload path. Completed HGT receipts
+are `comparisons/latest_hgt_runs.json`.
 
 For observer acceleration in place of absolute observer North/West/Up position, run
 [22: prepare both-aircraft accelerations](22_prepare_observer_acceleration_enemy_missile_nn_duel_skill_forecasting.ipynb),

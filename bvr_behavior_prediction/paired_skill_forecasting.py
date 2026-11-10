@@ -7,6 +7,7 @@ Inputs are B01 observation histories of the NN-trained A01 pilot; labels are A01
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import random
 import shutil
@@ -760,6 +761,11 @@ def model_configuration(config, input_features):
             result.update(graph_heads=config.get("graph_heads", 4),
                           missile_distance_floor_m=config.get("missile_distance_floor_m", 1000.0),
                           missile_distance_power=config.get("missile_distance_power", 1.0))
+            if config.get("hgt_version", 1) != 1:
+                result.update(hgt_version=config["hgt_version"],
+                              threat_cpa_horizon_s=config.get("threat_cpa_horizon_s", 30.0),
+                              threat_time_scale_s=config.get("threat_time_scale_s", 5.0),
+                              threat_prior_strength=config.get("threat_prior_strength", 1.0))
     return result
 
 
@@ -950,16 +956,52 @@ def fit_batch(model, optimizer, x, y, device, precision, gradient_clip, l1_lambd
     return loss.detach()
 
 
+def learning_rate_schedule_settings(config):
+    """Validate the optional update-based schedule without changing historical defaults."""
+    name = config.get("lr_schedule", "constant")
+    if name not in ("constant", "warmup_cosine"):
+        raise ValueError("lr_schedule must be constant or warmup_cosine")
+    settings = {"name": name}
+    for key, default, lower, upper in (("warmup_fraction", .05, 0, 1),
+                                        ("warmup_start_ratio", .1, 0, 1),
+                                        ("min_lr_ratio", .05, 0, 1)):
+        value = config.get(key, default)
+        if (isinstance(value, bool) or not isinstance(value, (int, float))
+                or not math.isfinite(value) or not lower <= value <= upper
+                or (key == "warmup_fraction" and value == 1)):
+            raise ValueError(f"Invalid {key} for learning-rate schedule")
+        settings[key] = float(value)
+    if (isinstance(config["learning_rate"], bool) or not isinstance(config["learning_rate"], (int, float))
+            or not math.isfinite(config["learning_rate"]) or config["learning_rate"] <= 0):
+        raise ValueError("learning_rate must be finite and positive")
+    return settings
+
+
+def warmup_cosine_multiplier(update, total_updates, warmup_updates, start_ratio, min_ratio):
+    """Multiplier for the next optimizer update; endpoints refer to actual used rates."""
+    update = min(update, total_updates - 1)
+    if total_updates == 1:
+        return 1.0
+    if update < warmup_updates:
+        return (start_ratio + (1 - start_ratio) * update / (warmup_updates - 1)
+                if warmup_updates > 1 else 1.0)
+    decay_updates = total_updates - warmup_updates
+    progress = ((update - warmup_updates) / (decay_updates - 1)
+                if decay_updates > 1 else 1.0)
+    return min_ratio + .5 * (1 - min_ratio) * (1 + math.cos(math.pi * progress))
+
+
 def train_model(data, output, config=None, callback=None, device=None, resume=False, tracking=None):
     """Fit with optional NLL patience and sustained-overtraining shutdown.
 
-    Both stopping rules use unregularised evaluation NLL. The overtraining rule
-    runs from epoch one, independently of the ordinary early-stopping warmup.
-    Every strict improvement in test NLL receives a checkpoint.
+    Both stopping rules use unregularised evaluation NLL and independent minimum
+    epoch settings. Every strict improvement in test NLL receives a checkpoint,
+    including during learning-rate warm-up and before either stopping minimum.
     """
     from .paired_skill_tracking import RunTracker
 
     config = {**DEFAULT_TRAINING, **(config or {})}
+    schedule_settings = learning_rate_schedule_settings(config)
     if config["evaluation_precision"] not in {"fp32", "bf16"}:
         raise ValueError("evaluation_precision must be fp32 or bf16")
     if config["evaluation_attention"] not in {"auto", "math"}:
@@ -973,6 +1015,10 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
             or not isinstance(config["compile_model"], bool)):
         raise ValueError("num_workers must be nonnegative and compile_model must be boolean")
     minimum, patience = config["early_stopping_min_epochs"], config["early_stopping_patience"]
+    overtraining_minimum = config.get("overtraining_min_epochs", 0)
+    if (isinstance(overtraining_minimum, bool) or not isinstance(overtraining_minimum, int)
+            or overtraining_minimum < 0):
+        raise ValueError("overtraining_min_epochs must be a nonnegative integer")
     if (not isinstance(config["early_stopping"], bool)
             or not isinstance(minimum, int) or minimum < 0
             or not isinstance(patience, int) or patience < 1):
@@ -1032,6 +1078,20 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
     model = execution_model(base_model, config)
     optimizer = torch.optim.AdamW(base_model.parameters(), lr=config["learning_rate"],
                                   weight_decay=config["weight_decay"])
+    steps_per_epoch = math.ceil(len(data.indices["train"]) / config["batch_size"])
+    if steps_per_epoch < 1:
+        raise ValueError("No training batches")
+    total_updates = config["epochs"] * steps_per_epoch
+    warmup_updates = (min(total_updates - 1, max(1, round(total_updates * schedule_settings["warmup_fraction"])))
+                      if schedule_settings["warmup_fraction"] > 0 else 0)
+    scheduler = None
+    if schedule_settings["name"] == "warmup_cosine":
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda update: warmup_cosine_multiplier(
+            update, total_updates, warmup_updates, schedule_settings["warmup_start_ratio"],
+            schedule_settings["min_lr_ratio"]))
+    schedule_metadata = {**schedule_settings, "steps_per_epoch": steps_per_epoch,
+                         "total_updates": total_updates, "warmup_updates": warmup_updates}
+    optimizer_steps = 0
     rng = np.random.default_rng(config["seed"])
     manifest_hash = sha256(data.directory / "manifest.json")
     run = {"training": config, "model": architecture, "classes": data.classes,
@@ -1052,7 +1112,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
            "effective_precision": precision, "effective_cpu_threads": cpu_threads,
            "effective_evaluation_precision": evaluation_precision,
            "evaluation_attention": config["evaluation_attention"],
-           "class_weighting": class_weighting}
+           "class_weighting": class_weighting, "learning_rate_schedule": schedule_metadata}
     history, best, best_epoch, first = [], float("inf"), 0, 1
     epochs_without_improvement, stopped_early = 0, False
     overtraining_epochs, train_nll_at_best, stop_reason = 0, None, None
@@ -1066,6 +1126,14 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
         saved = torch.load(output / "last.pt", map_location=device, weights_only=False)
         base_model.load_state_dict(saved["model_state"])
         optimizer.load_state_dict(saved["optimizer_state"])
+        optimizer_steps = saved.get("optimizer_steps", saved["epoch"] * steps_per_epoch)
+        if scheduler is not None:
+            if (saved.get("scheduler_state") is None
+                    or saved.get("learning_rate_schedule") != schedule_metadata
+                    or optimizer_steps != saved["epoch"] * steps_per_epoch
+                    or saved["scheduler_state"].get("last_epoch") != optimizer_steps):
+                raise ValueError("Resume requires a matching scheduler and optimizer update count")
+            scheduler.load_state_dict(saved["scheduler_state"])
         rng.bit_generator.state = saved["numpy_rng"]
         torch.set_rng_state(saved["torch_rng"].cpu())
         if device.type == "cuda" and saved["cuda_rng"] is not None:
@@ -1101,13 +1169,19 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                   f"batch {config['batch_size']}, evaluation batch {config['evaluation_batch_size']}, "
                   f"frame cache {pipeline.cache_bytes / 2**30:.3f} GiB", flush=True)
             print(f"Evaluation: {evaluation_precision}, {config['evaluation_attention']} attention", flush=True)
+            print("Learning-rate schedule:", schedule_metadata, flush=True)
             for epoch in range(first, config["epochs"] + 1):
                 started = time.perf_counter()
                 model.train()
+                learning_rate_start = optimizer.param_groups[0]["lr"]
                 order = rng.permutation(data.indices["train"])
                 for x, y in pipeline.batches(order, config["batch_size"]):
+                    learning_rate_used = optimizer.param_groups[0]["lr"]
                     fit_batch(model, optimizer, x, y, device, precision, config["gradient_clip"],
                               config["l1_lambda"], weights)
+                    optimizer_steps += 1
+                    if scheduler is not None:
+                        scheduler.step()
                 try:
                     results = [evaluate(model, data, s, device, config["evaluation_batch_size"],
                                         precision=evaluation_precision, pipeline=pipeline,
@@ -1137,7 +1211,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                     epochs_without_improvement = 0
                 generalization_gap = test_nll - train_nll
                 overtraining_detected = bool(
-                    config["overtraining_shutdown"] and not improved
+                    config["overtraining_shutdown"] and epoch > overtraining_minimum and not improved
                     and train_nll_at_best is not None and train_nll < train_nll_at_best
                     and test_nll > best * (1 + config["overtraining_relative_increase"])
                     and generalization_gap > config["overtraining_min_gap"])
@@ -1151,6 +1225,8 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                     penalty = (float(config["l1_lambda"] * l1_penalty(base_model))
                                if config["l1_lambda"] else 0.0)
                 row = {"epoch": epoch, "train_nll": train_nll, "test_nll": test_nll,
+                       "learning_rate_start": learning_rate_start, "learning_rate": learning_rate_used,
+                       "next_learning_rate": optimizer.param_groups[0]["lr"], "optimizer_steps": optimizer_steps,
                        "train_data_loss": train_data_loss,
                        "train_l1_penalty": penalty, "train_objective": train_data_loss + penalty,
                        "generalization_gap": generalization_gap,
@@ -1166,6 +1242,8 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                 pd.DataFrame(history).to_csv(output / "history.csv", index=False)
                 payload = {"epoch": epoch, "model_state": base_model.state_dict(),
                            "optimizer_state": optimizer.state_dict(), "model_config": architecture,
+                           "scheduler_state": scheduler.state_dict() if scheduler is not None else None,
+                           "optimizer_steps": optimizer_steps, "learning_rate_schedule": schedule_metadata,
                            "classes": data.classes, "mean": data.mean, "std": data.std,
                            "history_steps": HISTORY_STEPS, "horizons_s": HORIZONS,
                            "feature_names": feature_names,
@@ -1210,6 +1288,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
             "early_stopping_min_epochs": minimum, "early_stopping_patience": patience,
             "epochs_without_improvement": epochs_without_improvement,
             "stop_reason": stop_reason, "overtraining_epochs": overtraining_epochs,
+            "overtraining_min_epochs": overtraining_minimum,
             "best_epoch": best_epoch, "best_test_nll": best,
         })
         tracker.finish_training()

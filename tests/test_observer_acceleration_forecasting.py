@@ -177,6 +177,10 @@ def test_new_notebooks_prepare_train_reload_and_report(tmp_path, monkeypatch, ta
                     assert config["graph_heads"] == 4
                     assert config["missile_distance_floor_m"] == 1000.0
                     assert config["missile_distance_power"] == 1.0
+                    assert config["hgt_version"] == 2
+                    assert config["lr_schedule"] == "warmup_cosine"
+                    assert config["warmup_fraction"] == .05
+                    assert config["early_stopping_min_epochs"] == config["overtraining_min_epochs"] == 20
                 assert config["width"] == 96 and config["graph_width"] == 64
                 assert config.get("target_relative_missiles", False) is target_relative
                 assert config.get("target_relative_missile_velocities", False) is target_relative
@@ -199,6 +203,10 @@ def test_new_notebooks_prepare_train_reload_and_report(tmp_path, monkeypatch, ta
             assert checkpoint["model_config"]["graph_heads"] == 4
             assert checkpoint["model_config"]["missile_distance_floor_m"] == 1000.0
             assert checkpoint["model_config"]["missile_distance_power"] == 1.0
+            assert checkpoint["model_config"]["hgt_version"] == 2
+            assert checkpoint["model_config"]["threat_cpa_horizon_s"] == 30.
+            assert checkpoint["scheduler_state"]["last_epoch"] == checkpoint["optimizer_steps"]
+            assert checkpoint["learning_rate_schedule"]["name"] == "warmup_cosine"
         restored = paired.make_model(len(data.classes), checkpoint["model_config"],
                                      checkpoint["mean"], checkpoint["std"])
         restored.load_state_dict(checkpoint["model_state"])

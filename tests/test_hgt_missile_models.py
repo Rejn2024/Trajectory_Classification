@@ -87,13 +87,14 @@ def test_attention_softmax_masks_and_prior_ratios_with_equal_learned_scores():
 
 @pytest.mark.parametrize("occupied", [False, True])
 @pytest.mark.parametrize("autocast", [False, True])
-def test_empty_slots_and_bfloat16_training_have_finite_gradients(occupied, autocast):
+@pytest.mark.parametrize("version", [1, 2])
+def test_empty_slots_and_bfloat16_training_have_finite_gradients(occupied, autocast, version):
     raw, mean, std = target_example()
     if not occupied:
         raw[..., 16:44] = 0
         raw[..., 54:82] = 0
     network = model(mean, std, observer_acceleration=True, target_relative_missiles=True,
-                    target_relative_missile_velocities=True)
+                    target_relative_missile_velocities=True, hgt_version=version)
     normalized = ((raw - mean) / std).requires_grad_()
     with torch.autocast("cpu", dtype=torch.bfloat16, enabled=autocast):
         output = network(normalized)
@@ -109,10 +110,11 @@ def test_empty_slots_and_bfloat16_training_have_finite_gradients(occupied, autoc
         assert not normalized.grad[..., 54:82].any()
 
 
-def test_slot_permutations_are_invariant_and_frames_do_not_mix():
+@pytest.mark.parametrize("version", [1, 2])
+def test_slot_permutations_are_invariant_and_frames_do_not_mix(version):
     raw, mean, std = target_example()
     network = model(mean, std, observer_acceleration=True, target_relative_missiles=True,
-                    target_relative_missile_velocities=True).eval()
+                    target_relative_missile_velocities=True, hgt_version=version).eval()
     changed = raw.clone()
     for frame in range(51):
         for start in (16, 54):
@@ -129,12 +131,14 @@ def test_slot_permutations_are_invariant_and_frames_do_not_mix():
         torch.testing.assert_close(baseline[1], after[1], atol=0, rtol=0)
 
 
-def test_factory_restores_heads_weighting_and_predictions():
+@pytest.mark.parametrize("version", [1, 2])
+def test_factory_restores_heads_weighting_and_predictions(version):
     raw, mean, std = target_example()
     config = dict(architecture="hgt", width=12, heads=6, layers=1, dropout=0,
                   graph_width=8, graph_heads=2, graph_layers=2, observer_acceleration=True,
                   target_relative_missiles=True, target_relative_missile_velocities=True,
-                  missile_distance_floor_m=500., missile_distance_power=2.)
+                  missile_distance_floor_m=500., missile_distance_power=2., hgt_version=version,
+                  threat_cpa_horizon_s=25., threat_time_scale_s=4., threat_prior_strength=.5)
     settings = model_configuration(config, 115)
     original = make_model(33, settings, mean, std).eval()
     restored = make_model(33, settings).eval()
@@ -143,6 +147,11 @@ def test_factory_restores_heads_weighting_and_predictions():
     assert restored.messages[0].heads == 2
     assert restored.missile_distance_floor_m == 500.
     assert restored.missile_distance_power == 2.
+    assert restored.hgt_version == version
+    if version == 2:
+        assert restored.threat_cpa_horizon_s == 25.
+        assert restored.threat_time_scale_s == 4.
+        assert restored.messages[0].relation_family_gates
     assert restored.messages[0].query[0].weight is not restored.messages[0].query[2].weight
     with torch.no_grad():
         torch.testing.assert_close(original((raw - mean) / std), restored((raw - mean) / std),
