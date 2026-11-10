@@ -60,8 +60,12 @@ class _TypedMessageBlock(nn.Module):
 
 class _MissileTransformer(nn.Module):
     def __init__(self, num_classes=33, width=96, heads=6, layers=2, dropout=.25,
-                 input_features=115, mean=None, std=None, graph_width=64, graph_layers=2):
+                 input_features=115, mean=None, std=None, graph_width=64, graph_layers=2,
+                 observer_acceleration=False):
         super().__init__()
+        if not isinstance(observer_acceleration, bool):
+            raise ValueError("observer_acceleration must be boolean")
+        self.observer_acceleration = observer_acceleration
         if input_features != 82 + num_classes:
             raise ValueError("Expected notebook-17 features: 82 numeric plus one own-skill per class")
         if width < 1 or heads < 1 or width % heads or layers < 1:
@@ -103,7 +107,8 @@ class _MissileTransformer(nn.Module):
             raise ValueError(f"Expected (batch, 51, {self.input_features}) feature histories")
         x = windows.reshape(-1, self.input_features).float()
         raw = x * self.feature_std + self.feature_mean
-        slot_indices = torch.cat((torch.arange(19, 47, device=x.device),
+        offset = 3 if self.observer_acceleration else 0
+        slot_indices = torch.cat((torch.arange(19 - offset, 47 - offset, device=x.device),
                                   torch.arange(54, 82, device=x.device)))
         slots = raw[:, slot_indices].reshape(-1, 8, 7)
         # Comparing in standardised coordinates handles slot-specific statistics
@@ -113,9 +118,13 @@ class _MissileTransformer(nn.Module):
         tolerance = 8 * torch.finfo(x.dtype).eps * (1 + sentinel.abs())
         present = ((x[:, slot_indices] - sentinel).abs() > tolerance).reshape(-1, 8, 7).any(-1)
         slots = slots * present.unsqueeze(-1)
-        observer = torch.cat((raw[:, :9], raw[:, 18:19], raw[:, 47:49], raw[:, 82:]), -1)
-        # 51:54 is observed *opponent* acceleration, not observer acceleration.
-        opponent = torch.cat((raw[:, 9:18], raw[:, 49:54]), -1)
+        observer_parts = [raw[:, :9 - offset], raw[:, 18 - offset:19 - offset],
+                          raw[:, 47 - offset:49 - offset]]
+        if self.observer_acceleration:
+            observer_parts.append(raw[:, 51:54])
+        observer = torch.cat((*observer_parts, raw[:, 82:]), -1)
+        # Opponent acceleration follows the 51 original channels (48 in notebook 22).
+        opponent = torch.cat((raw[:, 9 - offset:18 - offset], raw[:, 49 - offset:54 - offset]), -1)
         aircraft = torch.stack((self.observer(observer), self.opponent(opponent)), 1)
         missiles = self.missile(slots)
         nodes = torch.cat((aircraft, missiles), 1)
@@ -172,10 +181,12 @@ class TypedGraphTransformer(_MissileTransformer):
 
     def _spatial(self, raw, slots, nodes, present):
         scale = raw.new_tensor([50000, 50000, 10000])
-        positions = torch.cat((torch.zeros_like(raw[:, None, 9:12]),
-                               raw[:, None, 9:12] * scale, slots[:, :, :3] * scale), 1)
-        own_velocity = raw[:, None, 3:6] * 600
-        velocities = torch.cat((own_velocity, own_velocity + raw[:, None, 12:15] * 600,
+        offset = 3 if self.observer_acceleration else 0
+        relative_position = raw[:, None, 9 - offset:12 - offset]
+        positions = torch.cat((torch.zeros_like(relative_position),
+                               relative_position * scale, slots[:, :, :3] * scale), 1)
+        own_velocity = raw[:, None, 3 - offset:6 - offset] * 600
+        velocities = torch.cat((own_velocity, own_velocity + raw[:, None, 12 - offset:15 - offset] * 600,
                                 own_velocity + slots[:, :, 3:6] * 1200), 1)
         delta_position = positions[:, self.sources] - positions[:, self.destinations]
         delta_velocity = velocities[:, self.sources] - velocities[:, self.destinations]

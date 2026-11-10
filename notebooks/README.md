@@ -1,5 +1,25 @@
 # Notebooks
 
+For observer acceleration in place of absolute observer North/West/Up position, run
+[22: prepare both-aircraft accelerations](22_prepare_observer_acceleration_enemy_missile_nn_duel_skill_forecasting.ipynb),
+then [23: train the typed graph](23_observer_acceleration_enemy_missile_graph_nn_duel_skill_forecasting.ipynb).
+These are counterparts to notebooks 17 and 20. Observer acceleration uses the same
+causal backward 0.5-second difference and 100 m/s² scale as opponent acceleration.
+The three position channels are removed; the other 48 original observations,
+both accelerations, four reconstructed enemy slots and own-skill indicators give
+115 features for the 33-skill catalogue. Splits, labels and non-overlapping training
+histories are preserved. The graph explicitly consumes observer acceleration in
+its observer node, with the correct shifted aircraft/friendly-missile channels.
+The distinct data contract prevents reusing notebook-17 caches with the same width.
+
+The new notebooks use `artifacts/nn_duel_observer_acceleration_enemy_missile_forecasting/`
+for data, receipts, runs and MLflow, preserving the original experiment outputs.
+Set `BVR_NN_OBSERVER_ACCELERATION_DATA` to override the prepared-data directory or
+`BVR_NN_OBSERVER_ACCELERATION_MLFLOW=0` to disable optional tracking. Notebook 23
+retains notebook 20's model, loss, three seeds and stopping/evaluation settings.
+Its checkpoints save `observer_acceleration=True` for correct factory reload.
+Run notebook 22 before 23; notebook 17 is not a prerequisite.
+
 For four additional enemy-missile slots, run
 [17_prepare_enemy_missile_nn_duel_skill_forecasting.ipynb](17_prepare_enemy_missile_nn_duel_skill_forecasting.ipynb),
 then train the three architectures using the same prepared dataset:

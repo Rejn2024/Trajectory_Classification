@@ -226,11 +226,15 @@ def save_diagnostics(run, data=None):
         samples = data.samples.iloc[ids].copy()
         samples.insert(0, "sample_index", ids)
         # Only origin-time occupancy; bounded gathers keep the large frame file on disk.
-        if data.features.shape[1] == 115:
+        if data.features.shape[1] in (115, 82 + len(classes)):
+            observer_acceleration = metadata.get("feature_names", [])[51:54] == [
+                f"observer_acceleration_{axis}" for axis in "nwu"]
+            offset = 3 if observer_acceleration else 0
             friendly, enemy = np.zeros(len(ids), bool), np.zeros(len(ids), bool)
             for start in range(0, len(ids), 4096):
                 origins = data.features[data.anchors[ids[start:start + 4096]]]
-                friendly[start:start + len(origins)] = np.any(origins[:, 19:47] != 0, axis=1)
+                friendly[start:start + len(origins)] = np.any(
+                    origins[:, 19 - offset:47 - offset] != 0, axis=1)
                 enemy[start:start + len(origins)] = np.any(origins[:, 54:82] != 0, axis=1)
             samples["friendly_missiles_present"] = friendly
             samples["enemy_missiles_present"] = enemy

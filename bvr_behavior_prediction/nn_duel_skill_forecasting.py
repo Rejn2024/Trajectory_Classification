@@ -22,6 +22,15 @@ from .paired_skill_forecasting import (
 DATA_CONTRACT = "nn-duel-own-skill-horizon-v1"
 NONOVERLAP_DATA_CONTRACT = "nn-duel-own-skill-nonoverlap-horizon-v1"
 ENEMY_MISSILE_DATA_CONTRACT = "nn-duel-own-skill-enemy-missile-nonoverlap-horizon-v1"
+OBSERVER_ACCELERATION_DATA_CONTRACT = "nn-duel-own-skill-enemy-missile-observer-acceleration-nonoverlap-horizon-v1"
+OBSERVER_ACCELERATION_FEATURES = [f"observer_acceleration_{axis}" for axis in "nwu"]
+OBSERVER_ACCELERATION_POLICY = {
+    "replaces": [f"observer_obs_{i:02d}" for i in range(3)],
+    "source": "observer velocity obs_03 through obs_05, restored with 600 m/s scale",
+    "difference_steps": 5, "difference_seconds": .5,
+    "initial_frames": "use available past interval; frame zero acceleration is zero",
+    "acceleration_scale_mps2": 100,
+}
 MISSILE_FIELDS = ("relative_position_n", "relative_position_w", "relative_position_u",
                   "relative_velocity_n", "relative_velocity_w", "relative_velocity_u", "range")
 ENEMY_MISSILE_FEATURES = [f"observer_enemy_missile_{slot}_{field}"
@@ -49,10 +58,24 @@ NONOVERLAP_POLICY = {
 }
 
 
-def feature_names(classes, enemy_missiles=False):
-    return ([f"observer_{name}" for name in BASE_FEATURES]
+def feature_names(classes, enemy_missiles=False, observer_acceleration=False):
+    numeric = [f"observer_{name}" for name in BASE_FEATURES]
+    if observer_acceleration:
+        numeric = numeric[3:] + OBSERVER_ACCELERATION_FEATURES
+    return (numeric
             + (ENEMY_MISSILE_FEATURES if enemy_missiles else [])) + [
         f"own_skill::{name}" for name in classes]
+
+
+def observer_acceleration_features(raw):
+    """Same causal 0.5-second difference and /100 scale as opponent acceleration."""
+    raw = np.asarray(raw, dtype=np.float32)
+    if raw.ndim != 2 or raw.shape[1] != len(OBS_COLUMNS) or not np.isfinite(raw).all():
+        raise ValueError("Expected finite (frames, 51) observations")
+    velocity = raw[:, 3:6].astype(np.float64) * 600
+    previous = np.maximum(0, np.arange(len(raw)) - 5)
+    elapsed = np.maximum(1, np.arange(len(raw)) - previous) * DT
+    return ((velocity - velocity[previous]) / elapsed[:, None] / 100).astype(np.float32)
 
 
 def reconstruct_enemy_missiles(observer_raw, opposite_raw):
@@ -420,16 +443,20 @@ def nonoverlap_audit(samples):
 
 
 def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
-                    nonoverlapping_train=False, enemy_missiles=False):
+                    nonoverlapping_train=False, enemy_missiles=False, observer_acceleration=False):
     """Write immutable frames, labels, grouped splits and training-only scaling.
 
     Optional thinning applies only to training, after the original split is fixed.
     Test/validation examples and scenario assignments match the dense preparation.
+    observer_acceleration replaces the first three absolute-position channels
+    with three causal observer-acceleration channels before the enemy slots.
     """
     if not isinstance(nonoverlapping_train, bool):
         raise ValueError("nonoverlapping_train must be boolean")
     if not isinstance(enemy_missiles, bool) or (enemy_missiles and not nonoverlapping_train):
         raise ValueError("enemy_missiles must be boolean and requires non-overlapping training")
+    if not isinstance(observer_acceleration, bool) or (observer_acceleration and not enemy_missiles):
+        raise ValueError("observer_acceleration must be boolean and requires enemy_missiles")
     root, output = Path(root).resolve(), Path(output)
     if output.exists() and any(output.iterdir()):
         raise ValueError("Choose an empty output directory or load the existing prepared dataset")
@@ -439,7 +466,7 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
         raise ValueError("Source manifest changed; rerun the corpus analysis")
     source_manifest = read_json(source / "manifest.json")
     episodes, classes = analysis["episodes"].copy(), analysis["classes"]
-    names = feature_names(classes, enemy_missiles)
+    names = feature_names(classes, enemy_missiles, observer_acceleration)
     numeric_features = len(BASE_FEATURES) + (len(ENEMY_MISSILE_FEATURES) if enemy_missiles else 0)
     groups = split_scenarios(analysis, split_seed)
     episodes["split"] = episodes.scenario_group.map(lambda name: groups[name]["split"])
@@ -453,6 +480,10 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
     missile_rows = []
     for index, row, (frame, ends, target) in _episodes(
             source, {**source_manifest, "classes": classes}, episodes, enemy_missiles=enemy_missiles):
+        if observer_acceleration:
+            acceleration = observer_acceleration_features(frame[:, :len(OBS_COLUMNS)])
+            frame = np.concatenate([frame[:, 3:len(BASE_FEATURES)], acceleration,
+                                    frame[:, len(BASE_FEATURES):]], axis=1)
         features[offset:offset + len(frame)] = frame
         if enemy_missiles:
             slots = frame[:, len(BASE_FEATURES):numeric_features].reshape(-1, 4, 7)
@@ -520,7 +551,8 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
     except ValueError:
         source_name = str(source)
     manifest = {
-        "data_contract": (ENEMY_MISSILE_DATA_CONTRACT if enemy_missiles else
+        "data_contract": (OBSERVER_ACCELERATION_DATA_CONTRACT if observer_acceleration else
+                          ENEMY_MISSILE_DATA_CONTRACT if enemy_missiles else
                           NONOVERLAP_DATA_CONTRACT if nonoverlapping_train else DATA_CONTRACT),
         "classes": classes, "features": names,
         "history_steps": HISTORY_STEPS, "raw_history_steps": RAW_HISTORY_STEPS,
@@ -551,6 +583,9 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
         manifest["enemy_missiles"] = dict(ENEMY_MISSILE_POLICY)
         manifest["own_skill_start_index"] = numeric_features
         manifest["input_contract"] += " and four same-time observer-relative enemy missile slots"
+    if observer_acceleration:
+        manifest["observer_acceleration"] = dict(OBSERVER_ACCELERATION_POLICY)
+        manifest["input_contract"] += "; observer absolute position omitted, causal observer acceleration added"
     manifest["files"] = {p.name: sha256(p) for p in sorted(output.iterdir()) if p.is_file()}
     write_json(output / "manifest.json", manifest)
     return manifest
@@ -561,12 +596,14 @@ class NNDuelData(PairedData):
 
     data_contract = DATA_CONTRACT
     enemy_missiles = False
+    observer_acceleration = False
     numeric_features = len(BASE_FEATURES)
 
     def __init__(self, directory):
         manifest = read_json(Path(directory) / "manifest.json")
         if (manifest.get("data_contract") != self.data_contract
-                or manifest.get("features") != feature_names(manifest["classes"], self.enemy_missiles)
+                or manifest.get("features") != feature_names(
+                    manifest["classes"], self.enemy_missiles, self.observer_acceleration)
                 or manifest.get("history_steps") != HISTORY_STEPS
                 or tuple(manifest.get("horizons_s", ())) != HORIZONS):
             raise ValueError(f"Expected own-skill-conditioned NN duel dataset: {self.data_contract}")
@@ -614,3 +651,15 @@ class EnemyMissileNNDuelData(NonoverlappingNNDuelData):
         if (self.manifest.get("enemy_missiles") != ENEMY_MISSILE_POLICY
                 or self.manifest.get("own_skill_start_index") != self.numeric_features):
             raise ValueError("Expected the notebook-17 enemy-missile feature contract")
+
+
+class ObserverAccelerationEnemyMissileNNDuelData(EnemyMissileNNDuelData):
+    """Notebook-22: replace observer position with causal observer acceleration."""
+
+    data_contract = OBSERVER_ACCELERATION_DATA_CONTRACT
+    observer_acceleration = True
+
+    def __init__(self, directory):
+        super().__init__(directory)
+        if self.manifest.get("observer_acceleration") != OBSERVER_ACCELERATION_POLICY:
+            raise ValueError("Expected the notebook-22 causal observer-acceleration policy")

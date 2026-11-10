@@ -750,6 +750,8 @@ def model_configuration(config, input_features):
     if name != "transformer":
         result.update(architecture=name, graph_width=config.get("graph_width", 64),
                       graph_layers=config.get("graph_layers", 2))
+        if config.get("observer_acceleration", False):
+            result["observer_acceleration"] = True
     return result
 
 
@@ -994,10 +996,19 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
     architecture = model_configuration(config, len(feature_names))
     architecture_name = config.get("architecture", "transformer")
     if architecture_name != "transformer":
-        from .nn_duel_skill_forecasting import ENEMY_MISSILE_DATA_CONTRACT, feature_names as enemy_names
-        if (data_manifest.get("data_contract") != ENEMY_MISSILE_DATA_CONTRACT
-                or feature_names != enemy_names(data.classes, enemy_missiles=True)):
-            raise ValueError("Missile models require notebook 17's enemy-missile dataset contract")
+        from .nn_duel_skill_forecasting import (
+            ENEMY_MISSILE_DATA_CONTRACT, OBSERVER_ACCELERATION_DATA_CONTRACT,
+            feature_names as enemy_names,
+        )
+        observer_acceleration = config.get("observer_acceleration", False)
+        expected_contract = (OBSERVER_ACCELERATION_DATA_CONTRACT if observer_acceleration
+                             else ENEMY_MISSILE_DATA_CONTRACT)
+        if (not isinstance(observer_acceleration, bool)
+                or data_manifest.get("data_contract") != expected_contract
+                or feature_names != enemy_names(data.classes, enemy_missiles=True,
+                                                observer_acceleration=observer_acceleration)):
+            raise ValueError("Missile models require the matching notebook 17 or 22 enemy-missile "
+                             "dataset contract and observer_acceleration setting")
     base_model = make_model(len(data.classes), architecture, data.mean, data.std).to(device)
     model = execution_model(base_model, config)
     optimizer = torch.optim.AdamW(base_model.parameters(), lr=config["learning_rate"],
