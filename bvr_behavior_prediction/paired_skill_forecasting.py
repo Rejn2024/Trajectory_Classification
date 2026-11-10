@@ -667,7 +667,8 @@ class BatchPipeline:
         elif self.backend == "prefetch":
             self.sampler = OrderedBatches()
             self.sampler.set_order([], 1)
-            dataset = WindowDataset(data.directory, data.mean, data.std, len(data.targets))
+            dataset = WindowDataset(getattr(data, "frame_directory", data.directory),
+                                    data.mean, data.std, len(data.targets))
             workers = config["num_workers"]
             options = {"num_workers": workers, "pin_memory": self.device.type == "cuda",
                        "persistent_workers": workers > 0,
@@ -741,10 +742,10 @@ class PairedTransformer(nn.Module):
         return self.head(self.norm(encoded[:, -1])).reshape(-1, 3, self.num_classes)
 
 
-def model_configuration(config, input_features):
+def model_configuration(config, input_features, skill_hierarchy=None):
     """Keep historical Transformer checkpoint configuration compatible."""
     name = config.get("architecture", "transformer")
-    if name not in ("transformer", "missile_set", "typed_graph", "hgt"):
+    if name not in ("transformer", "missile_set", "typed_graph", "hgt", "hgt_intent", "hgt_hierarchical_intent"):
         raise ValueError(f"Unknown forecasting architecture: {name}")
     result = {k: config[k] for k in ("width", "heads", "layers", "dropout")}
     result["input_features"] = input_features
@@ -757,15 +758,24 @@ def model_configuration(config, input_features):
             result["target_relative_missiles"] = True
         if config.get("target_relative_missile_velocities", False):
             result["target_relative_missile_velocities"] = True
-        if name == "hgt":
+        if name in ("hgt", "hgt_intent", "hgt_hierarchical_intent"):
             result.update(graph_heads=config.get("graph_heads", 4),
                           missile_distance_floor_m=config.get("missile_distance_floor_m", 1000.0),
                           missile_distance_power=config.get("missile_distance_power", 1.0))
-            if config.get("hgt_version", 1) != 1:
-                result.update(hgt_version=config["hgt_version"],
+            version = config.get("hgt_version", 1 if name == "hgt" else 2)
+            if version != 1:
+                result.update(hgt_version=version,
                               threat_cpa_horizon_s=config.get("threat_cpa_horizon_s", 30.0),
                               threat_time_scale_s=config.get("threat_time_scale_s", 5.0),
                               threat_prior_strength=config.get("threat_prior_strength", 1.0))
+            if name in ("hgt_intent", "hgt_hierarchical_intent"):
+                result["num_intents"] = 3
+                result["hgt_version"] = version
+            if name == "hgt_hierarchical_intent":
+                hierarchy = skill_hierarchy if skill_hierarchy is not None else config.get("skill_hierarchy")
+                if hierarchy is None:
+                    raise ValueError("Hierarchical model requires notebook-26 family/direction mapping")
+                result["skill_hierarchy"] = hierarchy
     return result
 
 
@@ -775,9 +785,13 @@ def make_model(num_classes, model_config, mean=None, std=None):
     name = settings.pop("architecture", "transformer")
     if name == "transformer":
         return PairedTransformer(num_classes=num_classes, **settings)
-    from .enemy_missile_models import HGTTransformer, MissileSetTransformer, TypedGraphTransformer
+    from .enemy_missile_models import (
+        HGTHierarchicalIntentTransformer, HGTIntentTransformer, HGTTransformer,
+        MissileSetTransformer, TypedGraphTransformer,
+    )
     constructors = {"missile_set": MissileSetTransformer, "typed_graph": TypedGraphTransformer,
-                    "hgt": HGTTransformer}
+                    "hgt": HGTTransformer, "hgt_intent": HGTIntentTransformer,
+                    "hgt_hierarchical_intent": HGTHierarchicalIntentTransformer}
     if name not in constructors:
         raise ValueError(f"Unknown forecasting architecture: {name}")
     return constructors[name](num_classes=num_classes, mean=mean, std=std, **settings)
@@ -841,7 +855,49 @@ def masked_loss(logits, targets, class_weights=None):
     return (per_horizon * active).sum() / active.sum().clamp_min(1)
 
 
-def metric_tables(targets, probabilities, classes, split, losses=None):
+def masked_intent_loss(skill_logits, intent_logits, targets, mapping, intent_loss_weight, class_weights=None):
+    """Equal-horizon masked skill CE plus an unweighted auxiliary intent CE."""
+    intent_targets = torch.where(targets >= 0, mapping[targets.clamp_min(0)], -1)
+    skill_loss = masked_loss(skill_logits, targets, class_weights)
+    intent_loss = masked_loss(intent_logits, intent_targets)
+    return skill_loss + intent_loss_weight * intent_loss
+
+
+def hierarchical_target_losses(family_logits, direction_logits, targets, mapping):
+    """Per-example family and direction CE, using the TRUE family; missing/nonpaired direction=-1."""
+    valid = targets >= 0
+    family_y = torch.where(valid, mapping["family"][targets.clamp_min(0)], -1)
+    pair = mapping["pair"][targets.clamp_min(0)]
+    direction_y = torch.where(valid & (pair >= 0), mapping["direction"][targets.clamp_min(0)], -1)
+    family_ce = nn.functional.cross_entropy(family_logits.float().transpose(1, 2), family_y,
+                                            ignore_index=-1, reduction="none")
+    if direction_logits.shape[2]:
+        selected = direction_logits.gather(2, pair.clamp_min(0)[:, :, None, None].expand(-1, -1, 1, 2)).squeeze(2)
+        direction_ce = nn.functional.cross_entropy(selected.float().transpose(1, 2), direction_y,
+                                                   ignore_index=-1, reduction="none")
+    else:
+        selected = family_logits.new_zeros((*targets.shape, 2))
+        direction_ce = torch.zeros_like(family_ce)
+    return family_ce, direction_ce, family_y, direction_y, selected
+
+
+def masked_hierarchical_skill_loss(family_logits, direction_logits, targets, mapping, class_weights=None):
+    family_ce, direction_ce, _, _, _ = hierarchical_target_losses(family_logits, direction_logits, targets, mapping)
+    combined = family_ce + direction_ce
+    if class_weights is not None:
+        combined = combined * class_weights.gather(1, targets.clamp_min(0).T).T
+    counts = (targets >= 0).sum(0)
+    represented = counts > 0
+    # Normalize both terms over ALL valid skill labels, not just the directional subset.
+    return (combined.sum(0) / counts.clamp_min(1) * represented).sum() / represented.sum().clamp_min(1)
+
+
+def hierarchy_mapping_tensors(policy, device):
+    return {name: torch.tensor(policy[f"skill_to_{name}"], dtype=torch.long, device=device)
+            for name in ("family", "pair", "direction")}
+
+
+def metric_tables(targets, probabilities, classes, split, losses=None, allow_empty=False):
     """Per-true-class NLL and F1. Unsupported classes have NaN NLL and zero F1."""
     summary, per_class, matrices = [], [], []
     c = len(classes)
@@ -849,6 +905,15 @@ def metric_tables(targets, probabilities, classes, split, losses=None):
         valid = targets[:, h] >= 0
         y, p = targets[valid, h], probabilities[valid, h]
         if not len(y):
+            if allow_empty:
+                summary.append({"split": split, "horizon_s": horizon, "count": 0,
+                                "nll": np.nan, "accuracy": np.nan, "macro_f1": 0.,
+                                "supported_macro_f1": np.nan, "weighted_f1": np.nan})
+                per_class.extend({"split": split, "horizon_s": horizon, "skill": name,
+                                  "support": 0, "class_nll": np.nan, "precision": 0., "recall": 0., "f1": 0.}
+                                 for name in classes)
+                matrices.append(np.zeros((c, c), dtype=np.int64))
+                continue
             raise ValueError(f"No labels for {split}, +{horizon}s")
         pred = p.argmax(-1)
         nll = (-np.log(np.maximum(p[np.arange(len(y)), y], 1e-30)) if losses is None
@@ -875,12 +940,20 @@ def metric_tables(targets, probabilities, classes, split, losses=None):
 
 @torch.inference_mode()
 def evaluate(model, data, split, device, batch_size=1024, precision="fp32", pipeline=None,
-             class_weights=None, evaluation_precision=None, evaluation_attention="auto"):
+             class_weights=None, evaluation_precision=None, evaluation_attention="auto", intent_loss_weight=0.0):
     if evaluation_precision is not None:
         precision = resolve_precision(device, evaluation_precision)
     model.eval()
     ids = data.indices[split]
     probabilities, losses = [], []
+    multitask = getattr(model, "num_intents", 0) == 3
+    intent_probabilities, intent_losses = [], []
+    hierarchical = hasattr(model, "num_families")
+    family_probabilities, family_losses, direction_probabilities, direction_losses = [], [], [], []
+    if hierarchical:
+        hierarchy_mapping = {"family": model.skill_family_index,
+                             "pair": torch.where(model.directional_skills, model.skill_pair_index, -1),
+                             "direction": model.skill_direction_index}
     batches = (pipeline.batches(ids, batch_size) if pipeline is not None else
                (data.batch(ids[start:start + batch_size], device)
                 for start in range(0, len(ids), batch_size)))
@@ -894,7 +967,13 @@ def evaluate(model, data, split, device, batch_size=1024, precision="fp32", pipe
                                          data, precision, evaluation_attention)
             check(x, "inputs")
             with autocast_context(device, precision):
-                logits = model(x)
+                if hierarchical:
+                    hierarchy_output = model(x, return_hierarchy=True)
+                    logits, intent_logits = hierarchy_output["skill_log_probs"], hierarchy_output["intent_logits"]
+                elif multitask:
+                    logits, intent_logits = model(x, return_intent=True)
+                else:
+                    logits = model(x)
             logits = logits.float()  # Probabilities, CE and reporting always use FP32.
             check(logits, "logits")
             ce = nn.functional.cross_entropy(logits.reshape(-1, model.num_classes),
@@ -904,6 +983,29 @@ def evaluate(model, data, split, device, batch_size=1024, precision="fp32", pipe
             check(p, "probabilities")
             losses.append(ce.cpu().numpy())
             probabilities.append(p.cpu().numpy())
+            if hierarchical:
+                family_logits, direction_logits = hierarchy_output["family_logits"], hierarchy_output["direction_logits"]
+                check(family_logits, "family_logits")
+                check(direction_logits, "direction_logits")
+                family_ce, direction_ce, _, _, selected = hierarchical_target_losses(
+                    family_logits, direction_logits, y, hierarchy_mapping)
+                check(family_ce, "family_loss")
+                check(direction_ce, "direction_loss")
+                family_probabilities.append(family_logits.float().softmax(-1).cpu().numpy())
+                direction_probabilities.append(selected.float().softmax(-1).cpu().numpy())
+                family_losses.append(family_ce.cpu().numpy())
+                direction_losses.append(direction_ce.cpu().numpy())
+            if multitask:
+                intent_logits = intent_logits.float()
+                intent_y = torch.as_tensor(data.intent_targets[sample_ids], dtype=torch.long, device=device)
+                check(intent_logits, "intent_logits")
+                intent_ce = nn.functional.cross_entropy(intent_logits.flatten(0, 1), intent_y.flatten(),
+                                                         ignore_index=-1, reduction="none").reshape(-1, 3)
+                intent_p = intent_logits.softmax(-1)
+                check(intent_ce, "intent_loss")
+                check(intent_p, "intent_probabilities")
+                intent_losses.append(intent_ce.cpu().numpy())
+                intent_probabilities.append(intent_p.cpu().numpy())
     p, loss = np.concatenate(probabilities), np.concatenate(losses)
     targets = data.targets[ids]
     summary, scores, cm = metric_tables(targets, p, data.classes, split, loss)
@@ -913,8 +1015,26 @@ def evaluate(model, data, split, device, batch_size=1024, precision="fp32", pipe
     if class_weights is not None:
         weighted = loss.astype(np.float64) * np.asarray(class_weights)[np.arange(len(HORIZONS)), np.maximum(targets, 0)]
         data_loss = float((weighted.sum(0) / (targets >= 0).sum(0)).mean())
-    return {"summary": summary, "per_class": scores, "confusion": cm,
-            "probabilities": p, "targets": targets, "sample_indices": ids, "data_loss": data_loss}
+    result = {"summary": summary, "per_class": scores, "confusion": cm,
+              "probabilities": p, "targets": targets, "sample_indices": ids, "data_loss": data_loss}
+    if multitask:
+        intent_p, intent_ce = np.concatenate(intent_probabilities), np.concatenate(intent_losses)
+        intent_y = data.intent_targets[ids]
+        intent_summary, intent_scores, intent_cm = metric_tables(intent_y, intent_p, data.intent_classes, split, intent_ce)
+        result["intent"] = {"summary": intent_summary, "per_class": intent_scores, "confusion": intent_cm,
+                            "probabilities": intent_p, "targets": intent_y, "sample_indices": ids, "losses": intent_ce}
+        result["skill_data_loss"] = data_loss
+        result["data_loss"] += intent_loss_weight * float(intent_summary.nll.mean())
+    if hierarchical:
+        for name, prob, ce, labels, classes in (
+            ("family", family_probabilities, family_losses, data.family_targets, data.family_classes),
+            ("direction", direction_probabilities, direction_losses, data.direction_targets, data.direction_classes),
+        ):
+            prob, ce, labels = np.concatenate(prob), np.concatenate(ce), labels[ids]
+            table, per_class, matrix = metric_tables(labels, prob, classes, split, ce, allow_empty=name == "direction")
+            result[name] = {"summary": table, "per_class": per_class, "confusion": matrix,
+                            "probabilities": prob, "targets": labels, "sample_indices": ids, "losses": ce}
+    return result
 
 
 def atomic_checkpoint(path, payload):
@@ -941,11 +1061,24 @@ def l1_penalty(model):
 
 
 def fit_batch(model, optimizer, x, y, device, precision, gradient_clip, l1_lambda=0.0,
-              class_weights=None):
+              class_weights=None, intent_mapping=None, intent_loss_weight=0.0, hierarchy_mapping=None):
     optimizer.zero_grad(set_to_none=True)
     with autocast_context(device, precision):
-        logits = model(x)
-    loss = masked_loss(logits, y, class_weights)
+        if hierarchy_mapping is not None:
+            hierarchy = model(x, return_hierarchy=True)
+            logits, intent_logits = hierarchy["skill_log_probs"], hierarchy["intent_logits"]
+        elif intent_mapping is not None:
+            logits, intent_logits = model(x, return_intent=True)
+        else:
+            logits = model(x)
+    if hierarchy_mapping is not None:
+        loss = masked_hierarchical_skill_loss(hierarchy["family_logits"], hierarchy["direction_logits"],
+                                              y, hierarchy_mapping, class_weights)
+        intent_targets = torch.where(y >= 0, intent_mapping[y.clamp_min(0)], -1)
+        loss = loss + intent_loss_weight * masked_loss(intent_logits, intent_targets)
+    else:
+        loss = (masked_intent_loss(logits, intent_logits, y, intent_mapping, intent_loss_weight, class_weights)
+                if intent_mapping is not None else masked_loss(logits, y, class_weights))
     if l1_lambda:
         loss = loss + l1_lambda * l1_penalty(model)
     if not torch.isfinite(loss):
@@ -1001,6 +1134,15 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
     from .paired_skill_tracking import RunTracker
 
     config = {**DEFAULT_TRAINING, **(config or {})}
+    multitask = config.get("architecture") in ("hgt_intent", "hgt_hierarchical_intent")
+    hierarchical = config.get("architecture") == "hgt_hierarchical_intent"
+    if multitask:
+        config.setdefault("intent_loss_weight", .25)
+    intent_loss_weight = config.get("intent_loss_weight", 0.0)
+    if (isinstance(intent_loss_weight, bool) or not isinstance(intent_loss_weight, (int, float))
+            or not math.isfinite(intent_loss_weight) or intent_loss_weight < 0
+            or (not multitask and intent_loss_weight != 0)):
+        raise ValueError("intent_loss_weight must be finite/nonnegative and requires an intent architecture")
     schedule_settings = learning_rate_schedule_settings(config)
     if config["evaluation_precision"] not in {"fp32", "bf16"}:
         raise ValueError("evaluation_precision must be fp32 or bf16")
@@ -1048,7 +1190,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
     evaluation_precision = resolve_precision(device, config["evaluation_precision"])
     data_manifest = getattr(data, "manifest", {})
     feature_names = list(data_manifest.get("features", FEATURES))
-    architecture = model_configuration(config, len(feature_names))
+    architecture = model_configuration(config, len(feature_names), data_manifest.get("skill_hierarchy"))
     architecture_name = config.get("architecture", "transformer")
     if architecture_name != "transformer":
         from .nn_duel_skill_forecasting import (
@@ -1062,6 +1204,15 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
         expected_contract = (TARGET_RELATIVE_MISSILE_DATA_CONTRACT if target_relative_missiles else
                              OBSERVER_ACCELERATION_DATA_CONTRACT if observer_acceleration
                              else ENEMY_MISSILE_DATA_CONTRACT)
+        if multitask:
+            from .skill_intent_forecasting import INTENT_DATA_CONTRACT, hierarchy_policy, intent_policy
+            expected_contract = INTENT_DATA_CONTRACT
+            if (data_manifest.get("intent_supervision") != intent_policy(data.classes)
+                    or not hasattr(data, "intent_targets") or not target_relative_missiles):
+                raise ValueError("Intent training requires the verified notebook-26 intent dataset and taxonomy")
+            if hierarchical and (data_manifest.get("skill_hierarchy") != hierarchy_policy(data.classes)
+                                 or not hasattr(data, "family_targets") or not hasattr(data, "direction_targets")):
+                raise ValueError("Hierarchical training requires notebook-26 v2 family/direction supervision")
         if (not isinstance(observer_acceleration, bool)
                 or not isinstance(target_relative_missiles, bool)
                 or not isinstance(target_relative_missile_velocities, bool)
@@ -1075,6 +1226,11 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                              "observer_acceleration/target_relative_missiles/"
                              "target_relative_missile_velocities settings")
     base_model = make_model(len(data.classes), architecture, data.mean, data.std).to(device)
+    intent_options = ({"intent_mapping": torch.tensor(
+        data_manifest["intent_supervision"]["skill_to_intent"], dtype=torch.long, device=device),
+                       "intent_loss_weight": intent_loss_weight} if multitask else {})
+    if hierarchical:
+        intent_options["hierarchy_mapping"] = hierarchy_mapping_tensors(data_manifest["skill_hierarchy"], device)
     model = execution_model(base_model, config)
     optimizer = torch.optim.AdamW(base_model.parameters(), lr=config["learning_rate"],
                                   weight_decay=config["weight_decay"])
@@ -1113,6 +1269,13 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
            "effective_evaluation_precision": evaluation_precision,
            "evaluation_attention": config["evaluation_attention"],
            "class_weighting": class_weighting, "learning_rate_schedule": schedule_metadata}
+    if multitask:
+        run["intent_supervision"] = data_manifest["intent_supervision"]
+        run["intent_source_sha256"] = sha256(Path(__file__).with_name("skill_intent_forecasting.py"))
+        run["training_objective"] = "weighted skill CE + intent_loss_weight * unweighted intent CE + L1"
+    if hierarchical:
+        run["skill_hierarchy"] = data_manifest["skill_hierarchy"]
+        run["training_objective"] = "leaf-weighted (family CE + paired-direction CE) + intent_loss_weight * intent CE + L1"
     history, best, best_epoch, first = [], float("inf"), 0, 1
     epochs_without_improvement, stopped_early = 0, False
     overtraining_epochs, train_nll_at_best, stop_reason = 0, None, None
@@ -1121,7 +1284,8 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
         if any(saved_run[k] != run[k] for k in ("training", "model", "classes",
                                                "data_manifest_sha256", "source_sha256", "tracking_source_sha256",
                                                "class_weighting")) or (
-                saved_run.get("architecture_source_sha256") != run["architecture_source_sha256"]):
+                saved_run.get("architecture_source_sha256") != run["architecture_source_sha256"]
+                or saved_run.get("intent_source_sha256") != run.get("intent_source_sha256")):
             raise ValueError("Resume requires the same configuration, data and source")
         saved = torch.load(output / "last.pt", map_location=device, weights_only=False)
         base_model.load_state_dict(saved["model_state"])
@@ -1158,6 +1322,11 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
         if architecture_name != "transformer":
             shutil.copy2(Path(__file__).with_name("enemy_missile_models.py"),
                          output / "architecture_source.py")
+        if multitask:
+            shutil.copy2(Path(__file__).with_name("skill_intent_forecasting.py"), output / "intent_source.py")
+            write_json(output / "intent_policy.json", data_manifest["intent_supervision"])
+        if hierarchical:
+            write_json(output / "skill_hierarchy.json", data_manifest["skill_hierarchy"])
     with RunTracker(output, tracking) as tracker:
         tracker.begin(run, data)
         tracker.backfill()
@@ -1178,7 +1347,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                 for x, y in pipeline.batches(order, config["batch_size"]):
                     learning_rate_used = optimizer.param_groups[0]["lr"]
                     fit_batch(model, optimizer, x, y, device, precision, config["gradient_clip"],
-                              config["l1_lambda"], weights)
+                              config["l1_lambda"], weights, **intent_options)
                     optimizer_steps += 1
                     if scheduler is not None:
                         scheduler.step()
@@ -1186,6 +1355,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                     results = [evaluate(model, data, s, device, config["evaluation_batch_size"],
                                         precision=evaluation_precision, pipeline=pipeline,
                                         evaluation_attention=config["evaluation_attention"],
+                                        **({"intent_loss_weight": intent_loss_weight} if multitask else {}),
                                         class_weights=class_weighting["weights"]
                                         if class_weighting is not None and s == "train" else None)
                                for s in ("train", "test")]
@@ -1236,6 +1406,17 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                        "test_macro_f1": float(results[1]["summary"].macro_f1.mean()),
                        "improved": improved, "epochs_without_improvement": epochs_without_improvement,
                        "early_stopped": stopped_early, "seconds": time.perf_counter() - started}
+                if multitask:
+                    row.update(train_skill_data_loss=results[0]["skill_data_loss"],
+                               train_intent_nll=float(results[0]["intent"]["summary"].nll.mean()),
+                               test_intent_nll=float(results[1]["intent"]["summary"].nll.mean()),
+                               train_intent_accuracy=float(results[0]["intent"]["summary"].accuracy.mean()),
+                               test_intent_accuracy=float(results[1]["intent"]["summary"].accuracy.mean()))
+                if hierarchical:
+                    row.update(train_family_nll=float(results[0]["family"]["summary"].nll.mean()),
+                               test_family_nll=float(results[1]["family"]["summary"].nll.mean()),
+                               train_direction_nll=float(results[0]["direction"]["summary"].nll.mean()),
+                               test_direction_nll=float(results[1]["direction"]["summary"].nll.mean()))
                 history.append(row)
                 scores.to_csv(output / "epochs" / f"epoch_{epoch:03d}_per_class.csv", index=False)
                 summary.to_csv(output / "epochs" / f"epoch_{epoch:03d}_summary.csv", index=False)
@@ -1262,6 +1443,10 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                            "evaluation_attention": config["evaluation_attention"],
                            "torch_rng": torch.get_rng_state(), "data_manifest_sha256": manifest_hash,
                            "cuda_rng": torch.cuda.get_rng_state_all() if device.type == "cuda" else None}
+                if multitask:
+                    payload["intent_supervision"] = data_manifest["intent_supervision"]
+                if hierarchical:
+                    payload["skill_hierarchy"] = data_manifest["skill_hierarchy"]
                 if improved:
                     path = output / "checkpoints" / f"epoch_{epoch:03d}.pt"
                     atomic_checkpoint(path, payload)
@@ -1326,7 +1511,9 @@ def final_evaluation(data, output, device=None, tracking=None):
             try:
                 results = {s: evaluate(model, data, s, device, config["evaluation_batch_size"],
                                        precision=evaluation_precision, pipeline=pipeline,
-                                       evaluation_attention=evaluation_attention) for s in SPLITS}
+                                       evaluation_attention=evaluation_attention,
+                                       **({"intent_loss_weight": config["intent_loss_weight"]}
+                                          if config.get("architecture") in ("hgt_intent", "hgt_hierarchical_intent") else {})) for s in SPLITS}
             except NonfiniteEvaluationError as error:
                 error.details.update(epoch=saved["epoch"], phase="final_evaluation")
                 write_json(output / "nonfinite_evaluation.json", error.details)
@@ -1338,6 +1525,30 @@ def final_evaluation(data, output, device=None, tracking=None):
         for split, result in results.items():
             np.savez_compressed(output / f"final_{split}.npz", **{
                 k: result[k] for k in ("probabilities", "targets", "sample_indices", "confusion")})
+        if config.get("architecture") in ("hgt_intent", "hgt_hierarchical_intent"):
+            intent_summary = pd.concat([r["intent"]["summary"] for r in results.values()], ignore_index=True)
+            intent_scores = pd.concat([r["intent"]["per_class"] for r in results.values()], ignore_index=True)
+            intent_summary.to_csv(output / "final_intent_metrics.csv", index=False)
+            intent_scores.to_csv(output / "final_intent_per_class.csv", index=False)
+            for split, result in results.items():
+                np.savez_compressed(output / f"final_intent_{split}.npz", **{
+                    k: result["intent"][k] for k in ("probabilities", "targets", "sample_indices", "confusion", "losses")})
+            tracker.metrics({f"final/intent/{row.split}/h{int(row.horizon_s)}/{key}": float(getattr(row, key))
+                             for row in intent_summary.itertuples() for key in ("nll", "accuracy", "macro_f1")}, saved["epoch"])
+        if config.get("architecture") == "hgt_hierarchical_intent":
+            for name in ("family", "direction"):
+                tables = pd.concat([r[name]["summary"] for r in results.values()], ignore_index=True)
+                per_class = pd.concat([r[name]["per_class"] for r in results.values()], ignore_index=True)
+                if name == "direction":
+                    tables["conditioning"] = "true mirrored family; singletons/missing masked"
+                    per_class["conditioning"] = "true mirrored family; singletons/missing masked"
+                tables.to_csv(output / f"final_{name}_metrics.csv", index=False)
+                per_class.to_csv(output / f"final_{name}_per_class.csv", index=False)
+                for split, result in results.items():
+                    np.savez_compressed(output / f"final_{name}_{split}.npz", **{
+                        k: result[name][k] for k in ("probabilities", "targets", "sample_indices", "confusion", "losses")})
+                tracker.metrics({f"final/{name}/{row.split}/h{int(row.horizon_s)}/{key}": float(getattr(row, key))
+                                 for row in tables.itertuples() for key in ("nll", "accuracy", "macro_f1")}, saved["epoch"])
         write_json(output / "selection.json", {"epoch": saved["epoch"], "test_nll": saved["test_nll"],
                                                "validation_used_for_selection": False})
         tracker.final(saved["epoch"], summary, scores)
@@ -1356,6 +1567,12 @@ def benchmark_batches(data, config=None, device=None, batch_sizes=(512, 1024),
     if warmup < 1 or repeats < 1 or not batch_sizes or any(b < 1 for b in batch_sizes):
         raise ValueError("Use positive batch sizes and at least one warmup/repetition")
     device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    intent_options = ({"intent_mapping": torch.tensor(data.manifest["intent_supervision"]["skill_to_intent"],
+                                                      dtype=torch.long, device=device),
+                       "intent_loss_weight": config.get("intent_loss_weight", .25)}
+                      if config.get("architecture") in ("hgt_intent", "hgt_hierarchical_intent") else {})
+    if config.get("architecture") == "hgt_hierarchical_intent":
+        intent_options["hierarchy_mapping"] = hierarchy_mapping_tensors(data.manifest["skill_hierarchy"], device)
     class_weighting = fit_class_weighting(data, config)
     weights = (None if class_weighting is None else
                torch.tensor(class_weighting["weights"], dtype=torch.float32, device=device))
@@ -1376,7 +1593,8 @@ def benchmark_batches(data, config=None, device=None, batch_sizes=(512, 1024),
                         with torch.cuda.device(device):
                             torch.cuda.manual_seed(config["seed"])
                     base = make_model(len(data.classes), model_configuration(config,
-                        len(getattr(data, "manifest", {}).get("features", FEATURES))),
+                        len(getattr(data, "manifest", {}).get("features", FEATURES)),
+                        getattr(data, "manifest", {}).get("skill_hierarchy")),
                         data.mean, data.std).to(device)
                     model = execution_model(base, {**config, "compile_model": compiled})
                     optimizer = torch.optim.AdamW(base.parameters(), lr=config["learning_rate"],
@@ -1396,7 +1614,7 @@ def benchmark_batches(data, config=None, device=None, batch_sizes=(512, 1024),
                             started = time.perf_counter()
                             x, y = next(iter(pipeline.batches(ids, batch_size)))
                             fit_batch(model, optimizer, x, y, device, precision, config["gradient_clip"],
-                                      config["l1_lambda"], weights)
+                                      config["l1_lambda"], weights, **intent_options)
                             if device.type == "cuda":
                                 torch.cuda.synchronize(device)
                             elapsed = time.perf_counter() - started

@@ -267,9 +267,12 @@ class _MissileTransformer(nn.Module):
                              masked_summary(nodes[:, 6:], present[:, 6:])), -1)
         return self.projection(readout).reshape(windows.shape[0], HISTORY_STEPS, -1)
 
-    def forward(self, windows):
+    def encode_history(self, windows):
         encoded = self.encoder(self.encode_frames(windows) + self.position)
-        return self.head(self.norm(encoded[:, -1])).reshape(-1, 3, self.num_classes)
+        return self.norm(encoded[:, -1])
+
+    def forward(self, windows):
+        return self.head(self.encode_history(windows)).reshape(-1, 3, self.num_classes)
 
 
 class MissileSetTransformer(_MissileTransformer):
@@ -447,3 +450,116 @@ class HGTTransformer(TypedGraphTransformer):
             nodes = block(nodes, present, geometry, self.sources, self.destinations,
                           self.relations, self.roles, log_prior)
         return nodes
+
+
+class HGTIntentTransformer(HGTTransformer):
+    """One shared HGT/temporal encoder, with skill and auxiliary intent heads."""
+
+    def __init__(self, *args, num_intents=3, hgt_version=2, **kwargs):
+        if num_intents != 3 or hgt_version != 2:
+            raise ValueError("Skill-intent forecasting requires three intent groups and HGT-v2")
+        super().__init__(*args, hgt_version=hgt_version, **kwargs)
+        self.num_intents = num_intents
+        width = self.position.shape[-1]
+        self.intent_head = nn.Sequential(nn.Linear(width, width), nn.GELU(),
+                                         nn.Dropout(kwargs.get("dropout", .25)), nn.Linear(width, 3 * num_intents))
+
+    def forward(self, windows, return_intent=False):
+        shared = self.encode_history(windows)
+        skill_logits = self.head(shared).reshape(-1, 3, self.num_classes)
+        if return_intent:
+            return skill_logits, self.intent_head(shared).reshape(-1, 3, self.num_intents)
+        return skill_logits
+
+
+class HGTHierarchicalIntentTransformer(HGTIntentTransformer):
+    """Predict families and conditional directions, reconstructing original skill probabilities."""
+
+    def __init__(self, *args, skill_hierarchy, **kwargs):
+        super().__init__(*args, **kwargs)
+        hierarchy = skill_hierarchy
+        self.num_families = len(hierarchy["families"])
+        self.num_pair_families = len(hierarchy["paired_families"])
+        family, pair, direction = [hierarchy[key] for key in
+                                    ("skill_to_family", "skill_to_pair", "skill_to_direction")]
+        if (len(hierarchy["classes"]) != self.num_classes or len(family) != self.num_classes
+                or len(pair) != self.num_classes or len(direction) != self.num_classes
+                or hierarchy["directions"] != ["left", "right"] or self.num_families < 1):
+            raise ValueError("Invalid skill hierarchy dimensions or direction order")
+        if (len(set(hierarchy["families"])) != self.num_families
+                or len(set(hierarchy["paired_families"])) != self.num_pair_families
+                or self.num_families + self.num_pair_families != self.num_classes):
+            raise ValueError("Hierarchy families must form a complete partition of skills")
+        family_pair, family_leaves = [], []
+        for f in range(self.num_families):
+            members = [i for i, value in enumerate(family) if value == f]
+            if len(members) == 1:
+                if pair[members[0]] != -1 or direction[members[0]] != -1:
+                    raise ValueError("Singleton skills must not receive a direction")
+                family_pair.append(-1)
+                family_leaves.append([members[0], members[0]])
+            elif len(members) == 2:
+                p = pair[members[0]]
+                if (p < 0 or p >= self.num_pair_families or pair[members[1]] != p
+                        or sorted(direction[i] for i in members) != [0, 1]):
+                    raise ValueError("Mirrored families require one left and one right leaf")
+                if hierarchy["paired_families"][p] != hierarchy["families"][f]:
+                    raise ValueError("Direction branch must correspond to its family")
+                family_pair.append(p)
+                family_leaves.append(sorted(members, key=lambda i: direction[i]))
+            else:
+                raise ValueError("Every family must have one singleton or two mirror leaves")
+        if any(f < 0 or f >= self.num_families for f in family):
+            raise ValueError("Skill family index out of range")
+        if hierarchy["family_to_pair"] != family_pair:
+            raise ValueError("Family-to-direction branch ordering changed")
+        self.skill_hierarchy = hierarchy
+        self.register_buffer("skill_family_index", torch.tensor(family, dtype=torch.long))
+        self.register_buffer("skill_pair_index", torch.tensor(pair, dtype=torch.long).clamp_min(0))
+        self.register_buffer("skill_direction_index", torch.tensor(direction, dtype=torch.long).clamp_min(0))
+        self.register_buffer("directional_skills", torch.tensor(direction, dtype=torch.long) >= 0)
+        self.register_buffer("family_pair_index", torch.tensor(family_pair, dtype=torch.long))
+        self.register_buffer("family_leaf_index", torch.tensor(family_leaves, dtype=torch.long))
+        width = self.position.shape[-1]
+        dropout = kwargs.get("dropout", .25)
+        del self.head  # No independent 33-class head: every leaf uses the factorization.
+        self.family_head = nn.Sequential(nn.Linear(width, width), nn.GELU(), nn.Dropout(dropout),
+                                          nn.Linear(width, 3 * self.num_families))
+        self.direction_head = (nn.Sequential(nn.Linear(width, width), nn.GELU(), nn.Dropout(dropout),
+                                             nn.Linear(width, 3 * self.num_pair_families * 2))
+                               if self.num_pair_families else None)
+
+    def compose_skill_log_probabilities(self, family_logits, direction_logits):
+        result = family_logits.float().log_softmax(-1)[:, :, self.skill_family_index]
+        if self.num_pair_families:
+            conditional = direction_logits.float().log_softmax(-1)[
+                :, :, self.skill_pair_index, self.skill_direction_index]
+            result = result + conditional * self.directional_skills
+        return result
+
+    def forward(self, windows, return_intent=False, return_hierarchy=False):
+        shared = self.encode_history(windows)
+        family_logits = self.family_head(shared).reshape(-1, 3, self.num_families)
+        direction_logits = (self.direction_head(shared).reshape(-1, 3, self.num_pair_families, 2)
+                            if self.direction_head is not None else
+                            family_logits.new_zeros((*family_logits.shape[:2], 0, 2)))
+        skill_log_probs = self.compose_skill_log_probabilities(family_logits, direction_logits)
+        if return_hierarchy:
+            return {"skill_log_probs": skill_log_probs, "family_logits": family_logits,
+                    "direction_logits": direction_logits,
+                    "intent_logits": self.intent_head(shared).reshape(-1, 3, self.num_intents)}
+        if return_intent:
+            return skill_log_probs, self.intent_head(shared).reshape(-1, 3, self.num_intents)
+        return skill_log_probs
+
+    def decode_hierarchy(self, family_logits, direction_logits):
+        """Optional greedy family-then-direction decoding; evaluation uses joint leaf argmax."""
+        family = family_logits.argmax(-1)
+        pair = self.family_pair_index[family]
+        if self.num_pair_families:
+            selected = direction_logits.gather(2, pair.clamp_min(0)[:, :, None, None].expand(-1, -1, 1, 2)).squeeze(2)
+            direction = torch.where(pair >= 0, selected.argmax(-1), -1)
+        else:
+            direction = torch.full_like(family, -1)
+        skill = self.family_leaf_index[family, direction.clamp_min(0)]
+        return {"family_indices": family, "direction_indices": direction, "skill_indices": skill}

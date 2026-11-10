@@ -1,5 +1,45 @@
 # Notebooks
 
+For joint skill and offensive/defensive/context-dependent intent forecasting, run
+[26: prepare intent supervision](26_prepare_skill_intent_target_relative_missile_nn_duel_skill_forecasting.ipynb),
+then [27: train one HGT network](27_skill_intent_target_relative_missile_hgt_nn_duel_skill_forecasting.ipynb).
+Notebook 26 requires a verified notebook-24 v2 dataset and writes a small,
+hash-pinned label overlay without copying its large feature map. Keep the base
+dataset directory available for training/resume. The frozen taxonomy assigns all
+33 skills to 9 offensive, 11 defensive and 13 context-dependent entries; unknown
+skills fail preparation. Original future-skill masks, inputs, splits, scaling and
+non-overlapping training windows are preserved. Intent labels are supervision only.
+The v2 overlay also freezes the 29-family/four-mirror-pair hierarchy and writes
+family/direction targets and support tables. Direction is masked for singletons
+and missing skill labels. Re-run notebook 26 into a fresh small overlay to replace
+an earlier intent-only overlay; the notebook-24 feature map can be reused.
+
+Notebook 27 fits **one network once, with seed 42**, using notebook 25's HGT-v2
+and temporal encoder. Its skill readout predicts 29 families and left/right
+conditioned on each of the four mirrored families. Singleton families have no
+direction prediction. Joint probabilities reconstruct the original 33 classes.
+The original leaf's weight applies to `family CE + paired-direction CE`, with both
+terms averaged over all valid skill labels; this equals weighted joint skill NLL.
+Direction supervision selects the true family, never a hard family prediction.
+The auxiliary intent loss remains `0.25 * intent CE`, with L1 as before.
+Unweighted joint skill test NLL still selects checkpoints. Reports compare intent-head
+predictions with grouped skill probabilities and training-frequency baselines.
+Validation is evaluated after selection. A catalogue grouping does not establish
+the latent intent of an ambiguous manoeuvre, and one seed does not measure
+variation across fits.
+
+Data, runs and tracking use `artifacts/nn_duel_skill_intent_forecasting/`, with the
+singular receipt `comparisons/latest_hgt_hierarchical_intent_run.json`. Set `BVR_NN_INTENT_DATA`
+to override the intent dataset, or `BVR_NN_INTENT_MLFLOW=0` to disable tracking.
+Set the single `EXISTING_RUN` for resume/report-only use. `best.pt` retains all
+heads and frozen intent/family/direction ordering. `return_hierarchy=True` exposes
+family, conditional-direction and intent logits plus joint skill log probabilities.
+The default forward/MLflow export returns joint original-skill log probabilities;
+softmax remains compatible with the previous interface. Optional `decode_hierarchy`
+selects the family first and then its side; primary metrics use joint leaf argmax.
+Separate direction reports condition on the true paired family and mask singletons.
+Start fresh hierarchical runs; flat-head checkpoints cannot resume as this architecture.
+
 For missile positions measured from the opposing aircraft, run
 [24: prepare target-relative missile positions](24_prepare_target_relative_missile_nn_duel_skill_forecasting.ipynb),
 then [25: train the HGT](25_target_relative_missile_graph_nn_duel_skill_forecasting.ipynb).

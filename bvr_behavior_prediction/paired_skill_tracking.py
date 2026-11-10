@@ -151,8 +151,14 @@ class RunTracker:
                      "skill_support_before_split.csv", "skill_support_by_split.csv",
                      "window_sampling_audit.csv", "nonoverlap_audit.json", "enemy_missile_audit.csv"):
             self.artifact(data.directory / name, "data_metadata")
+        for name in ("intent_policy.json", "skill_intent_mapping.csv", "intent_support_by_split.csv"):
+            self.artifact(data.directory / name, "data_metadata")
+        for name in ("skill_hierarchy.json", "skill_family_direction_mapping.csv",
+                     "family_support_by_split.csv", "direction_support_by_split.csv"):
+            self.artifact(data.directory / name, "data_metadata")
         self.artifact(self.output / "training_source.py", "source")
         self.artifact(self.output / "architecture_source.py", "source")
+        self.artifact(self.output / "intent_source.py", "source")
         shutil.copy2(__file__, self.output / "tracking_source.py")
         self.artifact(self.output / "tracking_source.py", "source")
         self.artifact(self.output / "run.json", "metadata")
@@ -209,7 +215,10 @@ class RunTracker:
                         "epoch/fit_and_evaluation_seconds": row["seconds"],
                         "epoch/epochs_without_improvement": row["epochs_without_improvement"]})
         for key in ("train_data_loss", "train_l1_penalty", "train_objective", "generalization_gap",
-                    "overtraining_epochs", "overtraining_detected"):
+                    "overtraining_epochs", "overtraining_detected", "learning_rate", "learning_rate_start",
+                    "next_learning_rate", "optimizer_steps", "train_skill_data_loss", "train_intent_nll",
+                    "test_intent_nll", "train_intent_accuracy", "test_intent_accuracy", "train_family_nll",
+                    "test_family_nll", "train_direction_nll", "test_direction_nll"):
             if key in row:
                 metrics[f"epoch/{key}"] = row[key]
         if row["improved"]:
@@ -265,8 +274,13 @@ class RunTracker:
             self.artifact(self.output / name, "metadata")
         for name in ("history.csv", "final_metrics.csv", "final_per_class.csv", "training_frequency_baseline.csv", "mlflow_comparison.csv"):
             self.artifact(self.output / name, "metrics")
+        for name in ("final_intent_metrics.csv", "final_intent_per_class.csv", "training_frequency_intent_baseline.csv"):
+            self.artifact(self.output / name, "metrics")
+        for name in ("final_family_metrics.csv", "final_family_per_class.csv", "final_direction_metrics.csv",
+                     "final_direction_per_class.csv"):
+            self.artifact(self.output / name, "metrics")
         self.artifact(self.output / "best.pt", "checkpoints")
-        for name in ("epochs", "diagnostics"):
+        for name in ("epochs", "diagnostics", "intent_diagnostics"):
             if (self.output / name).is_dir():
                 self.client.log_artifacts(self.state["run_id"], str(self.output / name), name)
 
@@ -323,7 +337,10 @@ class RunTracker:
                 shutil.copytree(root / "source", root / "model" / "source_snapshot")
             _write(root / "model" / "paired_input_schema.json", {
                 "input": f"Normalized feature histories, shape [batch,51,{input_features}]",
-                "output": "Raw logits, shape [batch,3,classes]; apply softmax on the last axis",
+                "output": ("Joint original-skill log probabilities, shape [batch,3,classes]; exp or softmax on last axis"
+                           if saved["model_config"].get("architecture") == "hgt_hierarchical_intent" else
+                           "Raw logits, shape [batch,3,classes]; apply softmax on the last axis"),
+                "skill_hierarchy": saved.get("skill_hierarchy"),
                 "classes": saved["classes"], "features": saved["feature_names"],
                 "architecture": saved["model_config"].get("architecture", "transformer"),
                 "data_contract": saved.get("data_contract"),
