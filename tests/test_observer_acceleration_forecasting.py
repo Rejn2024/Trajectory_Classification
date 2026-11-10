@@ -130,12 +130,20 @@ def test_graph_remapping_preserves_geometry_masks_and_consumes_observer_accelera
     assert not present[:, 3].any()  # Original absent friendly slot stays absent.
 
 
-def test_new_notebooks_prepare_train_reload_and_report(tmp_path, monkeypatch):
+@pytest.mark.parametrize("target_relative", [False, True])
+def test_new_notebooks_prepare_train_reload_and_report(tmp_path, monkeypatch, target_relative):
     """Execute the real notebook cells, shortening only the epoch budget."""
     import shutil
     import IPython.display
     import nbformat
 
+    prep_name = ("24_prepare_target_relative_missile_nn_duel_skill_forecasting.ipynb"
+                 if target_relative else PREP)
+    train_name = ("25_target_relative_missile_graph_nn_duel_skill_forecasting.ipynb"
+                  if target_relative else TRAIN)
+    prefix = "BVR_NN_TARGET_RELATIVE_MISSILE" if target_relative else "BVR_NN_OBSERVER_ACCELERATION"
+    contract = (duel.TARGET_RELATIVE_MISSILE_DATA_CONTRACT if target_relative
+                else duel.OBSERVER_ACCELERATION_DATA_CONTRACT)
     monkeypatch.setattr(duel, "catalogue", lambda root: CLASSES)
     source = write_source(tmp_path, frames=181)
     package = tmp_path / "bvr_behavior_prediction"
@@ -145,12 +153,12 @@ def test_new_notebooks_prepare_train_reload_and_report(tmp_path, monkeypatch):
     monkeypatch.setenv("BVR_NN_ROOT", str(tmp_path))
     monkeypatch.setenv("BVR_NN_FORECAST_SOURCE", str(source))
     monkeypatch.setenv("BVR_NN_FORECAST_DOWNLOAD", "0")
-    monkeypatch.setenv("BVR_NN_OBSERVER_ACCELERATION_MLFLOW", "0")
-    monkeypatch.delenv("BVR_NN_OBSERVER_ACCELERATION_DATA", raising=False)
+    monkeypatch.setenv(f"{prefix}_MLFLOW", "0")
+    monkeypatch.delenv(f"{prefix}_DATA", raising=False)
     monkeypatch.setattr(sys, "path", sys.path.copy())
     monkeypatch.setattr(IPython.display, "display", lambda *args: None)
     namespace = {}
-    for name in (PREP, TRAIN):
+    for name in (prep_name, train_name):
         notebook = nbformat.read(ROOT / "notebooks" / name, as_version=4)
         nbformat.validate(notebook)
         ids = [cell.id for cell in notebook.cells]
@@ -161,22 +169,36 @@ def test_new_notebooks_prepare_train_reload_and_report(tmp_path, monkeypatch):
             assert cell.source.startswith("%%time\n")
             assert cell.execution_count is None and cell.outputs == []
             exec(compile(cell.source.removeprefix("%%time\n"), name, "exec"), namespace)
-            if name == TRAIN and index == 1:
+            if name == train_name and index == 1:
                 config = namespace["CONFIG"]
                 assert config["observer_acceleration"] is True
-                assert config["architecture"] == "typed_graph"
+                assert config["architecture"] == ("hgt" if target_relative else "typed_graph")
+                if target_relative:
+                    assert config["graph_heads"] == 4
+                    assert config["missile_distance_floor_m"] == 1000.0
+                    assert config["missile_distance_power"] == 1.0
                 assert config["width"] == 96 and config["graph_width"] == 64
+                assert config.get("target_relative_missiles", False) is target_relative
+                assert config.get("target_relative_missile_velocities", False) is target_relative
                 config["epochs"] = 1
     data = namespace["data"]
     assert isinstance(data, duel.ObserverAccelerationEnemyMissileNNDuelData)
     assert len(namespace["RUNS"]) == 3
     experiment = namespace["EXPERIMENT_ROOT"]
-    assert experiment.name == "nn_duel_observer_acceleration_enemy_missile_forecasting"
+    assert experiment.name == ("nn_duel_target_relative_missile_forecasting" if target_relative
+                               else "nn_duel_observer_acceleration_enemy_missile_forecasting")
     for run in namespace["RUNS"].values():
         saved = duel.read_json(run / "run.json")
         checkpoint = torch.load(run / "best.pt", map_location="cpu", weights_only=False)
-        assert checkpoint["data_contract"] == duel.OBSERVER_ACCELERATION_DATA_CONTRACT
+        assert checkpoint["data_contract"] == contract
         assert checkpoint["model_config"]["observer_acceleration"] is True
+        assert checkpoint["model_config"].get("target_relative_missiles", False) is target_relative
+        assert checkpoint["model_config"].get("target_relative_missile_velocities", False) is target_relative
+        if target_relative:
+            assert checkpoint["model_config"]["architecture"] == "hgt"
+            assert checkpoint["model_config"]["graph_heads"] == 4
+            assert checkpoint["model_config"]["missile_distance_floor_m"] == 1000.0
+            assert checkpoint["model_config"]["missile_distance_power"] == 1.0
         restored = paired.make_model(len(data.classes), checkpoint["model_config"],
                                      checkpoint["mean"], checkpoint["std"])
         restored.load_state_dict(checkpoint["model_state"])
@@ -200,11 +222,12 @@ def test_new_notebooks_prepare_train_reload_and_report(tmp_path, monkeypatch):
         paired.train_model(data, tmp_path / "wrong-layout", {
             **namespace["CONFIG"], "observer_acceleration": False,
         }, device="cpu")
-    receipt = duel.read_json(experiment / "comparisons/latest_typed_graph_runs.json")
+    architecture = "hgt" if target_relative else "typed_graph"
+    receipt = duel.read_json(experiment / f"comparisons/latest_{architecture}_runs.json")
     assert receipt["data_manifest_sha256"] == duel.sha256(data.directory / "manifest.json")
     assert not (tmp_path / "artifacts/nn_duel_enemy_missile_forecasting").exists()
     # Completed preparation can be verified and reused without rewriting files.
-    prep = nbformat.read(ROOT / "notebooks" / PREP, as_version=4)
+    prep = nbformat.read(ROOT / "notebooks" / prep_name, as_version=4)
     before = duel.sha256(data.directory / "manifest.json")
     for index in (1, 4, 6):
         exec(compile(prep.cells[index].source.removeprefix("%%time\n"), "reuse", "exec"), namespace)

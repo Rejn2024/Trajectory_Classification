@@ -1,5 +1,37 @@
 # Notebooks
 
+For missile positions measured from the opposing aircraft, run
+[24: prepare target-relative missile positions](24_prepare_target_relative_missile_nn_duel_skill_forecasting.ipynb),
+then [25: train the HGT](25_target_relative_missile_graph_nn_duel_skill_forecasting.ipynb).
+These are counterparts to notebooks 22 and 23. Friendly missile positions are
+relative to the opposing aircraft; hostile missile positions are relative to the
+observer. Friendly range is recomputed from the new position. Friendly missile velocity is
+relative to the opposing aircraft; hostile missile velocity is relative to the observer. Raw-zero empty slots and slot order are
+preserved. The graph translates friendly positions into the common observer frame
+for edge geometry and also restores friendly world velocities from their target-relative
+inputs, keeping target-relative position and velocity in the missile node inputs.
+Both accelerations, the 115-channel layout, splits, labels, training protocol and
+three seeds remain as in 22/23. Checkpoints save `target_relative_missiles=True`,
+`target_relative_missile_velocities=True` and `observer_acceleration=True` for factory
+reload. The v2 data contract requires fresh preparation and training; earlier
+position-only prepared datasets are rejected.
+
+The new contract rejects older caches and uses the separate artifact root
+`artifacts/nn_duel_target_relative_missile_forecasting/`. Set
+`BVR_NN_TARGET_RELATIVE_MISSILE_DATA` to override its prepared dataset or
+`BVR_NN_TARGET_RELATIVE_MISSILE_MLFLOW=0` to disable optional tracking.
+Run notebook 24 before 25; neither notebook 22 nor new simulator collection is required.
+
+Notebook 25 now uses two HGT layers (width 64, four graph attention heads), with
+node-type-specific projections, relation-specific attention/message transforms,
+and geometry-conditioned edge attention. Missile–target edges in both directions
+receive the prior `((d_min + 1000) / (d_i + 1000)) ** 1.0`, using distances to the
+same target and ignoring absent slots. Its logarithm biases learned attention
+before a per-destination, per-head softmax; owner edges retain unit prior.
+The temporal Transformer keeps width 96 and six temporal attention heads. Existing
+v2 prepared data can be reused, but HGT requires fresh training runs. HGT checkpoints
+retain all distance settings and publish `comparisons/latest_hgt_runs.json`.
+
 For observer acceleration in place of absolute observer North/West/Up position, run
 [22: prepare both-aircraft accelerations](22_prepare_observer_acceleration_enemy_missile_nn_duel_skill_forecasting.ipynb),
 then [23: train the typed graph](23_observer_acceleration_enemy_missile_graph_nn_duel_skill_forecasting.ipynb).

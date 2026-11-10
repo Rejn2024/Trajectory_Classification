@@ -60,6 +60,17 @@ def test_enemy_slots_match_real_compact_extraction_and_world_tracks(observer_id,
     np.testing.assert_array_equal(result[len(enemy):], 0)
     np.testing.assert_array_equal(other, original)
     assert result.dtype == np.float32
+    # Notebook 24 expresses friendly position and velocity relative to its target.
+    friendly_result = duel.target_relative_friendly_missiles(raw).reshape(4, 7)
+    friendly_expected = np.zeros((4, 7))
+    friendly = [m for m in missiles.values() if m.is_alive and m.color == observer.color][:4]
+    target = sim.agents[target_id]
+    for i, missile in enumerate(friendly):
+        friendly_expected[i, :3] = (missile.position - target.position) / [50000, 50000, 10000]
+        friendly_expected[i, 3:6] = (missile.velocity - target.velocity) / 1200
+        friendly_expected[i, 6] = np.linalg.norm(missile.position - target.position) / 50000
+    np.testing.assert_allclose(friendly_result, friendly_expected, rtol=1e-6, atol=1e-7)
+    np.testing.assert_array_equal(friendly_result[len(friendly):], 0)
     # Opponent headings, energy, own state and observer-friendly slots are not
     # additional sources of enemy information in this transform.
     altered = other.copy()

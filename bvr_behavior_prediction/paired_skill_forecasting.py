@@ -743,7 +743,7 @@ class PairedTransformer(nn.Module):
 def model_configuration(config, input_features):
     """Keep historical Transformer checkpoint configuration compatible."""
     name = config.get("architecture", "transformer")
-    if name not in ("transformer", "missile_set", "typed_graph"):
+    if name not in ("transformer", "missile_set", "typed_graph", "hgt"):
         raise ValueError(f"Unknown forecasting architecture: {name}")
     result = {k: config[k] for k in ("width", "heads", "layers", "dropout")}
     result["input_features"] = input_features
@@ -752,6 +752,14 @@ def model_configuration(config, input_features):
                       graph_layers=config.get("graph_layers", 2))
         if config.get("observer_acceleration", False):
             result["observer_acceleration"] = True
+        if config.get("target_relative_missiles", False):
+            result["target_relative_missiles"] = True
+        if config.get("target_relative_missile_velocities", False):
+            result["target_relative_missile_velocities"] = True
+        if name == "hgt":
+            result.update(graph_heads=config.get("graph_heads", 4),
+                          missile_distance_floor_m=config.get("missile_distance_floor_m", 1000.0),
+                          missile_distance_power=config.get("missile_distance_power", 1.0))
     return result
 
 
@@ -761,8 +769,9 @@ def make_model(num_classes, model_config, mean=None, std=None):
     name = settings.pop("architecture", "transformer")
     if name == "transformer":
         return PairedTransformer(num_classes=num_classes, **settings)
-    from .enemy_missile_models import MissileSetTransformer, TypedGraphTransformer
-    constructors = {"missile_set": MissileSetTransformer, "typed_graph": TypedGraphTransformer}
+    from .enemy_missile_models import HGTTransformer, MissileSetTransformer, TypedGraphTransformer
+    constructors = {"missile_set": MissileSetTransformer, "typed_graph": TypedGraphTransformer,
+                    "hgt": HGTTransformer}
     if name not in constructors:
         raise ValueError(f"Unknown forecasting architecture: {name}")
     return constructors[name](num_classes=num_classes, mean=mean, std=std, **settings)
@@ -998,17 +1007,27 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
     if architecture_name != "transformer":
         from .nn_duel_skill_forecasting import (
             ENEMY_MISSILE_DATA_CONTRACT, OBSERVER_ACCELERATION_DATA_CONTRACT,
+            TARGET_RELATIVE_MISSILE_DATA_CONTRACT,
             feature_names as enemy_names,
         )
         observer_acceleration = config.get("observer_acceleration", False)
-        expected_contract = (OBSERVER_ACCELERATION_DATA_CONTRACT if observer_acceleration
+        target_relative_missiles = config.get("target_relative_missiles", False)
+        target_relative_missile_velocities = config.get("target_relative_missile_velocities", False)
+        expected_contract = (TARGET_RELATIVE_MISSILE_DATA_CONTRACT if target_relative_missiles else
+                             OBSERVER_ACCELERATION_DATA_CONTRACT if observer_acceleration
                              else ENEMY_MISSILE_DATA_CONTRACT)
         if (not isinstance(observer_acceleration, bool)
+                or not isinstance(target_relative_missiles, bool)
+                or not isinstance(target_relative_missile_velocities, bool)
+                or target_relative_missile_velocities != target_relative_missiles
+                or (target_relative_missiles and not observer_acceleration)
                 or data_manifest.get("data_contract") != expected_contract
                 or feature_names != enemy_names(data.classes, enemy_missiles=True,
                                                 observer_acceleration=observer_acceleration)):
             raise ValueError("Missile models require the matching notebook 17 or 22 enemy-missile "
-                             "dataset contract and observer_acceleration setting")
+                             "or notebook 24 target-relative dataset contract and matching "
+                             "observer_acceleration/target_relative_missiles/"
+                             "target_relative_missile_velocities settings")
     base_model = make_model(len(data.classes), architecture, data.mean, data.std).to(device)
     model = execution_model(base_model, config)
     optimizer = torch.optim.AdamW(base_model.parameters(), lr=config["learning_rate"],

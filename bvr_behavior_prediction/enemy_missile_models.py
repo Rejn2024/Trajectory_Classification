@@ -6,6 +6,8 @@ The original training-only normalisation is stored in checkpoint buffers so
 geometry and absence are recovered before using slot-independent encoders.
 """
 
+import math
+
 import torch
 from torch import nn
 
@@ -58,14 +60,97 @@ class _TypedMessageBlock(nn.Module):
         return result * present.unsqueeze(-1)
 
 
+class _HGTBlock(nn.Module):
+    """HGT with four node types, relation transforms and geometry-conditioned edges."""
+
+    TYPE_SLICES = ((0, 1), (1, 2), (2, 6), (6, 10))
+
+    def __init__(self, width, heads, dropout):
+        super().__init__()
+        if not isinstance(heads, int) or isinstance(heads, bool) or heads < 1 or width % heads:
+            raise ValueError("graph_heads must be positive and divide graph_width")
+        self.heads, self.head_width = heads, width // heads
+        self.query = nn.ModuleList([nn.Linear(width, width) for _ in range(4)])
+        self.key = nn.ModuleList([nn.Linear(width, width) for _ in range(4)])
+        self.value = nn.ModuleList([nn.Linear(width, width) for _ in range(4)])
+        self.output = nn.ModuleList([nn.Linear(width, width) for _ in range(4)])
+        self.norm = nn.ModuleList([nn.LayerNorm(width) for _ in range(4)])
+        self.skip = nn.Parameter(torch.zeros(4))
+        self.relation_attention = nn.Parameter(torch.empty(5, heads, self.head_width, self.head_width))
+        self.relation_message = nn.Parameter(torch.empty(5, heads, self.head_width, self.head_width))
+        # HGT's learned priority for each (source type, relation, destination type).
+        self.relation_priority = nn.Parameter(torch.ones(4 * 5 * 4, heads))
+        self.edge_attention = nn.Linear(8, heads, bias=False)
+        self.edge_message = nn.Linear(8, width, bias=False)
+        self.dropout = nn.Dropout(dropout)
+        for parameter in (self.relation_attention, self.relation_message):
+            for relation in range(5):
+                for head in range(heads):
+                    nn.init.xavier_uniform_(parameter[relation, head])
+
+    def _project(self, nodes, projections):
+        return torch.cat([layer(nodes[:, start:end]) for layer, (start, end)
+                          in zip(projections, self.TYPE_SLICES)], 1)
+
+    def forward(self, nodes, present, geometry, sources, destinations, relations,
+                roles, edge_log_prior, return_attention=False):
+        nodes = nodes.float()
+        shape = (*nodes.shape[:2], self.heads, self.head_width)
+        query = self._project(nodes, self.query).reshape(shape).float()[:, destinations]
+        key = self._project(nodes, self.key).reshape(shape).float()[:, sources]
+        value = self._project(nodes, self.value).reshape(shape).float()[:, sources]
+        edge_scores = self.edge_attention(geometry).float()
+        edge_values = self.edge_message(geometry).float().reshape(
+            *geometry.shape[:2], self.heads, self.head_width)
+        meta = (roles[sources] * 5 + relations) * 4 + roles[destinations]
+        mask = (present[:, sources] & present[:, destinations]).unsqueeze(-1)
+        # Attention, softmax and reductions remain FP32 during BF16 training.
+        with torch.autocast(device_type=nodes.device.type, enabled=False):
+            key = torch.einsum("behd,ehdf->behf", key, self.relation_attention[relations].float())
+            value = torch.einsum("behd,ehdf->behf", value, self.relation_message[relations].float())
+            scores = (query * key).sum(-1) / math.sqrt(self.head_width)
+            scores = scores * self.relation_priority[meta].float() + edge_scores
+            scores = scores + edge_log_prior.float().unsqueeze(-1)
+            index = destinations[None, :, None].expand_as(scores)
+            minimum = torch.finfo(scores.dtype).min
+            masked_scores = scores.masked_fill(~mask, minimum)
+            maxima = nodes.new_full((*nodes.shape[:2], self.heads), minimum).scatter_reduce(
+                1, index, masked_scores, reduce="amax", include_self=True)
+            numerator = (masked_scores - maxima.gather(1, index)).exp() * mask
+            denominator = nodes.new_zeros((*nodes.shape[:2], self.heads)).scatter_add(1, index, numerator)
+            attention = numerator / denominator.gather(1, index).clamp_min(1e-12)
+            messages = (value + edge_values) * attention.unsqueeze(-1)
+            aggregated = nodes.new_zeros((*nodes.shape[:2], self.heads, self.head_width)).scatter_add(
+                1, index.unsqueeze(-1).expand_as(messages), messages).flatten(-2)
+        updated = self._project(torch.nn.functional.gelu(aggregated), self.output).float()
+        updated = self.dropout(updated)
+        result = []
+        for type_id, (start, end) in enumerate(self.TYPE_SLICES):
+            gate = self.skip[type_id].sigmoid()
+            result.append(self.norm[type_id](gate * updated[:, start:end]
+                                            + (1 - gate) * nodes[:, start:end]))
+        result = torch.cat(result, 1) * present.unsqueeze(-1)
+        return (result, attention) if return_attention else result
+
+
 class _MissileTransformer(nn.Module):
     def __init__(self, num_classes=33, width=96, heads=6, layers=2, dropout=.25,
                  input_features=115, mean=None, std=None, graph_width=64, graph_layers=2,
-                 observer_acceleration=False):
+                 observer_acceleration=False, target_relative_missiles=False,
+                 target_relative_missile_velocities=False):
         super().__init__()
         if not isinstance(observer_acceleration, bool):
             raise ValueError("observer_acceleration must be boolean")
         self.observer_acceleration = observer_acceleration
+        if (not isinstance(target_relative_missiles, bool)
+                or (target_relative_missiles and not observer_acceleration)):
+            raise ValueError("target_relative_missiles must be boolean and requires observer_acceleration")
+        self.target_relative_missiles = target_relative_missiles
+        if (not isinstance(target_relative_missile_velocities, bool)
+                or (target_relative_missile_velocities and not target_relative_missiles)):
+            raise ValueError("target_relative_missile_velocities must be boolean and requires target_relative_missiles")
+        # Default False preserves geometry when restoring earlier position-only checkpoints.
+        self.target_relative_missile_velocities = target_relative_missile_velocities
         if input_features != 82 + num_classes:
             raise ValueError("Expected notebook-17 features: 82 numeric plus one own-skill per class")
         if width < 1 or heads < 1 or width % heads or layers < 1:
@@ -179,21 +264,78 @@ class TypedGraphTransformer(_MissileTransformer):
         self.messages = nn.ModuleList([_TypedMessageBlock(graph_width, dropout)
                                        for _ in range(graph_layers)])
 
-    def _spatial(self, raw, slots, nodes, present):
+    def _edge_geometry(self, raw, slots):
         scale = raw.new_tensor([50000, 50000, 10000])
         offset = 3 if self.observer_acceleration else 0
         relative_position = raw[:, None, 9 - offset:12 - offset]
+        missile_positions = slots[:, :, :3] * scale
+        if self.target_relative_missiles:
+            # Node features keep the target-relative friendly geometry. Edges need
+            # every position in one common observer-centred world coordinate frame.
+            missile_positions = torch.cat((missile_positions[:, :4] + relative_position * scale,
+                                           missile_positions[:, 4:]), 1)
         positions = torch.cat((torch.zeros_like(relative_position),
-                               relative_position * scale, slots[:, :, :3] * scale), 1)
+                               relative_position * scale, missile_positions), 1)
         own_velocity = raw[:, None, 3 - offset:6 - offset] * 600
-        velocities = torch.cat((own_velocity, own_velocity + raw[:, None, 12 - offset:15 - offset] * 600,
-                                own_velocity + slots[:, :, 3:6] * 1200), 1)
+        relative_velocity = raw[:, None, 12 - offset:15 - offset] * 600
+        missile_velocities = own_velocity + slots[:, :, 3:6] * 1200
+        if self.target_relative_missile_velocities:
+            # Friendly inputs subtract opponent velocity; edges use common world velocities.
+            missile_velocities = torch.cat((missile_velocities[:, :4] + relative_velocity,
+                                            missile_velocities[:, 4:]), 1)
+        velocities = torch.cat((own_velocity, own_velocity + relative_velocity,
+                                missile_velocities), 1)
         delta_position = positions[:, self.sources] - positions[:, self.destinations]
         delta_velocity = velocities[:, self.sources] - velocities[:, self.destinations]
         distance = torch.linalg.vector_norm(delta_position, dim=-1, keepdim=True)
         closing = -(delta_position * delta_velocity).sum(-1, keepdim=True) / distance.clamp_min(1)
         geometry = torch.cat((delta_position / scale, delta_velocity / 1200,
                               distance / 50000, closing / 1200), -1)
+        return geometry
+
+    def _spatial(self, raw, slots, nodes, present):
+        geometry = self._edge_geometry(raw, slots)
         for block in self.messages:
             nodes = block(nodes, present, geometry, self.sources, self.destinations, self.relations)
+        return nodes
+
+
+class HGTTransformer(TypedGraphTransformer):
+    """HGT spatial attention, with a nearest-target distance prior on target edges."""
+
+    def __init__(self, *args, graph_heads=4, missile_distance_floor_m=1000.0,
+                 missile_distance_power=1.0, graph_width=64, graph_layers=2, **kwargs):
+        if (not math.isfinite(missile_distance_floor_m) or missile_distance_floor_m <= 0
+                or not math.isfinite(missile_distance_power) or missile_distance_power < 0):
+            raise ValueError("Missile distance floor must be positive and power nonnegative, both finite")
+        super().__init__(*args, graph_width=graph_width, graph_layers=graph_layers, **kwargs)
+        self.missile_distance_floor_m = float(missile_distance_floor_m)
+        self.missile_distance_power = float(missile_distance_power)
+        self.messages = nn.ModuleList([_HGTBlock(graph_width, graph_heads, kwargs.get("dropout", .25))
+                                       for _ in range(graph_layers)])
+        self.register_buffer("target_edge_indices", torch.where(self.relations == 4)[0])
+        self.register_buffer("edge_missile_indices",
+                             (torch.maximum(self.sources, self.destinations) - 2).clamp_min(0))
+
+    def _edge_log_prior(self, geometry, present):
+        # There is one missile->target edge for every missile slot, in slot order.
+        distance = geometry[:, self.target_edge_indices, 6].float() * 50000
+        occupied = present[:, 2:].reshape(-1, 2, 4)
+        distance = distance.reshape(-1, 2, 4)
+        nearest = distance.masked_fill(~occupied, float("inf")).amin(-1, keepdim=True)
+        nearest = torch.where(occupied.any(-1, keepdim=True), nearest, 0)
+        log_weight = self.missile_distance_power * (
+            (nearest + self.missile_distance_floor_m).log()
+            - (distance + self.missile_distance_floor_m).log())
+        log_weight = log_weight.masked_fill(~occupied, 0).flatten(1)
+        # Owner edges and aircraft-pair edges have unit prior. Target edges use
+        # the same prior in both directions; absence is handled by attention masks.
+        return log_weight[:, self.edge_missile_indices] * (self.relations >= 3)
+
+    def _spatial(self, raw, slots, nodes, present):
+        geometry = self._edge_geometry(raw, slots)
+        log_prior = self._edge_log_prior(geometry, present)
+        for block in self.messages:
+            nodes = block(nodes, present, geometry, self.sources, self.destinations,
+                          self.relations, self.roles, log_prior)
         return nodes

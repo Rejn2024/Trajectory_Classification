@@ -23,6 +23,15 @@ DATA_CONTRACT = "nn-duel-own-skill-horizon-v1"
 NONOVERLAP_DATA_CONTRACT = "nn-duel-own-skill-nonoverlap-horizon-v1"
 ENEMY_MISSILE_DATA_CONTRACT = "nn-duel-own-skill-enemy-missile-nonoverlap-horizon-v1"
 OBSERVER_ACCELERATION_DATA_CONTRACT = "nn-duel-own-skill-enemy-missile-observer-acceleration-nonoverlap-horizon-v1"
+TARGET_RELATIVE_MISSILE_DATA_CONTRACT = "nn-duel-target-relative-missile-observer-acceleration-nonoverlap-horizon-v2"
+TARGET_RELATIVE_MISSILE_POLICY = {
+    "friendly_position": "missile minus opposing aircraft, world North/West/Up",
+    "hostile_position": "missile minus observer aircraft, world North/West/Up",
+    "friendly_velocity": "missile minus opposing aircraft velocity, world North/West/Up",
+    "hostile_velocity": "missile minus observer aircraft velocity, world North/West/Up",
+    "range": "norm of each slot's position in metres, divided by 50000",
+    "empty_slots": "mask using all seven original values before translating; retain raw zeros",
+}
 OBSERVER_ACCELERATION_FEATURES = [f"observer_acceleration_{axis}" for axis in "nwu"]
 OBSERVER_ACCELERATION_POLICY = {
     "replaces": [f"observer_obs_{i:02d}" for i in range(3)],
@@ -99,6 +108,21 @@ def reconstruct_enemy_missiles(observer_raw, opposite_raw):
     enemy[:, :, 6] = np.linalg.norm(enemy[:, :, :3] * [50000, 50000, 10000], axis=-1) / 50000
     enemy[~present] = 0
     return enemy.reshape(-1, len(ENEMY_MISSILE_FEATURES)).astype(np.float32)
+
+
+def target_relative_friendly_missiles(raw):
+    """Express friendly position, velocity and range relative to the opposing aircraft."""
+    raw = np.asarray(raw, dtype=np.float64)
+    if raw.ndim != 2 or raw.shape[1] != len(OBS_COLUMNS) or not np.isfinite(raw).all():
+        raise ValueError("Expected finite (frames, 51) observations")
+    slots = raw[:, 19:47].reshape(-1, 4, 7).copy()
+    present = np.any(slots != 0, axis=-1)
+    slots[:, :, :3] -= raw[:, None, 9:12]
+    # Opponent-minus-observer velocity uses /600; missile velocity uses /1200.
+    slots[:, :, 3:6] -= .5 * raw[:, None, 12:15]
+    slots[:, :, 6] = np.linalg.norm(slots[:, :, :3] * [50000, 50000, 10000], axis=-1) / 50000
+    slots[~present] = 0
+    return slots.reshape(-1, 28).astype(np.float32)
 
 
 def discover_corpus(root, source=None):
@@ -443,13 +467,16 @@ def nonoverlap_audit(samples):
 
 
 def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
-                    nonoverlapping_train=False, enemy_missiles=False, observer_acceleration=False):
+                    nonoverlapping_train=False, enemy_missiles=False, observer_acceleration=False,
+                    target_relative_missiles=False):
     """Write immutable frames, labels, grouped splits and training-only scaling.
 
     Optional thinning applies only to training, after the original split is fixed.
     Test/validation examples and scenario assignments match the dense preparation.
     observer_acceleration replaces the first three absolute-position channels
     with three causal observer-acceleration channels before the enemy slots.
+    target_relative_missiles additionally moves friendly position, velocity and
+    range to the opponent reference. Enemy slots remain relative to their observer target.
     """
     if not isinstance(nonoverlapping_train, bool):
         raise ValueError("nonoverlapping_train must be boolean")
@@ -457,6 +484,9 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
         raise ValueError("enemy_missiles must be boolean and requires non-overlapping training")
     if not isinstance(observer_acceleration, bool) or (observer_acceleration and not enemy_missiles):
         raise ValueError("observer_acceleration must be boolean and requires enemy_missiles")
+    if (not isinstance(target_relative_missiles, bool)
+            or (target_relative_missiles and not observer_acceleration)):
+        raise ValueError("target_relative_missiles must be boolean and requires observer_acceleration")
     root, output = Path(root).resolve(), Path(output)
     if output.exists() and any(output.iterdir()):
         raise ValueError("Choose an empty output directory or load the existing prepared dataset")
@@ -480,6 +510,8 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
     missile_rows = []
     for index, row, (frame, ends, target) in _episodes(
             source, {**source_manifest, "classes": classes}, episodes, enemy_missiles=enemy_missiles):
+        if target_relative_missiles:
+            frame[:, 19:47] = target_relative_friendly_missiles(frame[:, :len(OBS_COLUMNS)])
         if observer_acceleration:
             acceleration = observer_acceleration_features(frame[:, :len(OBS_COLUMNS)])
             frame = np.concatenate([frame[:, 3:len(BASE_FEATURES)], acceleration,
@@ -551,7 +583,8 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
     except ValueError:
         source_name = str(source)
     manifest = {
-        "data_contract": (OBSERVER_ACCELERATION_DATA_CONTRACT if observer_acceleration else
+        "data_contract": (TARGET_RELATIVE_MISSILE_DATA_CONTRACT if target_relative_missiles else
+                          OBSERVER_ACCELERATION_DATA_CONTRACT if observer_acceleration else
                           ENEMY_MISSILE_DATA_CONTRACT if enemy_missiles else
                           NONOVERLAP_DATA_CONTRACT if nonoverlapping_train else DATA_CONTRACT),
         "classes": classes, "features": names,
@@ -586,6 +619,9 @@ def prepare_dataset(root, output, source=None, split_seed=1729, analysis=None,
     if observer_acceleration:
         manifest["observer_acceleration"] = dict(OBSERVER_ACCELERATION_POLICY)
         manifest["input_contract"] += "; observer absolute position omitted, causal observer acceleration added"
+    if target_relative_missiles:
+        manifest["missile_position_reference"] = dict(TARGET_RELATIVE_MISSILE_POLICY)
+        manifest["input_contract"] += "; friendly missile position/velocity/range relative to opposing aircraft"
     manifest["files"] = {p.name: sha256(p) for p in sorted(output.iterdir()) if p.is_file()}
     write_json(output / "manifest.json", manifest)
     return manifest
@@ -663,3 +699,14 @@ class ObserverAccelerationEnemyMissileNNDuelData(EnemyMissileNNDuelData):
         super().__init__(directory)
         if self.manifest.get("observer_acceleration") != OBSERVER_ACCELERATION_POLICY:
             raise ValueError("Expected the notebook-22 causal observer-acceleration policy")
+
+
+class TargetRelativeMissileNNDuelData(ObserverAccelerationEnemyMissileNNDuelData):
+    """Notebook-24: friendly positions use the opponent, hostile positions the observer."""
+
+    data_contract = TARGET_RELATIVE_MISSILE_DATA_CONTRACT
+
+    def __init__(self, directory):
+        super().__init__(directory)
+        if self.manifest.get("missile_position_reference") != TARGET_RELATIVE_MISSILE_POLICY:
+            raise ValueError("Expected the notebook-24 missile position reference policy")
