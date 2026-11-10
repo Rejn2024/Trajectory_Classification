@@ -202,6 +202,8 @@ def test_both_notebooks_prepare_one_fit_evaluate_reload_and_report(tmp_path, mon
                 assert namespace["CONFIG"]["architecture"] == "hgt_hierarchical_intent"
                 assert namespace["CONFIG"]["hierarchical_loss"] == "partial_credit"
                 assert namespace["CONFIG"]["family_reward"] == namespace["CONFIG"]["handedness_reward"] == 1.
+                assert namespace["CONFIG"]["class_weighting"] == "family_sqrt_inverse"
+                assert namespace["CONFIG"]["handedness_weighting"] == "sqrt_inverse"
                 namespace["CONFIG"]["epochs"] = 2
     assert fit_count == [False]
     data, run = namespace["data"], namespace["RUN"]
@@ -214,6 +216,9 @@ def test_both_notebooks_prepare_one_fit_evaluate_reload_and_report(tmp_path, mon
     assert checkpoint["hierarchical_objective"] == {"hierarchical_loss": "partial_credit",
                                                      "family_reward": 1., "handedness_reward": 1.}
     assert checkpoint["scheduler_state"] is not None
+    assert checkpoint["handedness_weighting"] == namespace["HANDEDNESS_WEIGHTING"]
+    assert checkpoint["class_weighting"]["weighting_level"] == "skill_family"
+    assert (run / "handedness_weights.json").is_file() and (run / "handedness_weights.csv").is_file()
     restored = paired.make_model(len(data.classes), checkpoint["model_config"], checkpoint["mean"], checkpoint["std"])
     restored.load_state_dict(checkpoint["model_state"])
     restored.eval()
@@ -235,11 +240,18 @@ def test_both_notebooks_prepare_one_fit_evaluate_reload_and_report(tmp_path, mon
     history = pd.read_csv(run / "history.csv")
     np.testing.assert_allclose(history.train_data_loss,
                                history.train_skill_data_loss + .25 * history.train_intent_nll)
+    np.testing.assert_allclose(history.train_skill_data_loss,
+                               history.train_family_data_loss + history.train_handedness_data_loss)
     assert checkpoint["test_nll"] == pytest.approx(history.test_nll.min())
     assert ((history.test_hierarchical_credit >= 0) & (history.test_hierarchical_credit <= 1)).all()
     evaluated = paired.evaluate(restored, data, "validation", "cpu", intent_loss_weight=.25,
                                  **checkpoint["hierarchical_objective"])
     assert evaluated["skill_data_loss"] < evaluated["joint_skill_data_loss"]
+    balanced = paired.evaluate(restored, data, "validation", "cpu", intent_loss_weight=.25,
+        handedness_weights=paired.handedness_weight_tensor(checkpoint["handedness_weighting"], "cpu"),
+        **checkpoint["hierarchical_objective"])
+    pd.testing.assert_frame_equal(evaluated["summary"], balanced["summary"])
+    pd.testing.assert_frame_equal(evaluated["hierarchical_reward"], balanced["hierarchical_reward"])
     # Reuse and report-only cells must not fit another seed or rewrite the prepared data.
     before = paired.sha256(data.directory / "manifest.json")
     prep = nbformat.read(ROOT / "notebooks" / PREP, as_version=4)
@@ -251,3 +263,10 @@ def test_both_notebooks_prepare_one_fit_evaluate_reload_and_report(tmp_path, mon
     for i in (3, 5):
         exec(compile(train.cells[i].source.removeprefix("%%time\n"), "report-only-intent", "exec"), namespace)
     assert fit_count == [False]
+    resumed = original_train(data, run, namespace["CONFIG"], device="cpu", resume=True)
+    assert len(resumed) == len(history)  # Completed resume performs no extra optimizer updates.
+    last = torch.load(run / "last.pt", map_location="cpu", weights_only=False)
+    last["handedness_weighting"]["weights"][0][0][0] += .1
+    torch.save(last, run / "last.pt")
+    with pytest.raises(ValueError, match="original training-fitted handedness weights"):
+        original_train(data, run, namespace["CONFIG"], device="cpu", resume=True)

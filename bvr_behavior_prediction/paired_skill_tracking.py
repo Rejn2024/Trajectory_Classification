@@ -162,7 +162,7 @@ class RunTracker:
         shutil.copy2(__file__, self.output / "tracking_source.py")
         self.artifact(self.output / "tracking_source.py", "source")
         self.artifact(self.output / "run.json", "metadata")
-        for name in ("class_weights.json", "class_weights.csv"):
+        for name in ("class_weights.json", "class_weights.csv", "handedness_weights.json", "handedness_weights.csv"):
             self.artifact(self.output / name, "metadata")
         if self.settings.get("benchmark_path"):
             self.artifact(self.settings["benchmark_path"], "benchmarks")
@@ -219,7 +219,8 @@ class RunTracker:
                     "next_learning_rate", "optimizer_steps", "train_skill_data_loss", "train_intent_nll",
                     "test_intent_nll", "train_intent_accuracy", "test_intent_accuracy", "train_family_nll",
                     "test_family_nll", "train_direction_nll", "test_direction_nll", "train_hierarchical_credit",
-                    "test_hierarchical_credit", "train_expected_hierarchical_credit", "test_expected_hierarchical_credit"):
+                    "test_hierarchical_credit", "train_expected_hierarchical_credit", "test_expected_hierarchical_credit",
+                    "train_family_data_loss", "train_handedness_data_loss"):
             if key in row:
                 metrics[f"epoch/{key}"] = row[key]
         if row["improved"]:

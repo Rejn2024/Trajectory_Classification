@@ -805,40 +805,123 @@ def fit_class_weighting(data, config):
     the expected data-loss scale stays comparable with unweighted CE.
     """
     mode, cap = config["class_weighting"], config["max_class_weight_ratio"]
-    if mode not in ("none", "sqrt_inverse"):
-        raise ValueError("class_weighting must be none or sqrt_inverse")
+    if mode not in ("none", "sqrt_inverse", "family_sqrt_inverse"):
+        raise ValueError("class_weighting must be none, sqrt_inverse or family_sqrt_inverse")
     if (isinstance(cap, bool) or not isinstance(cap, (int, float))
             or not np.isfinite(cap) or cap < 1):
         raise ValueError("max_class_weight_ratio must be finite and at least one")
     if mode == "none":
         return None
+    hierarchy = None
+    if mode == "family_sqrt_inverse":
+        from .skill_intent_forecasting import hierarchy_policy
+        hierarchy = getattr(data, "manifest", {}).get("skill_hierarchy")
+        if hierarchy != hierarchy_policy(data.classes):
+            raise ValueError("Family weighting requires the frozen notebook-26 hierarchy")
     targets = np.asarray(data.targets[data.indices["train"]])
     counts, weights = [], []
+    family_counts, family_weights = [], []
     for h in range(len(HORIZONS)):
         labels = targets[:, h]
         count = np.bincount(labels[labels >= 0], minlength=len(data.classes))
-        present = count > 0
+        balancing_counts = (np.bincount(hierarchy["skill_to_family"], weights=count,
+                                        minlength=len(hierarchy["families"])).astype(np.int64)
+                            if hierarchy is not None else count)
+        present = balancing_counts > 0
         if not present.any():
             raise ValueError(f"No retained training labels at +{HORIZONS[h]}s")
-        weight = np.zeros(len(data.classes), dtype=np.float64)
-        weight[present] = np.minimum(cap, np.sqrt(count.max() / count[present]))
-        weight /= np.dot(count, weight) / count.sum()
+        weight = np.zeros(len(balancing_counts), dtype=np.float64)
+        weight[present] = np.minimum(cap, np.sqrt(balancing_counts.max() / balancing_counts[present]))
+        weight /= np.dot(balancing_counts, weight) / balancing_counts.sum()
+        if hierarchy is not None:
+            family_counts.append(balancing_counts.tolist())
+            family_weights.append(weight.tolist())
+            weight = weight[np.asarray(hierarchy["skill_to_family"])]
         counts.append(count.tolist())
         weights.append(weight.tolist())
-    return {"mode": mode, "max_class_weight_ratio": cap, "classes": list(data.classes),
+    state = {"mode": mode, "max_class_weight_ratio": cap, "classes": list(data.classes),
             "horizons_s": list(HORIZONS), "counts": counts, "weights": weights,
             "fitted_on": "retained training labels only; missing=-1 excluded",
             "normalisation": "training-frequency weighted mean one per horizon",
             "zero_support": "zero positive-target weight; output classes retained"}
+    if hierarchy is not None:
+        state.update(weighting_level="skill_family", families=hierarchy["families"],
+                     skill_to_family=hierarchy["skill_to_family"], family_counts=family_counts,
+                     family_weights=family_weights,
+                     normalisation="training-frequency weighted mean one across families; both sides share family weight",
+                     zero_support="unseen families have zero weight; an unseen side retains its seen family's weight")
+    return state
 
 
 def class_weight_table(state):
     """Human-readable audit for the exact weights saved in each run."""
-    return pd.DataFrame([
+    table = pd.DataFrame([
         {"horizon_s": horizon, "skill": skill, "training_support": state["counts"][h][c],
          "training_frequency": state["counts"][h][c] / sum(state["counts"][h]),
          "weight": state["weights"][h][c]}
         for h, horizon in enumerate(state["horizons_s"]) for c, skill in enumerate(state["classes"])])
+    if state.get("weighting_level") == "skill_family":
+        table["family"] = [state["families"][f] for _ in HORIZONS for f in state["skill_to_family"]]
+    return table
+
+
+def fit_handedness_weighting(data, config):
+    """Balance L/R inside each mirrored family and horizon, using retained TRAIN labels only."""
+    mode = config.get("handedness_weighting", "none")
+    cap = config.get("max_handedness_weight_ratio", 5.0)
+    if mode not in ("none", "sqrt_inverse", "inverse"):
+        raise ValueError("handedness_weighting must be none, sqrt_inverse or inverse")
+    if isinstance(cap, bool) or not isinstance(cap, (int, float)) or not np.isfinite(cap) or cap < 1:
+        raise ValueError("max_handedness_weight_ratio must be finite and at least one")
+    if mode == "none":
+        return None
+    from .skill_intent_forecasting import hierarchy_policy
+    hierarchy = getattr(data, "manifest", {}).get("skill_hierarchy")
+    if hierarchy != hierarchy_policy(data.classes):
+        raise ValueError("Handedness weighting requires the frozen notebook-26 hierarchy")
+    targets = np.asarray(data.targets[data.indices["train"]])
+    counts = np.zeros((len(HORIZONS), len(hierarchy["paired_families"]), 2), dtype=np.int64)
+    for h in range(len(HORIZONS)):
+        labels = targets[:, h]
+        leaf_counts = np.bincount(labels[labels >= 0], minlength=len(data.classes))
+        for c, (p, d) in enumerate(zip(hierarchy["skill_to_pair"], hierarchy["skill_to_direction"])):
+            if p >= 0:
+                counts[h, p, d] = leaf_counts[c]
+    weights = np.zeros_like(counts, dtype=np.float64)
+    power = .5 if mode == "sqrt_inverse" else 1.0
+    for h in range(len(HORIZONS)):
+        for p in range(len(hierarchy["paired_families"])):
+            support = counts[h, p]
+            seen = support > 0
+            if seen.any():
+                raw = np.zeros(2, dtype=np.float64)
+                raw[seen] = np.minimum(cap, (support.max() / support[seen]) ** power)
+                weights[h, p] = raw / (np.dot(support, raw) / support.sum())
+    return {"mode": mode, "max_handedness_weight_ratio": float(cap),
+            "horizons_s": list(HORIZONS), "paired_families": hierarchy["paired_families"],
+            "directions": hierarchy["directions"], "counts": counts.tolist(), "weights": weights.tolist(),
+            "fitted_on": "retained training labels only; missing and singleton labels excluded",
+            "normalisation": "training-frequency weighted mean one inside each pair/horizon",
+            "application": "multiply only handedness loss/penalty, after family-frequency weighting",
+            "zero_support": "unseen sides have zero target weight; single seen side has weight one; empty pairs have zero weights"}
+
+
+def handedness_weight_table(state):
+    columns = ["horizon_s", "family", "direction", "training_support", "conditional_frequency", "weight"]
+    rows = []
+    for h, horizon in enumerate(HORIZONS):
+        for p, family in enumerate(state["paired_families"]):
+            total = sum(state["counts"][h][p])
+            for d, direction in enumerate(state["directions"]):
+                count = state["counts"][h][p][d]
+                rows.append(dict(zip(columns, (horizon, family, direction, count,
+                                               count / total if total else 0., state["weights"][h][p][d]))))
+    return pd.DataFrame(rows, columns=columns)
+
+
+def handedness_weight_tensor(state, device):
+    return (None if state is None else torch.tensor(state["weights"], dtype=torch.float32, device=device).reshape(
+        len(HORIZONS), len(state["paired_families"]), 2))
 
 
 def masked_loss(logits, targets, class_weights=None):
@@ -896,10 +979,10 @@ def hierarchical_loss_settings(config):
 
 
 def hierarchical_example_loss(family_ce, direction_ce, paired, hierarchical_loss="joint_nll",
-                              family_reward=1.0, handedness_reward=1.0):
+                              family_reward=1.0, handedness_reward=1.0, handedness_weight=None):
     """Partial credit C=P(family)*(a+b*P(side|family))/(a+b), or joint NLL."""
     if hierarchical_loss == "joint_nll":
-        return family_ce + direction_ce
+        return family_ce + (direction_ce * handedness_weight if handedness_weight is not None else direction_ce)
     if handedness_reward == 0:
         return family_ce
     log_family, log_direction = math.log(family_reward), math.log(handedness_reward)
@@ -907,15 +990,35 @@ def hierarchical_example_loss(family_ce, direction_ce, paired, hierarchical_loss
     # Stable even when the true-side probability underflows or is effectively zero.
     log_credit_given_family = torch.logaddexp(direction_ce.new_tensor(log_family), log_direction - direction_ce)
     side_penalty = (normalizer - log_credit_given_family).clamp_min(0)
+    if handedness_weight is not None:
+        side_penalty = side_penalty * handedness_weight
     return family_ce + torch.where(paired, side_penalty, 0)
 
 
+def target_handedness_weights(targets, mapping, handedness_weights):
+    if handedness_weights is None:
+        return None
+    if (handedness_weights.ndim != 3 or handedness_weights.shape[0] != len(HORIZONS)
+            or handedness_weights.shape[-1] != 2):
+        raise ValueError("Expected handedness weights in (horizons, paired families, 2) order")
+    if handedness_weights.shape[1] == 0:
+        return torch.ones_like(targets, dtype=torch.float32)
+    pair = mapping["pair"][targets.clamp_min(0)]
+    side = mapping["direction"][targets.clamp_min(0)]
+    selected = handedness_weights[torch.arange(len(HORIZONS), device=targets.device)[None],
+                                  pair.clamp_min(0), side.clamp_min(0)]
+    return torch.where((targets >= 0) & (pair >= 0), selected, 1.)
+
+
 def masked_hierarchical_skill_loss(family_logits, direction_logits, targets, mapping, class_weights=None,
-                                    hierarchical_loss="joint_nll", family_reward=1.0, handedness_reward=1.0):
+                                    hierarchical_loss="joint_nll", family_reward=1.0, handedness_reward=1.0,
+                                    handedness_weights=None):
     settings = hierarchical_loss_settings({"hierarchical_loss": hierarchical_loss,
                                             "family_reward": family_reward, "handedness_reward": handedness_reward})
     family_ce, direction_ce, _, direction_y, _ = hierarchical_target_losses(family_logits, direction_logits, targets, mapping)
-    combined = hierarchical_example_loss(family_ce, direction_ce, direction_y >= 0, **settings)
+    hand_weight = target_handedness_weights(targets, mapping, handedness_weights)
+    combined = hierarchical_example_loss(family_ce, direction_ce, direction_y >= 0,
+                                         handedness_weight=hand_weight, **settings)
     if class_weights is not None:
         combined = combined * class_weights.gather(1, targets.clamp_min(0).T).T
     counts = (targets >= 0).sum(0)
@@ -973,7 +1076,7 @@ def metric_tables(targets, probabilities, classes, split, losses=None, allow_emp
 @torch.inference_mode()
 def evaluate(model, data, split, device, batch_size=1024, precision="fp32", pipeline=None,
              class_weights=None, evaluation_precision=None, evaluation_attention="auto", intent_loss_weight=0.0,
-             hierarchical_loss="joint_nll", family_reward=1.0, handedness_reward=1.0):
+             hierarchical_loss="joint_nll", family_reward=1.0, handedness_reward=1.0, handedness_weights=None):
     if evaluation_precision is not None:
         precision = resolve_precision(device, evaluation_precision)
     model.eval()
@@ -1071,15 +1174,23 @@ def evaluate(model, data, split, device, batch_size=1024, precision="fp32", pipe
                                                 "family_reward": family_reward, "handedness_reward": handedness_reward})
         family_ce, direction_ce = np.concatenate(family_losses), np.concatenate(direction_losses)
         paired = data.direction_targets[ids] >= 0
+        hand_weight = target_handedness_weights(torch.from_numpy(targets),
+            {key: value.detach().cpu() for key, value in hierarchy_mapping.items()},
+            handedness_weights.detach().cpu() if handedness_weights is not None else None)
         objective = hierarchical_example_loss(torch.from_numpy(family_ce), torch.from_numpy(direction_ce),
-                                               torch.from_numpy(paired), **settings).numpy()
+                                               torch.from_numpy(paired), handedness_weight=hand_weight, **settings).numpy()
         weighted = objective.astype(np.float64)
+        weighted_family = family_ce.astype(np.float64)
         if class_weights is not None:
-            weighted *= np.asarray(class_weights)[np.arange(len(HORIZONS)), np.maximum(targets, 0)]
+            outer_weights = np.asarray(class_weights)[np.arange(len(HORIZONS)), np.maximum(targets, 0)]
+            weighted *= outer_weights
+            weighted_family *= outer_weights
         skill_data_loss = float((weighted.sum(0) / (targets >= 0).sum(0)).mean())
         previous = result.get("skill_data_loss", result["data_loss"])
         result["joint_skill_data_loss"] = previous
         result["skill_data_loss"] = skill_data_loss
+        result["family_data_loss"] = float((weighted_family.sum(0) / (targets >= 0).sum(0)).mean())
+        result["handedness_data_loss"] = skill_data_loss - result["family_data_loss"]
         result["data_loss"] += skill_data_loss - previous
         # Rewards are normalized to [0,1]. Handedness adds credit only when the
         # predicted family is correct; singleton families have no handedness bonus.
@@ -1132,7 +1243,7 @@ def l1_penalty(model):
 
 def fit_batch(model, optimizer, x, y, device, precision, gradient_clip, l1_lambda=0.0,
               class_weights=None, intent_mapping=None, intent_loss_weight=0.0, hierarchy_mapping=None,
-              hierarchical_loss="joint_nll", family_reward=1.0, handedness_reward=1.0):
+              hierarchical_loss="joint_nll", family_reward=1.0, handedness_reward=1.0, handedness_weights=None):
     optimizer.zero_grad(set_to_none=True)
     with autocast_context(device, precision):
         if hierarchy_mapping is not None:
@@ -1145,7 +1256,8 @@ def fit_batch(model, optimizer, x, y, device, precision, gradient_clip, l1_lambd
     if hierarchy_mapping is not None:
         loss = masked_hierarchical_skill_loss(hierarchy["family_logits"], hierarchy["direction_logits"],
                                               y, hierarchy_mapping, class_weights, hierarchical_loss=hierarchical_loss,
-                                              family_reward=family_reward, handedness_reward=handedness_reward)
+                                              family_reward=family_reward, handedness_reward=handedness_reward,
+                                              handedness_weights=handedness_weights)
         intent_targets = torch.where(y >= 0, intent_mapping[y.clamp_min(0)], -1)
         loss = loss + intent_loss_weight * masked_loss(intent_logits, intent_targets)
     else:
@@ -1216,6 +1328,8 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
             or not math.isfinite(intent_loss_weight) or intent_loss_weight < 0
             or (not multitask and intent_loss_weight != 0)):
         raise ValueError("intent_loss_weight must be finite/nonnegative and requires an intent architecture")
+    if config.get("handedness_weighting", "none") != "none" and not hierarchical:
+        raise ValueError("Handedness weighting requires hgt_hierarchical_intent")
     schedule_settings = learning_rate_schedule_settings(config)
     if config["evaluation_precision"] not in {"fp32", "bf16"}:
         raise ValueError("evaluation_precision must be fp32 or bf16")
@@ -1247,6 +1361,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
             or not isinstance(config["overtraining_patience"], int)
             or config["overtraining_patience"] < 1):
         raise ValueError("Overtraining shutdown requires a boolean switch and positive integer patience")
+    handedness_weighting = fit_handedness_weighting(data, config)
     class_weighting = fit_class_weighting(data, config)
     output = Path(output)
     device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
@@ -1305,6 +1420,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
     if hierarchical:
         intent_options["hierarchy_mapping"] = hierarchy_mapping_tensors(data_manifest["skill_hierarchy"], device)
         intent_options.update(hierarchy_settings)
+        intent_options["handedness_weights"] = handedness_weight_tensor(handedness_weighting, device)
     model = execution_model(base_model, config)
     optimizer = torch.optim.AdamW(base_model.parameters(), lr=config["learning_rate"],
                                   weight_decay=config["weight_decay"])
@@ -1342,7 +1458,8 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
            "effective_precision": precision, "effective_cpu_threads": cpu_threads,
            "effective_evaluation_precision": evaluation_precision,
            "evaluation_attention": config["evaluation_attention"],
-           "class_weighting": class_weighting, "learning_rate_schedule": schedule_metadata}
+           "class_weighting": class_weighting, "handedness_weighting": handedness_weighting,
+           "learning_rate_schedule": schedule_metadata}
     if multitask:
         run["intent_supervision"] = data_manifest["intent_supervision"]
         run["intent_source_sha256"] = sha256(Path(__file__).with_name("skill_intent_forecasting.py"))
@@ -1363,9 +1480,12 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                                                "data_manifest_sha256", "source_sha256", "tracking_source_sha256",
                                                "class_weighting")) or (
                 saved_run.get("architecture_source_sha256") != run["architecture_source_sha256"]
-                or saved_run.get("intent_source_sha256") != run.get("intent_source_sha256")):
+                or saved_run.get("intent_source_sha256") != run.get("intent_source_sha256")
+                or saved_run.get("handedness_weighting") != handedness_weighting):
             raise ValueError("Resume requires the same configuration, data and source")
         saved = torch.load(output / "last.pt", map_location=device, weights_only=False)
+        if saved.get("handedness_weighting") != handedness_weighting:
+            raise ValueError("Resume requires the original training-fitted handedness weights")
         base_model.load_state_dict(saved["model_state"])
         optimizer.load_state_dict(saved["optimizer_state"])
         optimizer_steps = saved.get("optimizer_steps", saved["epoch"] * steps_per_epoch)
@@ -1396,6 +1516,9 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
         if class_weighting is not None:
             write_json(output / "class_weights.json", class_weighting)
             class_weight_table(class_weighting).to_csv(output / "class_weights.csv", index=False)
+        if handedness_weighting is not None:
+            write_json(output / "handedness_weights.json", handedness_weighting)
+            handedness_weight_table(handedness_weighting).to_csv(output / "handedness_weights.csv", index=False)
         shutil.copy2(__file__, output / "training_source.py")
         if architecture_name != "transformer":
             shutil.copy2(Path(__file__).with_name("enemy_missile_models.py"),
@@ -1435,6 +1558,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                                         evaluation_attention=config["evaluation_attention"],
                                         **({"intent_loss_weight": intent_loss_weight} if multitask else {}),
                                         **hierarchy_settings,
+                                        **({"handedness_weights": intent_options["handedness_weights"]} if hierarchical else {}),
                                         class_weights=class_weighting["weights"]
                                         if class_weighting is not None and s == "train" else None)
                                for s in ("train", "test")]
@@ -1492,7 +1616,9 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                                train_intent_accuracy=float(results[0]["intent"]["summary"].accuracy.mean()),
                                test_intent_accuracy=float(results[1]["intent"]["summary"].accuracy.mean()))
                 if hierarchical:
-                    row.update(train_family_nll=float(results[0]["family"]["summary"].nll.mean()),
+                    row.update(train_family_data_loss=results[0]["family_data_loss"],
+                               train_handedness_data_loss=results[0]["handedness_data_loss"],
+                               train_family_nll=float(results[0]["family"]["summary"].nll.mean()),
                                test_family_nll=float(results[1]["family"]["summary"].nll.mean()),
                                train_direction_nll=float(results[0]["direction"]["summary"].nll.mean()),
                                test_direction_nll=float(results[1]["direction"]["summary"].nll.mean()),
@@ -1513,6 +1639,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
                            "feature_names": feature_names,
                            "data_contract": run["data_contract"],
                            "class_weighting": class_weighting,
+                           "handedness_weighting": handedness_weighting,
                            "input_contract": run["input_contract"],
                            "target_contract": run["target_contract"],
                            "best_loss": best, "best_epoch": best_epoch,
@@ -1577,6 +1704,8 @@ def final_evaluation(data, output, device=None, tracking=None):
     model.load_state_dict(saved["model_state"])
     run = read_json(output / "run.json")
     config = {**DEFAULT_TRAINING, **run["training"]}
+    if saved.get("handedness_weighting") != run.get("handedness_weighting"):
+        raise ValueError("Checkpoint handedness weights differ from run metadata")
     precision = resolve_precision(device, saved.get("effective_precision",
                                                     run.get("effective_precision", "fp32")))
     # Old checkpoints retain their original evaluation policy when explicitly
@@ -1599,7 +1728,9 @@ def final_evaluation(data, output, device=None, tracking=None):
                                        **({"intent_loss_weight": config["intent_loss_weight"]}
                                           if config.get("architecture") in ("hgt_intent", "hgt_hierarchical_intent") else {}),
                                        **(hierarchical_loss_settings(config) if config.get("architecture") == "hgt_hierarchical_intent"
-                                          else {})) for s in SPLITS}
+                                          else {}),
+                                       **({"handedness_weights": handedness_weight_tensor(saved.get("handedness_weighting"), device)}
+                                          if config.get("architecture") == "hgt_hierarchical_intent" else {})) for s in SPLITS}
             except NonfiniteEvaluationError as error:
                 error.details.update(epoch=saved["epoch"], phase="final_evaluation")
                 write_json(output / "nonfinite_evaluation.json", error.details)
@@ -1665,6 +1796,7 @@ def benchmark_batches(data, config=None, device=None, batch_sizes=(512, 1024),
     if config.get("architecture") == "hgt_hierarchical_intent":
         intent_options["hierarchy_mapping"] = hierarchy_mapping_tensors(data.manifest["skill_hierarchy"], device)
         intent_options.update(hierarchical_loss_settings(config))
+        intent_options["handedness_weights"] = handedness_weight_tensor(fit_handedness_weighting(data, config), device)
     class_weighting = fit_class_weighting(data, config)
     weights = (None if class_weighting is None else
                torch.tensor(class_weighting["weights"], dtype=torch.float32, device=device))
