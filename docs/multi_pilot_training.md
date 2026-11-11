@@ -1,7 +1,8 @@
 # Training independent pilots with different rewards
 
-This branch uses the four-command v2 catalogue: `turn_to_heading`, `set_altitude`,
-`set_speed`, and `launch`. Continuous parameters and PPO probabilities cover only
+This branch uses the four-command v3 catalogue: `turn_to_heading`, `set_altitude`,
+`set_speed`, and `launch`. Flight commands take signed relative deltas; zero
+requests no change. Continuous parameters and PPO probabilities cover only
 the selected command's effective controls. Old checkpoints require retraining;
 see the [catalogue migration guide](simplified_training_environment_261111.md).
 
@@ -81,7 +82,7 @@ are the actual values; each manifest also records sampling seed and ranges.
 `combat_population_weights` remains available to reproduce the earlier Halton roster.
 The [historical notebook snapshot](../notebooks/results/20261006_notebook05.ipynb)
 retains the published tables and embedded figures. Those results do not evaluate the
-new recipe. Notebook 04 retains its original reward weights and uses catalogue v2.
+new recipe. Notebook 04 retains its original reward weights and uses catalogue v3.
 
 The new defaults use 150 epochs of 75 fresh scenarios, 10 PPO passes at most, and
 256 transitions per minibatch. Training seeds advance by the scenario count each epoch;
@@ -450,7 +451,7 @@ recommended by [Stable Baselines3's evaluation guidance](https://stable-baseline
 
 The recorded experiment recipes below use historical catalogues. Reproduce those
 populations from their frozen source snapshots or original branch. This branch
-rejects their checkpoints; new catalogue-v2 experiments need fresh pilot populations.
+rejects their checkpoints; new catalogue-v3 experiments need fresh pilot populations.
 
 `scripts/run_pilot_experiment.py` prepares a separate experiment from a completed
 notebook 05 population using the combat v2 reward definition. It preserves the

@@ -191,7 +191,7 @@ def test_hybrid_policy_exposes_every_skill_and_nn_parameters():
     assert pilot.skill_names == (
         "turn_to_heading", "set_altitude", "set_speed", "launch",
     )
-    assert pilot.parameter_names == ("altitude_m", "heading_deg", "speed_mps")
+    assert pilot.parameter_names == ("delta_altitude_m", "delta_heading_deg", "delta_speed_mps")
     assert pilot._skill_indices == {name: i for i, name in enumerate(pilot.skill_names)}
     assert len(pilot._skill_contracts) == len(pilot.skill_names)
     name, params, _, _, raw = pilot.act(np.zeros(12, dtype=np.float32), deterministic=True)

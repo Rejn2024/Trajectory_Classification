@@ -28,6 +28,24 @@ def active_indices(pilot, skill_index):
             if spec["type"] == "number"]
 
 
+@pytest.mark.parametrize("fraction", [-0.5, 0.0, 0.5])
+@pytest.mark.parametrize("name,key,limit", [
+    ("turn_to_heading", "delta_heading_deg", 180),
+    ("set_altitude", "delta_altitude_m", 80),
+    ("set_speed", "delta_speed_mps", 80),
+])
+def test_deterministic_neural_commands_decode_to_signed_deltas(pilot, fraction, name, key, limit):
+    with torch.no_grad():
+        pilot.skill_head.weight.zero_()
+        pilot.skill_head.bias.fill_(-100)
+        pilot.skill_head.bias[pilot._skill_indices[name]] = 100
+        pilot.parameter_mean.weight.zero_()
+        pilot.parameter_mean.bias.fill_(float(np.arctanh(fraction)))
+    action = pilot.act(np.zeros((2, 3), dtype=np.float32), deterministic=True)
+    assert action[0] == name
+    assert action[1] == {key: pytest.approx(fraction * limit, abs=1e-4)}
+
+
 def test_actions_architecture_and_sampling_match_legacy(pilot):
     torch.manual_seed(123)
     legacy = HybridSkillPilot(3, 8, history_steps=2, transformer_heads=2, transformer_layers=1,

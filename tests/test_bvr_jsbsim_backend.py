@@ -11,6 +11,7 @@ class _Aircraft:
     def __init__(self, altitude, speed):
         self.position = np.array([0.0, 0.0, altitude])
         self.speed = speed
+        self.heading = 0.0
         self.velocity = np.array([speed, 0.0, 0.0])
         self.is_alive = True
         self.enemies_lock = []
@@ -24,7 +25,7 @@ class _Aircraft:
         return self.position[2]
 
     def get_heading(self):
-        return 0.0
+        return self.heading
 
 
 class _ActionManager:
@@ -233,9 +234,12 @@ def test_support_requires_a_live_locked_target_and_missile_without_active_seeker
 @pytest.mark.parametrize(
     "name,parameters,expected",
     [
-        ("turn_to_heading", {"heading_deg": 20}, [20 / 45, 0, 0, 0]),
-        ("set_altitude", {"altitude_m": 5960}, [0, -0.5, 0, 0]),
-        ("set_speed", {"speed_mps": 290}, [0, 0, 0.5, 0]),
+        ("turn_to_heading", {"delta_heading_deg": 20}, [20 / 45, 0, 0, 0]),
+        ("turn_to_heading", {"delta_heading_deg": -20}, [-20 / 45, 0, 0, 0]),
+        ("set_altitude", {"delta_altitude_m": -40}, [0, -0.5, 0, 0]),
+        ("set_altitude", {"delta_altitude_m": 40}, [0, 0.5, 0, 0]),
+        ("set_speed", {"delta_speed_mps": 40}, [0, 0, 0.5, 0]),
+        ("set_speed", {"delta_speed_mps": -40}, [0, 0, -0.5, 0]),
         ("launch", {}, [0, 0, 0, 1]),
     ],
 )
@@ -248,6 +252,7 @@ def test_reduced_skills_reach_the_simulator_with_normalized_physical_controls(
     backend = _backend(tmp_path)
     backend.env.act_manager = CampusActionSpace()
     backend.reset(7)
+    backend.env.agents["A01"].heading = np.deg2rad(350)
     backend.step({"skill_name": name, "parameters": parameters}, {})
     command = backend.env.last_actions["A01"]
     controls = [command[key] for key in ("delta_heading", "delta_altitude", "delta_speed", "shoot")]
@@ -255,11 +260,15 @@ def test_reduced_skills_reach_the_simulator_with_normalized_physical_controls(
     backend.close()
 
 
-def test_backend_recreates_absolute_control_when_setpoint_changes(tmp_path):
+def test_backend_holds_relative_delta_and_accepts_new_commands(tmp_path):
     backend = _backend(tmp_path)
     backend.reset(7)
-    backend.step({"skill_name": "set_altitude", "parameters": {"altitude_m": 6500}}, {})
-    assert backend.env.last_actions["A01"]["delta_altitude"] == 500
-    backend.step({"skill_name": "set_altitude", "parameters": {"altitude_m": 5500}}, {})
-    assert backend.env.last_actions["A01"]["delta_altitude"] == -500
+    action = {"skill_name": "set_altitude", "parameters": {"delta_altitude_m": 40}}
+    backend.step(action, {})
+    assert backend.env.last_actions["A01"]["delta_altitude"] == 40
+    backend.env.agents["A01"].position[2] += 20
+    backend.step(action, {})
+    assert backend.env.last_actions["A01"]["delta_altitude"] == 40
+    backend.step({"skill_name": "set_altitude", "parameters": {"delta_altitude_m": -40}}, {})
+    assert backend.env.last_actions["A01"]["delta_altitude"] == -40
     backend.close()

@@ -44,12 +44,9 @@ class StrategicLLM:
 
     @staticmethod
     def _default_selection(obs):
-        """Use the available heading primitive when a plan cannot be decoded."""
-        status = obs.get("self_status", {})
-        heading = status.get("position", {}).get(
-            "heading_deg", status.get("performance", {}).get("heading_deg", 0.0)
-        )
-        return SkillSelection("turn_to_heading", {"heading_deg": float(heading) % 360.0})
+        """Request zero heading change when a plan cannot be decoded."""
+        del obs
+        return SkillSelection("turn_to_heading", {"delta_heading_deg": 0.0})
 
     def _create_planning_prompt(self, obs, mission):
         """Create planning prompt for LLM"""

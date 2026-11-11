@@ -10,7 +10,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from numbers import Real
 
-CATALOGUE_VERSION = "2.0.0"
+CATALOGUE_VERSION = "3.0.0"
 
 ACTION_SCHEMA = {
     "type": "object",
@@ -70,22 +70,30 @@ COMMON_INTERRUPTS = (
 
 
 def _catalogue():
+    # Altitude/speed limits match CampusActionSpace without importing its optional
+    # simulator dependencies into this lightweight catalogue.
     controllable = "Aircraft is controllable."
     specs = [
         SkillSpec(
             "turn_to_heading", "kinematic", controllable,
-            "The commanded heading is reached, or the command is replaced.", COMMON_INTERRUPTS,
-            {"heading_deg": _number("Commanded true heading in degrees.", 0, 0, 360)},
+            "The relative command is zero, or the planner replaces it.", COMMON_INTERRUPTS,
+            {"delta_heading_deg": _number(
+                "Signed heading change relative to the current heading, in degrees.", 0, -180, 180,
+            )},
         ),
         SkillSpec(
             "set_altitude", "kinematic", controllable,
-            "The commanded altitude is reached, or the command is replaced.", COMMON_INTERRUPTS,
-            {"altitude_m": _number("Commanded altitude above mean sea level.", 8000, 0, 20000)},
+            "The relative command is zero, or the planner replaces it.", COMMON_INTERRUPTS,
+            {"delta_altitude_m": _number(
+                "Signed altitude change relative to the current altitude, in metres.", 0, -80, 80,
+            )},
         ),
         SkillSpec(
             "set_speed", "kinematic", controllable,
-            "The commanded speed is reached, or the command is replaced.", COMMON_INTERRUPTS,
-            {"speed_mps": _number("Commanded true airspeed.", 250, 30, 800)},
+            "The relative command is zero, or the planner replaces it.", COMMON_INTERRUPTS,
+            {"delta_speed_mps": _number(
+                "Signed airspeed change relative to the current speed, in m/s.", 0, -80, 80,
+            )},
         ),
         SkillSpec(
             "launch", "weapon_employment", "The simulator can accept a launch request.",
@@ -130,26 +138,26 @@ class TacticalSkill:
         return self.spec.contract()
 
     def execute(self, obs):
-        """Emit guidance containing only the selected skill's physical control."""
-        position = obs.get("self_status", {}).get("position", {})
-        performance = obs.get("self_status", {}).get("performance", {})
-        heading = position.get("heading_deg", performance.get("heading_deg", 0))
-        altitude = position.get("altitude_m", 0)
-        speed = performance.get("speed_mps", 0)
+        """Emit the selected relative command at each simulator substep.
+
+        Parameters are already deltas; never subtract the current state or retain
+        an absolute target between calls. The planner holds or replaces the delta
+        on its existing decision cadence, and the simulator applies control limits.
+        """
+        del obs
         delta_heading = 0.0
         delta_altitude = 0.0
         delta_speed = 0.0
         completed = False
 
         if self.skill_name == "turn_to_heading":
-            error = (self.params["heading_deg"] - heading + 180) % 360 - 180
-            delta_heading = math.radians(error)
-            completed = error == 0
+            delta_heading = math.radians(self.params["delta_heading_deg"])
+            completed = delta_heading == 0
         elif self.skill_name == "set_altitude":
-            delta_altitude = self.params["altitude_m"] - altitude
+            delta_altitude = self.params["delta_altitude_m"]
             completed = delta_altitude == 0
         elif self.skill_name == "set_speed":
-            delta_speed = self.params["speed_mps"] - speed
+            delta_speed = self.params["delta_speed_mps"]
             completed = delta_speed == 0
         elif self.skill_name == "launch":
             completed = True

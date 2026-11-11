@@ -11,9 +11,9 @@ class HybridSkillPilot(nn.Module):
     """Select any SkillManager skill and parameterise it on every decision.
 
     The categorical head covers the reduced runtime catalogue. The Gaussian head
-    supplies one normalized value per effective numeric control parameter;
-    values are transformed through each skill's public bounds rather than replaced
-    by fixed primitive defaults.
+    supplies one raw value per effective numeric control parameter. Values are
+    transformed through each skill's signed relative-command bounds; a raw zero
+    decodes to no requested change, rather than an absolute flight setpoint.
     """
 
     def __init__(

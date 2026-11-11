@@ -265,6 +265,7 @@ def test_arbitrary_roster_trains_distinct_models_and_preserves_reward_identity(c
 
 @pytest.mark.parametrize("mismatch", [
     "unversioned", "legacy_labels", "skill_order", "parameter_order", "version", "bounds",
+    "absolute_controls",
 ])
 def test_inference_initialization_and_reuse_reject_changed_skill_contract(config, mismatch):
     from bvr_behavior_prediction.rl.multi_pilot import initialize_pilot_from_checkpoint
@@ -284,9 +285,26 @@ def test_inference_initialization_and_reuse_reject_changed_skill_contract(config
     elif mismatch == "parameter_order":
         metadata["parameter_names"].reverse()
     elif mismatch == "version":
-        metadata["skill_catalogue"]["version"] = "1.0.0"
+        metadata["skill_catalogue"]["version"] = "2.0.0"
+    elif mismatch == "absolute_controls":
+        # Four-skill v2 weights have matching tensor sizes but incompatible units
+        # and decoding. Reject them before loading, initializing or copying runs.
+        absolute = {
+            "delta_heading_deg": ("heading_deg", 0, 360, 0),
+            "delta_altitude_m": ("altitude_m", 0, 20000, 8000),
+            "delta_speed_mps": ("speed_mps", 30, 800, 250),
+        }
+        metadata["skill_catalogue"]["version"] = "2.0.0"
+        for contract in metadata["skill_catalogue"]["skills"]:
+            contract["version"] = "2.0.0"
+            properties = contract["parameter_schema"]["properties"]
+            for relative, (name, low, high, default) in absolute.items():
+                if relative in properties:
+                    schema = properties.pop(relative)
+                    properties[name] = {**schema, "minimum": low, "maximum": high, "default": default}
+        metadata["parameter_names"] = sorted(values[0] for values in absolute.values())
     else:
-        metadata["skill_catalogue"]["skills"][0]["parameter_schema"]["properties"]["heading_deg"]["maximum"] = 180
+        metadata["skill_catalogue"]["skills"][0]["parameter_schema"]["properties"]["delta_heading_deg"]["maximum"] = 90
     path.write_text(json.dumps(metadata))
     with pytest.raises(ValueError, match="skill catalogue.*train fresh pilots"):
         load_trained_pilot(source)

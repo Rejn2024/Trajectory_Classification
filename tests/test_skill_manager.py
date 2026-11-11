@@ -33,26 +33,26 @@ def test_catalogue_contains_only_distinct_effective_controls():
         for name in EXPECTED
     }
     assert schemas == {
-        "turn_to_heading": {"heading_deg"}, "set_altitude": {"altitude_m"},
-        "set_speed": {"speed_mps"}, "launch": set(),
+        "turn_to_heading": {"delta_heading_deg"}, "set_altitude": {"delta_altitude_m"},
+        "set_speed": {"delta_speed_mps"}, "launch": set(),
     }
 
 
 def test_catalogue_metadata_is_versioned_ordered_and_defensively_copied():
     manager = SkillManager()
     catalogue = manager.get_catalogue()
-    assert catalogue["version"] == CATALOGUE_VERSION == "2.0.0"
+    assert catalogue["version"] == CATALOGUE_VERSION == "3.0.0"
     assert [contract["name"] for contract in catalogue["skills"]] == EXPECTED
     for contract in catalogue["skills"]:
-        assert contract["version"] == "2.0.0"
+        assert contract["version"] == "3.0.0"
         for field in ("start_condition", "output_contract", "termination_condition",
                       "interruption_conditions", "parameter_schema"):
             assert contract[field], (contract["name"], field)
         assert contract["output_contract"]["additionalProperties"] is False
-    catalogue["skills"][0]["parameter_schema"]["properties"]["heading_deg"]["maximum"] = 1
+    catalogue["skills"][0]["parameter_schema"]["properties"]["delta_heading_deg"]["maximum"] = 1
     catalogue["skills"][0]["output_contract"]["properties"]["shoot"]["enum"].append(2)
     fresh = manager.get_catalogue()
-    assert fresh["skills"][0]["parameter_schema"]["properties"]["heading_deg"]["maximum"] == 360
+    assert fresh["skills"][0]["parameter_schema"]["properties"]["delta_heading_deg"]["maximum"] == 180
     assert fresh["skills"][0]["output_contract"]["properties"]["shoot"]["enum"] == [0, 1]
 
 
@@ -68,12 +68,14 @@ def test_removed_skills_are_not_runtime_aliases(name):
 @pytest.mark.parametrize(
     "name,params,field,expected",
     [
-        ("turn_to_heading", {"heading_deg": 10}, "delta_heading", math.radians(20)),
-        ("turn_to_heading", {"heading_deg": 330}, "delta_heading", math.radians(-20)),
-        ("set_altitude", {"altitude_m": 8000}, "delta_altitude", 1000),
-        ("set_altitude", {"altitude_m": 6000}, "delta_altitude", -1000),
-        ("set_speed", {"speed_mps": 300}, "delta_speed", 50),
-        ("set_speed", {"speed_mps": 200}, "delta_speed", -50),
+        ("turn_to_heading", {"delta_heading_deg": 20}, "delta_heading", math.radians(20)),
+        ("turn_to_heading", {"delta_heading_deg": -20}, "delta_heading", math.radians(-20)),
+        ("turn_to_heading", {"delta_heading_deg": 180}, "delta_heading", math.pi),
+        ("turn_to_heading", {"delta_heading_deg": -180}, "delta_heading", -math.pi),
+        ("set_altitude", {"delta_altitude_m": 80}, "delta_altitude", 80),
+        ("set_altitude", {"delta_altitude_m": -80}, "delta_altitude", -80),
+        ("set_speed", {"delta_speed_mps": 80}, "delta_speed", 80),
+        ("set_speed", {"delta_speed_mps": -80}, "delta_speed", -80),
         ("launch", {}, "shoot", 1),
     ],
 )
@@ -87,26 +89,46 @@ def test_commands_emit_signed_control_on_only_the_selected_axis(name, params, fi
 
 
 @pytest.mark.parametrize(
-    "name,params",
-    [("turn_to_heading", {"heading_deg": 350}),
-     ("set_altitude", {"altitude_m": 7000}), ("set_speed", {"speed_mps": 250})],
+    "name", EXPECTED[:-1],
 )
-def test_reaching_an_absolute_setpoint_completes_the_command(name, params):
-    action, completed = SkillManager().create_skill(name, params).execute(OBSERVATION)
+def test_zero_relative_defaults_request_no_change_at_any_current_state(name):
+    action, completed = SkillManager().create_skill(name).execute(OBSERVATION)
     assert completed
     assert all(action[key] == 0 for key in ("delta_heading", "delta_altitude", "delta_speed", "shoot"))
 
 
 @pytest.mark.parametrize(
+    "name,params",
+    [("turn_to_heading", {"delta_heading_deg": 30}),
+     ("set_altitude", {"delta_altitude_m": -40}), ("set_speed", {"delta_speed_mps": 20})],
+)
+def test_relative_commands_stay_relative_when_aircraft_state_changes(name, params):
+    skill = SkillManager().create_skill(name, params)
+    before = skill.execute(OBSERVATION)
+    changed_state = {"time": 10, "self_status": {
+        "position": {"heading_deg": 30, "altitude_m": 3000},
+        "performance": {"speed_mps": 350},
+    }}
+    assert skill.execute(changed_state) == before
+    assert skill.execute({}) == before
+
+
+@pytest.mark.parametrize(
     "name,params,error",
     [
-        ("turn_to_heading", {"heading_deg": 500}, ValueError),
-        ("set_altitude", {"altitude_m": -1}, ValueError),
-        ("set_speed", {"speed_mps": 900}, ValueError),
-        ("set_speed", {"speed_mps": float("nan")}, ValueError),
-        ("set_speed", {"speed_mps": float("inf")}, ValueError),
-        ("set_speed", {"speed_mps": True}, TypeError),
-        ("set_speed", {"speed_mps": "250"}, TypeError),
+        ("turn_to_heading", {"delta_heading_deg": 180.1}, ValueError),
+        ("turn_to_heading", {"delta_heading_deg": -180.1}, ValueError),
+        ("set_altitude", {"delta_altitude_m": -80.1}, ValueError),
+        ("set_altitude", {"delta_altitude_m": 80.1}, ValueError),
+        ("set_speed", {"delta_speed_mps": 80.1}, ValueError),
+        ("set_speed", {"delta_speed_mps": -80.1}, ValueError),
+        ("set_speed", {"delta_speed_mps": float("nan")}, ValueError),
+        ("set_speed", {"delta_speed_mps": float("inf")}, ValueError),
+        ("set_speed", {"delta_speed_mps": True}, TypeError),
+        ("set_speed", {"delta_speed_mps": "20"}, TypeError),
+        ("turn_to_heading", {"heading_deg": 30}, ValueError),
+        ("set_altitude", {"altitude_m": 8000}, ValueError),
+        ("set_speed", {"speed_mps": 250}, ValueError),
         ("turn_to_heading", {"tolerance_deg": 3}, ValueError),
         ("set_speed", {"timeout_s": 60}, ValueError),
         ("launch", {"launch_range_m": 40_000}, ValueError),
