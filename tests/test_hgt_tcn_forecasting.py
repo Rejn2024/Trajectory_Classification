@@ -16,7 +16,7 @@ from bvr_behavior_prediction import skill_intent_forecasting as intent
 from bvr_behavior_prediction.enemy_missile_models import CausalTemporalConvEncoder
 from tests.test_forecasting_evaluation import assert_equivalent, example
 from tests.test_hgt_missile_models import target_example
-from tests.test_skill_intent_forecasting import ROOT, prepare_base
+from tests.test_skill_intent_forecasting import LEGACY_CLASSES, ROOT, prepare_base
 
 
 NOTEBOOK = "28_skill_intent_target_relative_missile_hgt_tcn_nn_duel_skill_forecasting.ipynb"
@@ -67,7 +67,7 @@ def test_invalid_tcn_settings_fail_before_training(settings):
 
 @pytest.mark.parametrize("autocast", [False, True])
 def test_hgt_tcn_heads_gradients_and_factory_checkpoint_reload(autocast):
-    classes = paired.catalogue(ROOT)
+    classes = LEGACY_CLASSES
     settings = configuration(classes)
     assert not {"heads", "layers"} & settings.keys()
     raw, mean, std = target_example()

@@ -56,7 +56,6 @@ class PPOTrainer:
             transformer_heads=config.transformer_heads,
             transformer_layers=config.transformer_layers,
             selected_skill_parameters=config.selected_skill_parameters,
-            # Operational recovery can use the original frozen legacy model/config.
             **({"skill_conditioned_parameters": True}
                if getattr(config, "skill_conditioned_parameters", False) else {}),
         ).to(self.device)
@@ -526,6 +525,7 @@ class PPOTrainer:
             "reward": self.reward_definition.as_dict(),
             "skill_names": list(self.pilot.skill_names),
             "parameter_names": list(self.pilot.parameter_names),
+            "skill_catalogue": self.pilot.manager.get_catalogue(),
             "checkpoint_format": "policy_state_dict",
             "torch_version": torch.__version__,
         }

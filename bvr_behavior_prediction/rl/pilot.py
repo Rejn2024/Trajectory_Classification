@@ -10,8 +10,8 @@ from torch.distributions import Categorical, Normal
 class HybridSkillPilot(nn.Module):
     """Select any SkillManager skill and parameterise it on every decision.
 
-    The categorical head covers the complete runtime catalogue (currently 33
-    skills). The Gaussian head supplies one normalized value per numeric parameter;
+    The categorical head covers the reduced runtime catalogue. The Gaussian head
+    supplies one normalized value per effective numeric control parameter;
     values are transformed through each skill's public bounds rather than replaced
     by fixed primitive defaults.
     """
@@ -24,7 +24,7 @@ class HybridSkillPilot(nn.Module):
         history_steps: int = 20,
         transformer_heads: int = 4,
         transformer_layers: int = 2,
-        selected_skill_parameters: bool = False,
+        selected_skill_parameters: bool = True,
         skill_conditioned_parameters: bool = False,
     ):
         super().__init__()
@@ -39,14 +39,16 @@ class HybridSkillPilot(nn.Module):
         for properties in self._skill_contracts:
             numeric.update(key for key, schema in properties.items() if schema["type"] == "number")
         self.parameter_names = tuple(sorted(numeric))
+        if type(selected_skill_parameters) is not bool:
+            raise ValueError("selected_skill_parameters must be a boolean")
         self.selected_skill_parameters = selected_skill_parameters
         if type(skill_conditioned_parameters) is not bool:
             raise ValueError("skill_conditioned_parameters must be a boolean")
         if skill_conditioned_parameters and not selected_skill_parameters:
             raise ValueError("skill-conditioned parameters require selected_skill_parameters")
         self.skill_conditioned_parameters = skill_conditioned_parameters
-        # Derived from the existing contracts, with no new learned weights or
-        # checkpoint keys. Old checkpoints and action decoding stay compatible.
+        # The parameterless launch action contributes only its categorical probability.
+        # Only the selected skill's effective controls contribute to PPO by default.
         self.register_buffer(
             "_skill_parameter_mask",
             torch.tensor([

@@ -10,7 +10,7 @@ from bvr_behavior_prediction import paired_skill_forecasting as paired
 from bvr_behavior_prediction import skill_intent_forecasting as intent
 from bvr_behavior_prediction.enemy_missile_models import HGTHierarchicalIntentTransformer
 from tests.test_hgt_missile_models import target_example
-from tests.test_skill_intent_forecasting import prepare_base, ROOT
+from tests.test_skill_intent_forecasting import LEGACY_CLASSES, ROOT, prepare_base
 
 
 @pytest.fixture(autouse=True)
@@ -22,7 +22,7 @@ def cpu_threads():
 
 
 def network(classes=None, **kwargs):
-    classes = paired.catalogue(ROOT) if classes is None else classes
+    classes = LEGACY_CLASSES if classes is None else classes
     policy = intent.hierarchy_policy(classes)
     return HGTHierarchicalIntentTransformer(num_classes=len(classes), input_features=82 + len(classes),
         skill_hierarchy=policy, width=12, heads=6, layers=1, graph_width=8, graph_heads=2,
@@ -31,12 +31,13 @@ def network(classes=None, **kwargs):
 
 
 def test_full_catalogue_has_29_families_four_complete_pairs_and_correct_masks():
-    classes = paired.catalogue(ROOT)
+    classes = LEGACY_CLASSES
     policy = intent.hierarchy_policy(classes)
     assert len(policy["families"]) == 29
     assert policy["paired_families"] == ["beam_missile", "beam_target", "crank_target", "notch"]
     assert policy["directions"] == ["left", "right"]
-    for family, names in intent.MIRROR_PAIRS.items():
+    assert policy["version"] == "skill-family-direction-v1"
+    for family, names in policy["mirror_pairs"].items():
         left, right = [classes.index(name) for name in names]
         assert policy["skill_to_family"][left] == policy["skill_to_family"][right] == policy["families"].index(family)
         assert [policy["skill_to_direction"][left], policy["skill_to_direction"][right]] == [0, 1]
@@ -47,6 +48,22 @@ def test_full_catalogue_has_29_families_four_complete_pairs_and_correct_masks():
     np.testing.assert_array_equal(direction_y, [[0, -1, -1]])
     with pytest.raises(ValueError, match="Incomplete mirror pair"):
         intent.hierarchy_policy(["launch", "notch_left"])
+
+
+def test_simplified_catalogue_has_four_singleton_families_and_no_directions():
+    classes = paired.catalogue(ROOT)
+    policy = intent.hierarchy_policy(classes)
+    assert policy["version"] == "skill-family-direction-v2"
+    assert policy["families"] == ["launch", "set_altitude", "set_speed", "turn_to_heading"]
+    assert policy["paired_families"] == []
+    targets = np.array([[classes.index("set_altitude"), classes.index("launch"), -1]])
+    np.testing.assert_array_equal(intent.map_intent_targets(targets, policy["skill_to_direction"]),
+                                  [[-1, -1, -1]])
+    model = network(classes)
+    result = model(torch.zeros(1, 51, 82 + len(classes)), return_hierarchy=True)
+    assert result["family_logits"].shape == (1, 3, 4)
+    assert result["direction_logits"].shape == (1, 3, 0, 2)
+    torch.testing.assert_close(result["skill_log_probs"].exp().sum(-1), torch.ones(1, 3))
 
 
 def test_joint_probabilities_are_normalized_and_singletons_have_no_direction_mass():

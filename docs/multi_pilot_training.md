@@ -1,13 +1,18 @@
 # Training independent pilots with different rewards
 
+This branch uses the four-command v2 catalogue: `turn_to_heading`, `set_altitude`,
+`set_speed`, and `launch`. Continuous parameters and PPO probabilities cover only
+the selected command's effective controls. Old checkpoints require retraining;
+see the [catalogue migration guide](simplified_training_environment_261111.md).
+
 Choose one of two independent population experiments:
 
 | Notebook | Reward | Default population / epochs per pilot | Output subfolder / MLflow experiment |
 | --- | --- | --- | --- |
-| [05](../notebooks/05_train_multiple_pilots.ipynb) | Combat events with uniformly sampled coefficients and a shared final test | 10 / **150** | `combat/` / `jsbsim-combat-population` |
-| [06](../notebooks/06_train_multiple_pilots.ipynb) | Hybrid evade/pursue/eliminate and shared combat guidance | 10 / 80 | `hybrid/` / `jsbsim-hybrid-population` |
+| [05](../notebooks/05_train_multiple_pilots.ipynb) | Combat events with uniformly sampled coefficients and a shared final test | 10 / **150** | `combat/` / `jsbsim-simplified-combat-population` |
+| [06](../notebooks/06_train_multiple_pilots.ipynb) | Hybrid evade/pursue/eliminate and shared combat guidance | 10 / 80 | `hybrid/` / `jsbsim-simplified-hybrid-population` |
 
-Both output subfolders live under `artifacts/rl_pilot_notebook/`, with a new timestamp
+Both output subfolders live under `artifacts/rl_pilot_simplified/`, with a new timestamp
 per batch. `BVR_PILOT_OUTPUT` overrides the location, but an existing batch is rejected.
 Notebook 06 preserves the former notebook 05 reward experiment. Notebook 04 remains
 the original single-pilot example. `BVR_PILOT_EPOCHS` overrides either epoch default.
@@ -76,7 +81,7 @@ are the actual values; each manifest also records sampling seed and ranges.
 `combat_population_weights` remains available to reproduce the earlier Halton roster.
 The [historical notebook snapshot](../notebooks/results/20261006_notebook05.ipynb)
 retains the published tables and embedded figures. Those results do not evaluate the
-new recipe. Notebook 04's original reward weights and defaults are unchanged.
+new recipe. Notebook 04 retains its original reward weights and uses catalogue v2.
 
 The new defaults use 150 epochs of 75 fresh scenarios, 10 PPO passes at most, and
 256 transitions per minibatch. Training seeds advance by the scenario count each epoch;
@@ -148,8 +153,8 @@ providing support inside a policy decision is still recorded.
 
 The guidance terms are bounded heuristics, not potential-based shaping with a policy
 invariance guarantee. They remain small relative to the elimination reward. There
-are no separate altitude, speed, or named-skill bonuses. The complete 33-skill action catalogue and current missile-based combat
-remain available. An elimination requires a successful friendly missile, so an
+are no separate altitude, speed, or named-skill bonuses. The four-command action
+catalogue uses the existing missile-based simulator. An elimination requires a successful friendly missile, so an
 unrelated opponent crash does not pay. An evasion means a targeted missile failed
 while the controlled aircraft remained alive; this alone does not prove a particular
 manoeuvre caused the failure. Exposure counts time with at least one live incoming
@@ -443,6 +448,10 @@ recommended by [Stable Baselines3's evaluation guidance](https://stable-baseline
 
 ## Matched PPO experiments
 
+The recorded experiment recipes below use historical catalogues. Reproduce those
+populations from their frozen source snapshots or original branch. This branch
+rejects their checkpoints; new catalogue-v2 experiments need fresh pilot populations.
+
 `scripts/run_pilot_experiment.py` prepares a separate experiment from a completed
 notebook 05 population using the combat v2 reward definition. It preserves the
 recorded reward coefficients, seeds, network and training settings, changes one
@@ -585,7 +594,7 @@ and [MLflow run tracking](https://mlflow.org/docs/latest/api_reference/python_ap
 
 ## Selected-skill parameter objective
 
-The opt-in `PilotTrainingConfig.selected_skill_parameters=True` mode keeps the
+The `PilotTrainingConfig.selected_skill_parameters=True` mode keeps the
 network dimensions, weights layout, skill catalogue and simulator-bound action decoding
 unchanged. A non-persistent mask is derived from each skill's numeric parameter schema.
 Collection and PPO evaluation use the selected skill's log probability plus only its
@@ -595,8 +604,9 @@ parameter entropy for every possible skill, preserving gradients through skill s
 These are raw Gaussian entropies, as in the original objective, before the existing
 bounded parameter transformation. There is no averaging by parameter count.
 
-The flag defaults to false and is saved in each pilot's configuration. The loader
-restores it, and old configurations without the flag use the original calculation.
+The flag defaults to true for fresh runs on this branch and is saved in each
+pilot's configuration. The loader restores the saved value after catalogue validation.
+The historical experiment described below changed an earlier false default.
 No checkpoint keys or learned layers were added. The selected-skill experiment retains
 the lower learning rate, original reward coefficients, seeds, 150 epochs, 75 scenarios
 per epoch, 50 validation cases, 100 original test cases and 22 simulator workers.

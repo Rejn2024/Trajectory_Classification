@@ -22,7 +22,17 @@ INTENT_GROUPS = {
                           "accelerate_to_speed", "decelerate_to_speed", "search", "lag_pursuit", "extend",
                           "beam_target_left", "beam_target_right", "crank_target_left", "crank_target_right"],
 }
-SKILL_TO_INTENT = {skill: group for group, skills in INTENT_GROUPS.items() for skill in skills}
+# Preserve the historical taxonomy for archived 33-label datasets. The simplified
+# primitives describe physical controls and do not imply a tactical intent.
+SIMPLIFIED_INTENT_GROUPS = {
+    "offensive": ["launch"],
+    "defensive": [],
+    "context_dependent": ["turn_to_heading", "set_altitude", "set_speed"],
+}
+SKILL_TO_INTENT = {skill: group for groups in (INTENT_GROUPS, SIMPLIFIED_INTENT_GROUPS)
+                   for group, skills in groups.items() for skill in skills}
+SIMPLIFIED_SKILLS = {skill for skills in SIMPLIFIED_INTENT_GROUPS.values() for skill in skills}
+_NEW_SKILLS = SIMPLIFIED_SKILLS - {skill for skills in INTENT_GROUPS.values() for skill in skills}
 MIRROR_PAIRS = {family: [f"{family}_left", f"{family}_right"]
                 for family in ("beam_missile", "beam_target", "crank_target", "notch")}
 
@@ -42,7 +52,8 @@ def hierarchy_policy(classes):
     leaf_family = {skill: family for family, leaves in pairs.items() for skill in leaves}
     families = sorted({leaf_family.get(skill, skill) for skill in classes})
     paired = sorted(pairs)
-    return {"version": "skill-family-direction-v1", "classes": list(classes), "families": families,
+    version = "skill-family-direction-v2" if set(classes) & _NEW_SKILLS else "skill-family-direction-v1"
+    return {"version": version, "classes": list(classes), "families": families,
             "paired_families": paired, "directions": ["left", "right"], "mirror_pairs": pairs,
             "skill_to_family": [families.index(leaf_family.get(skill, skill)) for skill in classes],
             "skill_to_pair": [paired.index(leaf_family[skill]) if skill in leaf_family else -1 for skill in classes],
@@ -58,7 +69,8 @@ def intent_policy(classes):
     if unknown:
         raise ValueError(f"Unknown skills in frozen intent taxonomy: {sorted(unknown)}")
     return {
-        "version": "skill-intent-v1", "classes": list(INTENT_CLASSES),
+        "version": "skill-intent-v2" if set(classes) & _NEW_SKILLS else "skill-intent-v1",
+        "classes": list(INTENT_CLASSES),
         "skill_to_intent": [INTENT_CLASSES.index(SKILL_TO_INTENT[skill]) for skill in classes],
         "mapping": {skill: SKILL_TO_INTENT[skill] for skill in classes},
         "meaning": "catalogue skill grouping; context_dependent does not infer latent tactical intent",

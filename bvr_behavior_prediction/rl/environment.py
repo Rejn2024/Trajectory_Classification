@@ -126,7 +126,7 @@ class BluePilotEnvironment:
 
     def step(self, skill_name, parameters):
         blue_action = {"skill_name": skill_name, "parameters": parameters}
-        red_action = {"skill_name": "maintain_heading", "parameters": {}}
+        red_action = {"skill_name": "turn_to_heading", "parameters": {}}
         simulator_reward, terminated, info = 0.0, False, {}
         event_counts = dict.fromkeys(self.REWARD_EVENTS, 0)
         pulse_events = {"fired": False, "fired_with_lock": False, "missile_avoided": False}

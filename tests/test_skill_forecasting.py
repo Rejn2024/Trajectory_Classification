@@ -150,7 +150,7 @@ def test_preparation_keeps_test_unread_and_fits_only_training_histories(tmp_path
             frame["step"] = np.arange(121)
             frame["time_s"] = np.arange(121) * 0.1
         decisions["episode_id"] = episode_id
-        decisions["skill"] = decisions.skill.map({"a": "lag_pursuit", "b": "turn_cold"})
+        decisions["skill"] = decisions.skill.map({"a": "turn_to_heading", "b": "set_altitude"})
         if split == "test":
             decisions["skill"] = "not_in_catalogue"
         for part, frame in [("observations", observations), ("tracks", track), ("target_decisions", decisions)]:
@@ -173,7 +173,7 @@ def test_preparation_keeps_test_unread_and_fits_only_training_histories(tmp_path
     samples = pd.read_parquet(output / "samples.parquet")
     assert set(samples.split) == {"train", "validation"}
     support = pd.read_csv(output / "label_support.csv")
-    assert len(support) == 2 * 2 * 3 * 33
+    assert len(support) == 2 * 2 * 3 * len(manifest["classes"])
     with pytest.raises(ValueError, match="empty"):
         prepare_dataset(corpus, output, reference)
 

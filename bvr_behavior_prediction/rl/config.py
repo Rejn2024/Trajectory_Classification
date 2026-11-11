@@ -54,7 +54,7 @@ class PilotTrainingConfig:
     gradient_clip: float = 0.5
     mixed_precision: bool = True
     cuda_graph_updates: bool = False
-    selected_skill_parameters: bool = False
+    selected_skill_parameters: bool = True
     skill_conditioned_parameters: bool = False
     training_reward_scale: float = 1.0
     target_kl: float | None = None

@@ -7,12 +7,6 @@ from .skill_manager import SkillManager
 
 HUMAN_PROMPT = "MISSION: Air Superiority. Engage enemies beyond 20nm. Maintain altitude advantage."
 
-EMERGENCY_RULES = {
-    "missile_warning": {"skill": "last_ditch_break"},
-    "low_fuel": {"skill": "extend"}
-}
-
-
 class StrategicLLM:
     """LLM-powered strategic planning"""
 
@@ -23,6 +17,7 @@ class StrategicLLM:
         self.last_plan_time = 0
         self.api = get_api_class(self.model)()
         self.skill_manager = SkillManager()
+        self.last_selection = None
 
     def should_replan(self, obs):
         """Check if planning is needed"""
@@ -31,41 +26,30 @@ class StrategicLLM:
 
     async def select_skill(self, obs):
         """Select skill with parameters"""
-        if not self.should_replan(obs):
+        if self.last_selection is not None and not self.should_replan(obs):
             return self.last_selection
-
-        # Check emergency conditions
-        emergency_skill = self._check_emergencies(obs)
-        if emergency_skill:
-            self.last_selection = emergency_skill
-            return emergency_skill
 
         # LLM planning
         prompt = self._create_planning_prompt(obs, HUMAN_PROMPT)
 
         try:
             response = await self.api.chat_completion(prompt)
-            skill_name, skill_params = self._parse_llm_response(response)
+            skill_name, skill_params = self._parse_llm_response(response, obs)
             self.last_selection = SkillSelection(skill_name, skill_params)
         except Exception:
-            # Fallback to default
-            self.last_selection = SkillSelection("crank_target_left", {})
+            self.last_selection = self._default_selection(obs)
 
         self.last_plan_time = obs.get("time", 0)
         return self.last_selection
 
-    def _check_emergencies(self, obs):
-        """Check emergency conditions"""
-        threats = obs.get("threat_assessment", "").lower()
-        fuel = obs.get("self_status", {}).get("resources", {}).get("fuel", "100%")
-
-        if "missile" in threats:
-            return SkillSelection("last_ditch_break", {})
-
-        if "%" in fuel and float(fuel.replace("%", "")) < 15:
-            return SkillSelection("extend", {})
-
-        return None
+    @staticmethod
+    def _default_selection(obs):
+        """Use the available heading primitive when a plan cannot be decoded."""
+        status = obs.get("self_status", {})
+        heading = status.get("position", {}).get(
+            "heading_deg", status.get("performance", {}).get("heading_deg", 0.0)
+        )
+        return SkillSelection("turn_to_heading", {"heading_deg": float(heading) % 360.0})
 
     def _create_planning_prompt(self, obs, mission):
         """Create planning prompt for LLM"""
@@ -81,14 +65,17 @@ Available skills: {list(self.skill_manager.skills.keys())}
 Select a skill and parameters in JSON format: {{"skill": "name", "params": {{"param": "value"}}}}
 """
 
-    def _parse_llm_response(self, response):
+    def _parse_llm_response(self, response, obs=None):
         """Parse LLM response"""
         try:
             import json
             data = json.loads(response)
-            return data.get("skill", "crank_target_left"), data.get("params", {})
-        except (TypeError, ValueError):
-            return "crank_target_left", {}
+            name, params = data["skill"], data.get("params", {})
+            self.skill_manager.create_skill(name, params)
+            return name, params
+        except (KeyError, TypeError, ValueError):
+            selection = self._default_selection(obs or {})
+            return selection.skill_name, selection.skill_params
 
 
 class SkillSelection:

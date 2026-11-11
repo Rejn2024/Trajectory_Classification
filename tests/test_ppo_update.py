@@ -37,7 +37,7 @@ def test_reward_component_logging_preserves_critic_values(tmp_path, batched):
         ),
     )
     raw = np.zeros(len(trainer.pilot.parameter_names), dtype=np.float32)
-    action = ("maintain_heading", {}, -1.0, 7.5, raw)
+    action = ("turn_to_heading", {}, -1.0, 7.5, raw)
     trainer.pilot.act = lambda *args, **kwargs: action
     trainer.pilot.act_batch = lambda observations, **kwargs: (action,) * len(observations)
     if batched:
@@ -62,6 +62,39 @@ def _rollout(trainer, count):
         [a[4] for a in actions], [a[2] for a in actions], [a[3] for a in actions],
         list(rng.normal(size=count)), [False] * (count - 1) + [True],
     )
+
+
+def test_ppo_parameterless_actions_do_not_train_unused_continuous_controls(tmp_path):
+    previous_threads = torch.get_num_threads()
+    torch.set_num_threads(1)
+    try:
+        config = PilotTrainingConfig(
+            hidden_size=8, transformer_heads=2, transformer_layers=1,
+            history_duration_s=2, sample_interval_s=1, minibatch_size=3,
+            update_epochs=1, entropy_coefficient=0, output_dir=tmp_path,
+        )
+        trainer = PPOTrainer(lambda *_: None, 3, config, device="cpu")
+        observations = torch.randn(3, 2, 3)
+        skills = torch.tensor([
+            trainer.pilot._skill_indices[name]
+            for name in ("launch", "launch", "launch")
+        ])
+        raw = torch.randn(3, len(trainer.pilot.parameter_names))
+        with torch.no_grad():
+            log_probs, _, values = trainer.pilot.evaluate(observations, skills, raw)
+        rollout = Rollout(
+            list(observations.numpy()), skills.tolist(), list(raw.numpy()),
+            log_probs.tolist(), values.tolist(), [1.0, 2.0, 3.0], [False, False, True],
+        )
+        continuous = {name: tensor.clone() for name, tensor in trainer.pilot.state_dict().items()
+                      if name.startswith("parameter_")}
+        initial_critic = trainer.pilot.value_head.weight.detach().clone()
+        assert np.isfinite(trainer._update([rollout]))
+        for name, tensor in continuous.items():
+            torch.testing.assert_close(tensor, trainer.pilot.state_dict()[name], rtol=0, atol=0)
+        assert not torch.equal(initial_critic, trainer.pilot.value_head.weight)
+    finally:
+        torch.set_num_threads(previous_threads)
 
 
 def test_learning_scale_changes_gae_units_but_not_reported_reward(tmp_path):

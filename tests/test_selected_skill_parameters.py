@@ -30,7 +30,8 @@ def active_indices(pilot, skill_index):
 
 def test_actions_architecture_and_sampling_match_legacy(pilot):
     torch.manual_seed(123)
-    legacy = HybridSkillPilot(3, 8, history_steps=2, transformer_heads=2, transformer_layers=1)
+    legacy = HybridSkillPilot(3, 8, history_steps=2, transformer_heads=2, transformer_layers=1,
+                              selected_skill_parameters=False)
     assert pilot.state_dict().keys() == legacy.state_dict().keys()
     for name, value in legacy.state_dict().items():
         torch.testing.assert_close(value, pilot.state_dict()[name], rtol=0, atol=0)
@@ -53,7 +54,7 @@ def test_actions_architecture_and_sampling_match_legacy(pilot):
 
 def test_log_probability_and_gradient_ignore_only_unused_parameters(pilot):
     obs = torch.randn(1, 2, 3)
-    skill_index = pilot._skill_indices["maintain_heading"]
+    skill_index = pilot._skill_indices["turn_to_heading"]
     skills = torch.tensor([skill_index])
     active = active_indices(pilot, skill_index)
     inactive = [j for j in range(len(pilot.parameter_names)) if j not in active]
@@ -94,6 +95,20 @@ def test_entropy_averages_all_skills_and_keeps_skill_probability_gradients(pilot
     assert torch.count_nonzero(actual_gradient) > 0
 
 
+def test_launch_has_only_categorical_probability(pilot):
+    observations = torch.randn(2, 2, 3)
+    indices = torch.full((2,), pilot._skill_indices["launch"])
+    categorical, gaussian, _ = pilot.distributions(observations)
+    raw = gaussian.mean.detach() + 1
+    actual, _, _ = pilot.evaluate(observations, indices, raw)
+    changed, _, _ = pilot.evaluate(observations, indices, raw + 100)
+    torch.testing.assert_close(actual, categorical.log_prob(indices))
+    torch.testing.assert_close(actual, changed, rtol=0, atol=0)
+    (-actual.sum()).backward()
+    assert torch.count_nonzero(pilot.parameter_mean.bias.grad) == 0
+    assert torch.count_nonzero(pilot.parameter_log_std.grad) == 0
+
+
 @pytest.mark.parametrize("saved_flag", [None, False, True])
 def test_checkpoint_loader_restores_objective_and_accepts_legacy_metadata(pilot, tmp_path, saved_flag):
     from bvr_behavior_prediction.rl.multi_pilot import load_trained_pilot
@@ -108,6 +123,7 @@ def test_checkpoint_loader_restores_objective_and_accepts_legacy_metadata(pilot,
     (tmp_path / "config.json").write_text(json.dumps({
         "training": training, "observation_size": 3,
         "skill_names": pilot.skill_names, "parameter_names": pilot.parameter_names,
+        "skill_catalogue": pilot.manager.get_catalogue(),
     }))
     (tmp_path / "manifest.json").write_text(json.dumps({
         "checkpoint_sha256": hashlib.sha256((tmp_path / "best_model.pt").read_bytes()).hexdigest(),
@@ -118,7 +134,10 @@ def test_checkpoint_loader_restores_objective_and_accepts_legacy_metadata(pilot,
         torch.testing.assert_close(value, loaded.state_dict()[name], rtol=0, atol=0)
 
 
-def test_mode_requires_a_boolean_and_defaults_to_legacy():
-    assert PilotTrainingConfig().selected_skill_parameters is False
+def test_mode_requires_a_boolean_and_defaults_to_effective_controls():
+    assert PilotTrainingConfig().selected_skill_parameters is True
+    assert HybridSkillPilot(3).selected_skill_parameters is True
     with pytest.raises(ValueError, match="boolean"):
         PilotTrainingConfig(selected_skill_parameters="false")
+    with pytest.raises(ValueError, match="boolean"):
+        HybridSkillPilot(3, selected_skill_parameters="false")

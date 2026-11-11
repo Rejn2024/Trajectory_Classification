@@ -23,6 +23,7 @@ ROOT = Path(__file__).parents[1]
 PREP = "26_prepare_skill_intent_target_relative_missile_nn_duel_skill_forecasting.ipynb"
 TRAIN = "27_skill_intent_target_relative_missile_hgt_nn_duel_skill_forecasting.ipynb"
 CLASSES = ["launch", "maintain_heading", "notch_left", "notch_right"]
+LEGACY_CLASSES = sorted(skill for skills in intent.INTENT_GROUPS.values() for skill in skills)
 
 
 @pytest.fixture(autouse=True)
@@ -57,10 +58,10 @@ def prepare_base(tmp_path, monkeypatch):
     return base
 
 
-def test_taxonomy_covers_the_real_catalogue_and_masks_missing_labels():
-    classes = paired.catalogue(ROOT)
+def test_historical_taxonomy_preserves_33_labels_and_masks_missing_labels():
+    classes = LEGACY_CLASSES
     policy = intent.intent_policy(classes)
-    assert set(classes) == set(intent.SKILL_TO_INTENT) and len(classes) == 33
+    assert len(classes) == 33 and policy["version"] == "skill-intent-v1"
     assert [len(intent.INTENT_GROUPS[c]) for c in intent.INTENT_CLASSES] == [9, 11, 13]
     assert policy["mapping"]["preemptive_crank"] == "defensive"
     assert policy["mapping"]["crank_target_left"] == "context_dependent"
@@ -71,6 +72,19 @@ def test_taxonomy_covers_the_real_catalogue_and_masks_missing_labels():
                                   [[0, 1, -1], [-1, 2, 1]])
     with pytest.raises(ValueError, match="Unknown skills"):
         intent.intent_policy(["unknown_skill"])
+
+
+def test_simplified_catalogue_has_context_dependent_controls_and_preserves_masks():
+    classes = paired.catalogue(ROOT)
+    policy = intent.intent_policy(classes)
+    assert set(classes) == intent.SIMPLIFIED_SKILLS and len(classes) == 4
+    assert policy["version"] == "skill-intent-v2"
+    assert policy["mapping"]["launch"] == "offensive"
+    assert all(policy["mapping"][skill] == "context_dependent"
+               for skill in classes if skill != "launch")
+    targets = np.array([[classes.index("set_altitude"), classes.index("launch"), -1]])
+    np.testing.assert_array_equal(intent.map_intent_targets(targets, policy["skill_to_intent"]),
+                                  [[2, 0, -1]])
 
 
 def test_overlay_reuses_base_arrays_and_checks_taxonomy_labels_and_parent(tmp_path, monkeypatch):

@@ -58,6 +58,7 @@ class _Environment:
     def step(self, actions):
         self.current_step += 1
         assert set(actions) == {"A01"}
+        self.last_actions = actions
         return np.ones((1, 47), dtype=np.float32), np.array([1.5]), np.array([False]), {}
 
     def close(self):
@@ -87,8 +88,8 @@ def test_backend_runs_bvr_flight_and_records_acmi(tmp_path):
     assert info["red_speed_mps"] == 275
 
     observation, reward, terminated, info = backend.step(
-        {"skill_name": "maintain_heading", "parameters": {}},
-        {"skill_name": "maintain_heading", "parameters": {}},
+        {"skill_name": "turn_to_heading", "parameters": {}},
+        {"skill_name": "turn_to_heading", "parameters": {}},
     )
     assert observation.shape == (47,)
     assert reward == 1.5
@@ -132,7 +133,7 @@ def _backend(tmp_path):
 
 
 def _step(backend):
-    return backend.step({"skill_name": "maintain_heading", "parameters": {}}, {})[-1]
+    return backend.step({"skill_name": "turn_to_heading", "parameters": {}}, {})[-1]
 
 
 def test_evasion_tracks_individual_live_missiles_despite_persistent_history(tmp_path):
@@ -226,4 +227,39 @@ def test_support_requires_a_live_locked_target_and_missile_without_active_seeker
     missile.is_alive = True
     red.is_alive = False
     assert not _step(backend)["supporting_missile"]
+    backend.close()
+
+
+@pytest.mark.parametrize(
+    "name,parameters,expected",
+    [
+        ("turn_to_heading", {"heading_deg": 20}, [20 / 45, 0, 0, 0]),
+        ("set_altitude", {"altitude_m": 5960}, [0, -0.5, 0, 0]),
+        ("set_speed", {"speed_mps": 290}, [0, 0, 0.5, 0]),
+        ("launch", {}, [0, 0, 0, 1]),
+    ],
+)
+def test_reduced_skills_reach_the_simulator_with_normalized_physical_controls(
+    tmp_path, name, parameters, expected,
+):
+    pytest.importorskip("gymnasium")
+    from bvr_sim.action_space import CampusActionSpace
+
+    backend = _backend(tmp_path)
+    backend.env.act_manager = CampusActionSpace()
+    backend.reset(7)
+    backend.step({"skill_name": name, "parameters": parameters}, {})
+    command = backend.env.last_actions["A01"]
+    controls = [command[key] for key in ("delta_heading", "delta_altitude", "delta_speed", "shoot")]
+    np.testing.assert_allclose(controls, expected)
+    backend.close()
+
+
+def test_backend_recreates_absolute_control_when_setpoint_changes(tmp_path):
+    backend = _backend(tmp_path)
+    backend.reset(7)
+    backend.step({"skill_name": "set_altitude", "parameters": {"altitude_m": 6500}}, {})
+    assert backend.env.last_actions["A01"]["delta_altitude"] == 500
+    backend.step({"skill_name": "set_altitude", "parameters": {"altitude_m": 5500}}, {})
+    assert backend.env.last_actions["A01"]["delta_altitude"] == -500
     backend.close()

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from bvr_sim.agents.skill_manager import SkillManager
 
 torch = pytest.importorskip("torch")
 mlflow = pytest.importorskip("mlflow")
@@ -189,7 +190,7 @@ def test_fine_tuning_rejects_incompatible_checkpoint_before_training(config, mis
     source = config.output_dir / "first"
     adapted = replace(config, output_dir=config.output_dir.parent / "adapted")
     if mismatch == "architecture":
-        adapted = replace(adapted, selected_skill_parameters=True)
+        adapted = replace(adapted, selected_skill_parameters=not config.selected_skill_parameters)
     elif mismatch == "checksum":
         (source / "best_model.pt").write_bytes(b"corrupt")
     trainer = PPOTrainer(factory(adapted), 1, adapted, "cpu",
@@ -238,6 +239,7 @@ def test_arbitrary_roster_trains_distinct_models_and_preserves_reward_identity(c
         run_dir = config.output_dir / result["output_dir"]
         metadata = json.loads((run_dir / "config.json").read_text(encoding="utf8"))
         assert metadata["reward"] == pilots[index].reward.as_dict()
+        assert metadata["skill_catalogue"] == SkillManager().get_catalogue()
         demo = json.loads((run_dir / "demonstrations/epoch_0001/summary.json").read_text())
         assert demo["score"] == result["selection_return"]
         policy = load_trained_pilot(run_dir)
@@ -259,6 +261,48 @@ def test_arbitrary_roster_trains_distinct_models_and_preserves_reward_identity(c
         stream.write(b"tampered")
     with pytest.raises(ValueError, match="SHA-256"):
         load_trained_pilot(checkpoint.parent)
+
+
+@pytest.mark.parametrize("mismatch", [
+    "unversioned", "legacy_labels", "skill_order", "parameter_order", "version", "bounds",
+])
+def test_inference_initialization_and_reuse_reject_changed_skill_contract(config, mismatch):
+    from bvr_behavior_prediction.rl.multi_pilot import initialize_pilot_from_checkpoint
+
+    pilots = [PilotSpec("first", 7, definition(1))]
+    factory = lambda _: lambda scenario, path=None: TinyEnvironment(path)
+    train_pilots(pilots, config, factory, 1, "cpu")
+    source = config.output_dir / "first"
+    path = source / "config.json"
+    metadata = json.loads(path.read_text())
+    if mismatch == "unversioned":
+        del metadata["skill_catalogue"]
+    elif mismatch == "legacy_labels":
+        metadata["skill_names"] = ["maintain_heading"] * 33
+    elif mismatch == "skill_order":
+        metadata["skill_names"].reverse()
+    elif mismatch == "parameter_order":
+        metadata["parameter_names"].reverse()
+    elif mismatch == "version":
+        metadata["skill_catalogue"]["version"] = "1.0.0"
+    else:
+        metadata["skill_catalogue"]["skills"][0]["parameter_schema"]["properties"]["heading_deg"]["maximum"] = 180
+    path.write_text(json.dumps(metadata))
+    with pytest.raises(ValueError, match="skill catalogue.*train fresh pilots"):
+        load_trained_pilot(source)
+    adapted = replace(config, output_dir=config.output_dir.parent / "adapted")
+    trainer = PPOTrainer(factory(adapted), 1, adapted, "cpu", pilots[0].reward)
+    try:
+        with pytest.raises(ValueError, match="skill catalogue.*train fresh pilots"):
+            initialize_pilot_from_checkpoint(trainer, source)
+        assert not trainer.optimizer.state
+        assert not (adapted.output_dir / "best_model.pt").exists()
+    finally:
+        trainer.close()
+    reused = replace(config, output_dir=config.output_dir.parent / "reused")
+    with pytest.raises(ValueError, match="skill catalogue.*train fresh pilots"):
+        train_pilots(pilots, reused, factory, 1, "cpu", reuse_completed_from=config.output_dir)
+    assert not reused.output_dir.exists()
 
 
 def test_seed_reinitializes_weights_independently_of_other_pilots(config):

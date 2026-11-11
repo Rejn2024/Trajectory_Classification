@@ -9,6 +9,8 @@ import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path, PureWindowsPath
 
+from bvr_sim.agents.skill_manager import SkillManager
+
 from .config import PilotTrainingConfig
 from .evaluation import OUTCOME_SCORES, summarize_test_episodes
 from .reward import RewardDefinition, combat_reward_definition
@@ -56,6 +58,24 @@ def _sha256(path):
     return digest.hexdigest()
 
 
+def _validate_skill_catalogue(metadata, manager):
+    """Reject weights whose action labels, order or effective controls differ."""
+    skill_names = manager.list_skills()
+    parameter_names = sorted({
+        key
+        for name in skill_names
+        for key, schema in manager.get_contract(name)["parameter_schema"]["properties"].items()
+        if schema["type"] == "number"
+    })
+    if (metadata.get("skill_catalogue") != manager.get_catalogue()
+            or metadata.get("skill_names") != skill_names
+            or metadata.get("parameter_names") != parameter_names):
+        raise ValueError(
+            "checkpoint skill catalogue differs from the installed catalogue or is unversioned; "
+            "train fresh pilots with the current skill catalogue"
+        )
+
+
 def initialize_pilot_from_checkpoint(trainer, run_dir):
     """Load policy and critic weights with a fresh optimizer; retain epoch zero.
 
@@ -72,6 +92,7 @@ def initialize_pilot_from_checkpoint(trainer, run_dir):
     checksum = _sha256(checkpoint)
     if checksum != manifest["checkpoint_sha256"]:
         raise ValueError("initial checkpoint SHA-256 mismatch")
+    _validate_skill_catalogue(metadata, trainer.pilot.manager)
     architecture = (
         "hidden_size", "history_duration_s", "sample_interval_s", "transformer_heads",
         "transformer_layers", "selected_skill_parameters", "skill_conditioned_parameters",
@@ -79,9 +100,7 @@ def initialize_pilot_from_checkpoint(trainer, run_dir):
     if any(metadata["training"].get(k, False) != getattr(trainer.config, k)
            for k in architecture):
         raise ValueError("initial checkpoint architecture differs from training configuration")
-    if (metadata["observation_size"] != trainer.observation_size
-            or metadata["skill_names"] != list(trainer.pilot.skill_names)
-            or metadata["parameter_names"] != list(trainer.pilot.parameter_names)):
+    if metadata["observation_size"] != trainer.observation_size:
         raise ValueError("initial checkpoint observation or action contract differs")
     if metadata["reward"] != trainer.reward_definition.as_dict():
         raise ValueError("fine-tuning must preserve the pilot reward definition")
@@ -218,6 +237,7 @@ def train_pilots(
                 continue
             directory = previous_root / pilot.pilot_id
             metadata = json.loads((directory / "config.json").read_text(encoding="utf8"))
+            _validate_skill_catalogue(metadata, SkillManager())
             ignored = {"output_dir", "mlflow_tracking_uri"}
             expected = configs[pilot.pilot_id].as_dict()
             expected.setdefault("skill_conditioned_parameters", False)
@@ -407,7 +427,7 @@ def train_pilots(
 def load_trained_pilot(run_dir, device="cpu"):
     """Load one completed pilot for inference using its saved architecture.
 
-    Checksums and skill/parameter ordering are checked before returning the model.
+    Checksums and the complete versioned skill contract are checked before loading.
     Reward code is unnecessary for inference; use its recorded definition when
     evaluating a custom objective. This loads weights, not optimizer state.
     """
@@ -421,20 +441,18 @@ def load_trained_pilot(run_dir, device="cpu"):
     checkpoint = run_dir / "best_model.pt"
     if _sha256(checkpoint) != manifest["checkpoint_sha256"]:
         raise ValueError("checkpoint SHA-256 does not match the pilot manifest")
+    manager = SkillManager()
+    _validate_skill_catalogue(metadata, manager)
     config = metadata["training"]
     pilot = HybridSkillPilot(
         metadata["observation_size"],
         config["hidden_size"],
+        manager=manager,
         history_steps=round(config["history_duration_s"] / config["sample_interval_s"]),
         transformer_heads=config["transformer_heads"],
         transformer_layers=config["transformer_layers"],
         selected_skill_parameters=config.get("selected_skill_parameters", False),
         **({"skill_conditioned_parameters": True} if config.get("skill_conditioned_parameters", False) else {}),
     ).to(device)
-    if (
-        list(pilot.skill_names) != metadata["skill_names"]
-        or list(pilot.parameter_names) != metadata["parameter_names"]
-    ):
-        raise ValueError("checkpoint skill catalogue differs from the installed catalogue")
     pilot.load_state_dict(torch.load(checkpoint, map_location=device, weights_only=True))
     return pilot.eval()
