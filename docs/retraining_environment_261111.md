@@ -64,7 +64,9 @@ physical trajectory, engine response or model-performance improvements. Frozen
 pilots were trained under the previous override and need reassessment in the new
 mode. Saved notebook outputs remain historical results from earlier runs.
 
-Notebook 11's existing automatic corpus-publication guard and collector publisher
-still target `forecasting_ed_261104`. Use `PUBLISH=False` for local experiments on
-this new branch; this branch-creation step did not change dataset-publication
-routing or start a publication job.
+Notebook publication routing was subsequently updated to
+`retraining_environment_261111`: notebook 11's branch guard, its instructions and
+the collector publisher's default destination agree. All notebook sources were
+checked for the previous route. Existing historical outputs and archived corpus
+collectors remain records of their original runs. No corpus-publication job was
+started by the routing update.

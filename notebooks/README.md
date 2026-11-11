@@ -206,7 +206,7 @@ resource requirements and configuration.
 For additional manoeuvre forecasting data, open
 [11_nn_vs_nn_training_data.ipynb](11_nn_vs_nn_training_data.ipynb). **Run All collects
 20,000 new NN-versus-NN pairings (40,000 aircraft perspectives) and pushes incremental Git LFS backups** on
-`forecasting_ed_261104`. It uses the frozen post-tactical notebook-07 population,
+`retraining_environment_261111`. It uses the frozen post-tactical notebook-07 population,
 new actual reset geometries, a 300-second/first-defeat limit, both observation
 perspectives, shared GPU actor batching with a CPU/GPU throughput benchmark,
 an end-to-end runtime estimate, resumable episode checkpoints and

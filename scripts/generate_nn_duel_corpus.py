@@ -1179,7 +1179,7 @@ def _load_shard_episode(output, episode_id, observer_id, shard):
     ]
 
 
-def publish(output, branch="forecasting_ed_261104", allow_partial=False, cache_path=None):
+def publish(output, branch="retraining_environment_261111", allow_partial=False, cache_path=None):
     """Commit only this verified package; the Git push pre-push hook sends LFS."""
     output = Path(output).resolve()
     manifest = verify(output, require_complete=not allow_partial, cache_path=cache_path)

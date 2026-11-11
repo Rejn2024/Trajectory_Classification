@@ -77,7 +77,7 @@ def windows_git(tmp_path, monkeypatch):
     git = tmp_path / "Program Files/Git/cmd/git.exe"
     git.parent.mkdir(parents=True)
     git.touch()
-    state = SimpleNamespace(branch="forecasting_ed_261104", staged="")
+    state = SimpleNamespace(branch="retraining_environment_261111", staged="")
     calls = []
     monkeypatch.setattr(paired.shutil, "which", lambda _: None)
     monkeypatch.setattr(
@@ -171,7 +171,7 @@ def test_publication_child_finds_git_with_original_path_missing_git(tmp_path, mo
     assert scope["GIT_EXECUTABLE"] is None
     scope["subprocess"] = SimpleNamespace(
         run=lambda args, **kwargs: SimpleNamespace(
-            stdout="forecasting_ed_261104" if "branch" in args else "",
+            stdout="retraining_environment_261111" if "branch" in args else "",
             returncode=0,
             stderr="",
         )
@@ -216,7 +216,7 @@ def test_publication_lock_setting_reaches_child_without_changing_other_repositor
             [git, *args], cwd=tmp_path, text=True, capture_output=True, check=True
         ).stdout.strip()
 
-    git_run("init", "-b", "forecasting_ed_261104")
+    git_run("init", "-b", "retraining_environment_261111")
     git_run("config", "--global", "lfs.locksverify", "true")
     git_run("config", "--global", key, "true")
     git_run("config", "--local", unrelated, "true")
