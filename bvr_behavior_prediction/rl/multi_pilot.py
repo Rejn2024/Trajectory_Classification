@@ -3,6 +3,7 @@
 import gc
 import hashlib
 import json
+import math
 import re
 import shutil
 import time
@@ -22,6 +23,7 @@ class PilotSpec:
     pilot_id: str
     seed: int
     reward: RewardDefinition = field(default_factory=combat_reward_definition)
+    training_overrides: dict = field(default_factory=dict)
 
     def __post_init__(self):
         if (
@@ -33,6 +35,20 @@ class PilotSpec:
             raise ValueError("pilot seed must be an integer in [0, 2**32)")
         if not isinstance(self.reward, RewardDefinition):
             raise TypeError("reward must be a RewardDefinition")
+        if not isinstance(self.training_overrides, dict):
+            raise TypeError("training_overrides must be a dictionary")
+        allowed = {"hidden_size", "transformer_layers", "value_coefficient", "entropy_coefficient"}
+        unknown = set(self.training_overrides) - allowed
+        if unknown:
+            raise ValueError(f"Unsupported per-pilot training overrides: {sorted(unknown)}")
+        for name, value in self.training_overrides.items():
+            if name in {"hidden_size", "transformer_layers"}:
+                if type(value) is not int or value < 1:
+                    raise ValueError(f"{name} override must be a positive integer")
+            elif (not isinstance(value, (int, float)) or isinstance(value, bool)
+                  or not math.isfinite(value) or value < 0):
+                raise ValueError(f"{name} override must be finite and nonnegative")
+        object.__setattr__(self, "training_overrides", dict(self.training_overrides))
 
 
 def _write_json(path, value):
@@ -148,6 +164,11 @@ def train_pilots(
     ``initialize_from`` loads each matching pilot's policy and critic from a completed
     population. Optimizers start fresh; the initial weights remain a validation candidate.
 
+    A PilotSpec may override width, Transformer layers, value-loss coefficient and
+    entropy coefficient. Other settings, scenario seeds and evaluation suites are
+    shared. Overrides are validated before reserving output and recorded even if
+    training is interrupted; effective settings are saved in each config.json.
+
     Checkpoint selection uses each pilot's own reward. The selected policies
     are then scored with one common reward on identical validation scenarios.
     This validation set is used for selection; it is not an untouched test set.
@@ -205,6 +226,7 @@ def train_pilots(
             raise ValueError("test and training seed ranges must not overlap")
         configs[pilot.pilot_id] = replace(
             config,
+            **pilot.training_overrides,
             seed=pilot.seed,
             evaluation_seed=evaluation_seed,
             test_seed=test_seed,
@@ -281,6 +303,7 @@ def train_pilots(
                 "pilot_id": pilot.pilot_id,
                 "seed": pilot.seed,
                 "reward": pilot.reward.as_dict(),
+                "training_overrides": dict(pilot.training_overrides),
                 "status": "pending",
             }
             for pilot in pilots
@@ -347,6 +370,8 @@ def train_pilots(
                 "seed": pilot.seed,
                 "reward_name": pilot.reward.name,
                 "reward": pilot.reward.as_dict(),
+                "training_overrides": dict(pilot.training_overrides),
+                "network_parameters": sum(parameter.numel() for parameter in trainer.pilot.parameters()),
                 "output_dir": pilot.pilot_id,
                 "checkpoint": f"{pilot.pilot_id}/best_model.pt",
                 "checkpoint_sha256": _sha256(trainer.output / "best_model.pt"),

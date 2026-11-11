@@ -4,7 +4,11 @@ This branch uses catalogue v4: `change_trajectory` supplies heading, altitude an
 speed deltas together, and `launch` has no continuous parameters. Old pilots require
 retraining. See the [current training and forecasting guide](trajectory_state_forecasting.md).
 
-Choose one of two independent population experiments:
+For ten pilots with additional random network and loss-weight variations, use
+[notebook 30](../notebooks/30_train_varied_transformer_pilots.ipynb) and its
+[guide](varied_transformer_pilots.md). It follows notebook 06 and records every draw.
+
+The original two population experiments remain available:
 
 | Notebook | Reward | Default population / epochs per pilot | Output subfolder / MLflow experiment |
 | --- | --- | --- | --- |

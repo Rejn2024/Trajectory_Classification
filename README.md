@@ -1,5 +1,11 @@
 # BVR behaviour prediction
 
+**Varied Transformer pilots:**
+[Notebook 30](notebooks/30_train_varied_transformer_pilots.ipynb) trains ten pilots
+against the simple JSBSim opponent, retaining notebook 06's reward variations and
+adding recorded random width/layer and PPO loss-weight variations.
+[Configuration and outputs](docs/varied_transformer_pilots.md).
+
 **Current training and forecasting:**
 [Two-skill pilots and future speed/heading/altitude forecasts](docs/trajectory_state_forecasting.md).
 Catalogue v4 contains `change_trajectory` (joint heading, altitude and speed deltas)
