@@ -89,8 +89,8 @@ def test_backend_runs_bvr_flight_and_records_acmi(tmp_path):
     assert info["red_speed_mps"] == 275
 
     observation, reward, terminated, info = backend.step(
-        {"skill_name": "turn_to_heading", "parameters": {}},
-        {"skill_name": "turn_to_heading", "parameters": {}},
+        {"skill_name": "change_trajectory", "parameters": {}},
+        {"skill_name": "change_trajectory", "parameters": {}},
     )
     assert observation.shape == (47,)
     assert reward == 1.5
@@ -134,7 +134,7 @@ def _backend(tmp_path):
 
 
 def _step(backend):
-    return backend.step({"skill_name": "turn_to_heading", "parameters": {}}, {})[-1]
+    return backend.step({"skill_name": "change_trajectory", "parameters": {}}, {})[-1]
 
 
 def test_evasion_tracks_individual_live_missiles_despite_persistent_history(tmp_path):
@@ -234,12 +234,14 @@ def test_support_requires_a_live_locked_target_and_missile_without_active_seeker
 @pytest.mark.parametrize(
     "name,parameters,expected",
     [
-        ("turn_to_heading", {"delta_heading_deg": 20}, [20 / 45, 0, 0, 0]),
-        ("turn_to_heading", {"delta_heading_deg": -20}, [-20 / 45, 0, 0, 0]),
-        ("set_altitude", {"delta_altitude_m": -40}, [0, -0.5, 0, 0]),
-        ("set_altitude", {"delta_altitude_m": 40}, [0, 0.5, 0, 0]),
-        ("set_speed", {"delta_speed_mps": 40}, [0, 0, 0.5, 0]),
-        ("set_speed", {"delta_speed_mps": -40}, [0, 0, -0.5, 0]),
+        ("change_trajectory", {"delta_heading_deg": 20}, [20 / 45, 0, 0, 0]),
+        ("change_trajectory", {"delta_heading_deg": -20}, [-20 / 45, 0, 0, 0]),
+        ("change_trajectory", {"delta_altitude_m": -40}, [0, -0.5, 0, 0]),
+        ("change_trajectory", {"delta_altitude_m": 40}, [0, 0.5, 0, 0]),
+        ("change_trajectory", {"delta_speed_mps": 40}, [0, 0, 0.5, 0]),
+        ("change_trajectory", {"delta_speed_mps": -40}, [0, 0, -0.5, 0]),
+        ("change_trajectory", {"delta_heading_deg": 20, "delta_altitude_m": -40,
+                               "delta_speed_mps": 40}, [20 / 45, -0.5, 0.5, 0]),
         ("launch", {}, [0, 0, 0, 1]),
     ],
 )
@@ -263,12 +265,12 @@ def test_reduced_skills_reach_the_simulator_with_normalized_physical_controls(
 def test_backend_holds_relative_delta_and_accepts_new_commands(tmp_path):
     backend = _backend(tmp_path)
     backend.reset(7)
-    action = {"skill_name": "set_altitude", "parameters": {"delta_altitude_m": 40}}
+    action = {"skill_name": "change_trajectory", "parameters": {"delta_altitude_m": 40}}
     backend.step(action, {})
     assert backend.env.last_actions["A01"]["delta_altitude"] == 40
     backend.env.agents["A01"].position[2] += 20
     backend.step(action, {})
     assert backend.env.last_actions["A01"]["delta_altitude"] == 40
-    backend.step({"skill_name": "set_altitude", "parameters": {"delta_altitude_m": -40}}, {})
+    backend.step({"skill_name": "change_trajectory", "parameters": {"delta_altitude_m": -40}}, {})
     assert backend.env.last_actions["A01"]["delta_altitude"] == -40
     backend.close()

@@ -117,22 +117,28 @@ def fit_scaling(feature_sum, feature_square_sum, feature_count, residual, mask):
     mean = feature_sum / feature_count
     std = np.sqrt(np.maximum(feature_square_sum / feature_count - mean ** 2, 0))
     std = np.maximum(std, 0.01)
-    # No target centering: a zero network output must reproduce constant velocity.
-    # One scale per horizon and quantity; all three spatial axes retain equal weight.
-    scales = np.ones((3, 6), dtype=np.float32)
+    # No target centering: zero reproduces the reference (CV or constant state).
+    # Flight-state sine/cosine heading coordinates retain unit scaling; speed and
+    # altitude use training-only RMS. Motion uses one scale per three-vector.
+    scales = np.ones((3, residual.shape[-1]), dtype=np.float32)
     for h in range(3):
         valid = residual[mask[:, h], h]
         if not len(valid):
             raise ValueError("Training partition has no valid labels for a horizon")
         for start in (0, 3):
-            rms = np.sqrt(np.mean(valid[:, start:start + 3].astype(np.float64) ** 2))
-            scales[h, start:start + 3] = max(1.0, rms)
+            width = 3 if residual.shape[-1] == 6 else 1
+            rms = np.sqrt(np.mean(valid[:, start:start + width].astype(np.float64) ** 2))
+            scales[h, start:start + width] = max(1.0, rms)
     return {"feature_mean": mean.tolist(), "feature_std": std.tolist(),
             "residual_scale": scales.tolist(), "fitted_on": "train only",
             "training_feature_frames": int(feature_count)}
 
 
-def prepare_dataset(corpus, output, history_steps=51, stride_steps=10, split_seed=1729):
+def prepare_dataset(corpus, output, history_steps=51, stride_steps=10, split_seed=1729, target="motion"):
+    if target not in ("motion", "flight_state"):
+        raise ValueError("target must be motion or flight_state")
+    from . import flight_state
+    make_examples = flight_state.episode_examples if target == "flight_state" else episode_examples
     corpus, output = Path(corpus), Path(output)
     if (output / "data_manifest.json").exists():
         raise ValueError("Prepared dataset already exists; reuse it or choose another directory")
@@ -167,6 +173,10 @@ def prepare_dataset(corpus, output, history_steps=51, stride_steps=10, split_see
         if obs_file.num_row_groups != len(pilot_episodes) or track_file.num_row_groups != len(pilot_episodes):
             raise ValueError("Expected one row group per episode")
         for row_group, episode in enumerate(pilot_episodes.itertuples()):
+            if target == "flight_state" and episode.split == "test":
+                # Reserved groups are never read into model preparation or scaling.
+                offset += episode.frames
+                continue
             obs, track = [file.read_row_group(row_group).to_pandas() for file in (obs_file, track_file)]
             if (set(obs.episode_id) != {episode.episode_id} or
                     not obs[["episode_id", "step", "time_s"]].equals(track[["episode_id", "step", "time_s"]])):
@@ -174,7 +184,7 @@ def prepare_dataset(corpus, output, history_steps=51, stride_steps=10, split_see
             if (not np.array_equal(track.step, np.arange(len(track))) or
                     not np.allclose(track.time_s, track.step * DT) or len(track) != episode.frames):
                 raise ValueError("Invalid frame cadence")
-            features, ends, residual, mask, ca_residual = episode_examples(
+            features, ends, residual, mask, ca_residual = make_examples(
                 obs[OBS_COLUMNS].to_numpy(), track, history_steps, stride_steps)
             feature_array[offset:offset + len(features)] = features
             if episode.split == "train" and len(ends):
@@ -190,7 +200,12 @@ def prepare_dataset(corpus, output, history_steps=51, stride_steps=10, split_see
             residuals.append(residual)
             masks.append(mask)
             ca_residuals.append(ca_residual)
-            metadata.extend({"episode_id": episode.episode_id, "pilot_id": pilot_id,
+            origins = None
+            if target == "flight_state":
+                pos, vel, _ = observed_kinematics(obs[OBS_COLUMNS].to_numpy())
+                origins = flight_state.state_from_kinematics(pos, vel)
+            metadata.extend({**(dict(zip(flight_state.ORIGIN_COLUMNS, origins[end]))
+                                 if origins is not None else {}), "episode_id": episode.episode_id, "pilot_id": pilot_id,
                              "scenario_group": episode.scenario_group, "split": episode.split,
                              "step": int(end), "time_s": float(end * DT)} for end in ends)
             offset += len(features)
@@ -198,6 +213,8 @@ def prepare_dataset(corpus, output, history_steps=51, stride_steps=10, split_see
     feature_array.flush()
     del feature_array
     residual, mask, metadata = np.concatenate(residuals), np.concatenate(masks), pd.DataFrame(metadata)
+    if metadata.empty or feature_count == 0:
+        raise ValueError("No usable training windows")
     train = metadata.split.to_numpy() == "train"
     scaling = fit_scaling(feature_sum, feature_square_sum, feature_count, residual[train], mask[train])
     for name, value in (("anchors", np.concatenate(anchors)), ("residuals", residual),
@@ -210,7 +227,9 @@ def prepare_dataset(corpus, output, history_steps=51, stride_steps=10, split_see
                "anchor_stride_s": stride_steps * DT, "horizons_s": HORIZONS.tolist(),
                "features": FEATURE_NAMES, "split_seed": split_seed,
                "input_contract": "Current/past B01 observations and backward acceleration only; no target actions or IDs",
-               "target_contract": "A01 world NWU future position and velocity, represented as residuals to observed constant velocity",
+               "target_contract": (flight_state.CONTRACT if target == "flight_state" else
+                                   "A01 world NWU future position and velocity, represented as residuals to observed constant velocity"),
+               "target_kind": target,
                "test_policy": "Locked; no test performance is computed during model development",
                "counts": {split: {"episodes": int((episodes.split == split).sum()),
                                   "scenario_groups": int(episodes.loc[episodes.split == split, "scenario_group"].nunique()),

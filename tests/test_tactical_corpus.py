@@ -142,3 +142,32 @@ def test_geometry_validation_rejects_inverted_target_displacement():
     observations["obs_09"] = -0.2
     with pytest.raises(ValueError, match="Observer geometry"):
         schema.validate_observer_geometry(observations, tracks)
+
+
+def test_current_population_collection_prepares_arbitrary_roster(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[1] / "scripts"))
+    import generate_tactical_corpus as collector
+
+    job = tmp_path / 'population'
+    pilot = job / 'pilot_custom'
+    pilot.mkdir(parents=True)
+    (pilot / 'best_model.pt').write_bytes(b'fixture checkpoint')
+    collector.write(pilot / 'config.json', {'training': {}})
+    collector.write(pilot / 'manifest.json', {'checkpoint_sha256': collector.digest(pilot / 'best_model.pt')})
+    collector.write(job / 'pilots.json', {'pilots': [{'pilot_id': 'pilot_custom', 'status': 'completed'}]})
+    args = SimpleNamespace(job=job, seed=19, episodes_per_pilot=10, device='cpu',
+                           perspective='tactical', work=tmp_path / 'collection', command='collect')
+    # Preserve interpreter search paths/environment after exercising activation.
+    monkeypatch.setattr(collector.sys, 'path', collector.sys.path.copy())
+    monkeypatch.setenv('BVR_SIM_RESOURCE_DIR', str(collector.ROOT / 'bvr_sim_source/bvr_sim/resources'))
+    monkeypatch.setenv('JSBSIM_DIR', str(collector.ROOT / 'bvr_sim_source/bvr_sim/resources/jsbsim'))
+    config = collector.prepare(args)
+    assert [p['pilot_id'] for p in config['pilots']] == ['pilot_custom']
+    assert (config['observer_id'], config['target_id']) == ('B01', 'A01')
+    assert collector.training_root(job) == job
+    assert collector.source_root(job) == collector.ROOT
+    assert config['source_hashes']
+    assert collector.prepare(args) == config
+    collector.write(job / 'pilots.json', {'pilots': [{'pilot_id': 'pilot_custom', 'status': 'failed'}]})
+    with pytest.raises(ValueError, match='completed'):
+        collector.prepare(args)

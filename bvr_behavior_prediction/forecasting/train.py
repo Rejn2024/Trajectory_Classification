@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import torch
 
+from . import flight_state
 from .data import read_json, sha256, write_json
 from .evaluation import motion_metrics, selection_score
 from .models import MotionForecaster, masked_loss
@@ -25,6 +26,11 @@ class ForecastData:
         for name, expected in self.manifest["files"].items():
             if sha256(self.directory / name) != expected:
                 raise ValueError(f"Prepared data changed: {name}")
+        self.target_kind = self.manifest.get("target_kind", "motion")
+        if self.target_kind not in ("motion", "flight_state"):
+            raise ValueError("Unknown prepared forecast target")
+        if self.target_kind == "flight_state" and self.manifest.get("target_contract") != flight_state.CONTRACT:
+            raise ValueError("Incompatible flight-state dataset contract")
         self.samples = pd.read_parquet(self.directory / "samples.parquet")
         self.features = torch.as_tensor(np.load(self.directory / "features.npy"), device=device)
         mean = torch.tensor(self.scaling["feature_mean"], device=device, dtype=torch.float32)
@@ -68,7 +74,8 @@ def predict_validation(model, data, batch_size):
 def source_snapshot(root, output):
     files = sorted((root / "bvr_behavior_prediction/forecasting").glob("*.py"))
     files += [root / "bvr_behavior_prediction/__init__.py", root / "scripts/train_motion_forecaster.py",
-              root / "configs/training/motion_forecasting.json"]
+              root / "configs/training/motion_forecasting.json", root / "scripts/train_trajectory_forecaster.py",
+              root / "configs/training/trajectory_forecasting.json"]
     hashes = {}
     for path in files:
         relative = path.relative_to(root)
@@ -99,24 +106,33 @@ def train_model(root, data_directory, output, architecture, config, resume=False
         raise ValueError("No last checkpoint is available to resume")
     print(f"Loading prepared data for {architecture} onto {device}", flush=True)
     data = ForecastData(data_directory, device)
-    model_config = {"architecture": architecture, "input_size": len(data.manifest["features"]),
+    state_target = data.target_kind == "flight_state"
+    metrics_fn = flight_state.metrics if state_target else motion_metrics
+    baseline_name = "constant_state" if state_target else "constant_velocity"
+    if any(len(data.indices[split]) == 0 for split in ("train", "validation")):
+        raise ValueError("Training and validation need nonempty windows")
+    model_config = {"output_size": 4 if state_target else 6, "architecture": architecture, "input_size": len(data.manifest["features"]),
                     "history_steps": data.manifest["history_steps"], **config["model"]}
+    if data.residuals.shape[1:] != (3, model_config["output_size"]):
+        raise ValueError("Prepared targets differ from the model output contract")
     model = MotionForecaster(**model_config).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=config["learning_rate"],
                                   weight_decay=config["weight_decay"], fused=device.type == "cuda")
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=3, min_lr=1e-5)
     truth, valid, samples = data.validation_arrays()
-    cv = motion_metrics(np.zeros_like(truth), truth, valid, samples, "constant_velocity")
+    cv = metrics_fn(np.zeros_like(truth), truth, valid, samples, baseline_name)
     ca = np.load(data_directory / "constant_acceleration.npy")[data.samples.split == "validation"]
-    baselines = pd.concat([cv, motion_metrics(ca, truth, valid, samples, "constant_acceleration")])
+    baselines = pd.concat([cv, metrics_fn(ca, truth, valid, samples, "constant_acceleration")])
     baselines.to_csv(output / "baseline_metrics.csv", index=False)
     dataset_hash = sha256(data_directory / "data_manifest.json")
     generator = torch.Generator(device=device).manual_seed(config["seed"])
-    best_score, best_epoch, start_epoch, stale, history = 1.0, 0, 1, 0, []
+    best_score, best_epoch, start_epoch, stale, history = selection_score(cv, cv), 0, 1, 0, []
     run = {"architecture": architecture, "model": model_config, "training": config,
            "data_directory": str(data_directory.resolve()), "data_manifest_sha256": dataset_hash,
            "corpus_manifest_sha256": data.manifest["corpus_manifest_sha256"],
-           "selection": "Mean validation episode-macro error ratio to constant velocity across 3 horizons and position/velocity",
+           "target_contract": data.manifest.get("target_contract"),
+           "selection": ("Mean validation episode-macro error ratio to constant state across speed, circular heading and altitude at 3 horizons"
+                         if state_target else "Mean validation episode-macro error ratio to constant velocity across 3 horizons and position/velocity"),
            "test_evaluated": False, "parameters": sum(p.numel() for p in model.parameters()),
            "created_utc": datetime.now(timezone.utc).isoformat(), "torch_version": str(torch.__version__)}
     if resume:
@@ -144,7 +160,7 @@ def train_model(root, data_directory, output, architecture, config, resume=False
             ["git", "-c", f"safe.directory={root.as_posix()}", "rev-parse", "HEAD"], cwd=root, text=True).strip()
         write_json(output / "run.json", run)
         atomic_checkpoint(output / "best.pt", {"model_state": model.state_dict(), "model_config": model_config,
-                                               "scaling": data.scaling, "epoch": 0, "score": 1.0,
+                                               "scaling": data.scaling, "target_contract": data.manifest.get("target_contract"), "epoch": 0, "score": best_score,
                                                "data_manifest_sha256": dataset_hash})
     start_time = time.perf_counter()
     status = "completed"
@@ -170,7 +186,7 @@ def train_model(root, data_directory, output, architecture, config, resume=False
                 optimizer.step()
                 losses += loss.detach() * len(indices)
             prediction = predict_validation(model, data, config["evaluation_batch_size"])
-            metrics = motion_metrics(prediction, truth, valid, samples, architecture)
+            metrics = metrics_fn(prediction, truth, valid, samples, architecture)
             score = selection_score(metrics, cv)
             if not np.isfinite(score):
                 raise FloatingPointError("Nonfinite validation score")
@@ -178,7 +194,7 @@ def train_model(root, data_directory, output, architecture, config, resume=False
             if improved:
                 best_score, best_epoch, stale = score, epoch, 0
                 atomic_checkpoint(output / "best.pt", {"model_state": model.state_dict(), "model_config": model_config,
-                                                       "scaling": data.scaling, "epoch": epoch, "score": score,
+                                                       "scaling": data.scaling, "target_contract": data.manifest.get("target_contract"), "epoch": epoch, "score": score,
                                                        "data_manifest_sha256": dataset_hash})
             else:
                 stale += 1
@@ -207,7 +223,7 @@ def train_model(root, data_directory, output, architecture, config, resume=False
     best = torch.load(output / "best.pt", map_location=device, weights_only=False)
     model.load_state_dict(best["model_state"])
     predictions = predict_validation(model, data, config["evaluation_batch_size"])
-    metrics = motion_metrics(predictions, truth, valid, samples, architecture)
+    metrics = metrics_fn(predictions, truth, valid, samples, architecture)
     metrics.to_csv(output / "validation_metrics.csv", index=False)
     np.savez_compressed(output / "validation_predictions.npz", residual_prediction=predictions,
                         residual_target=truth, valid=valid)

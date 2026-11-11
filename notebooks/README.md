@@ -1,3 +1,9 @@
+**Current workflow:** train catalogue-v4 pilots with notebooks 04–06, then use
+[29_trajectory_state_forecasting.ipynb](29_trajectory_state_forecasting.ipynb) for
+future speed, heading and altitude regression. See the
+[guide](../docs/trajectory_state_forecasting.md). Earlier forecasting notebooks
+retain their historical targets and results.
+
 # Notebooks
 
 For joint skill and offensive/defensive/context-dependent intent forecasting, run

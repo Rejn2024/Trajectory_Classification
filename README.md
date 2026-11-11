@@ -1,11 +1,11 @@
 # BVR behaviour prediction
 
-**Simplified pilot training (relative commands, catalogue v3):**
-[Four-command catalogue and fresh training guide](docs/simplified_training_environment_261111.md).
-New pilots select `turn_to_heading`, `set_altitude`, `set_speed`, or `launch`.
-The three flight commands take signed deltas from the current state.
-Notebooks 04–06 use the new catalogue and separate output folders; old checkpoints
-require retraining. Results and presentations below retain their historical labels.
+**Current training and forecasting:**
+[Two-skill pilots and future speed/heading/altitude forecasts](docs/trajectory_state_forecasting.md).
+Catalogue v4 contains `change_trajectory` (joint heading, altitude and speed deltas)
+and `launch`. Notebooks 04–06 train new pilots; notebook 29 trains GRU/Transformer
+flight-state regressors. Earlier pilot and forecast checkpoints require retraining.
+Results and presentations below retain their historical tasks and labels.
 
 **RL and forecasting handover:**
 [Dataset locations, frozen pilots and generation commands](docs/rl_forecasting_handover.md).

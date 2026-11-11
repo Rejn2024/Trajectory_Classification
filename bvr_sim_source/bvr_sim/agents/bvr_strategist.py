@@ -46,7 +46,7 @@ class StrategicLLM:
     def _default_selection(obs):
         """Request zero heading change when a plan cannot be decoded."""
         del obs
-        return SkillSelection("turn_to_heading", {"delta_heading_deg": 0.0})
+        return SkillSelection("change_trajectory", {"delta_heading_deg": 0.0})
 
     def _create_planning_prompt(self, obs, mission):
         """Create planning prompt for LLM"""

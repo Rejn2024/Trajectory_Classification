@@ -150,7 +150,7 @@ def test_preparation_keeps_test_unread_and_fits_only_training_histories(tmp_path
             frame["step"] = np.arange(121)
             frame["time_s"] = np.arange(121) * 0.1
         decisions["episode_id"] = episode_id
-        decisions["skill"] = decisions.skill.map({"a": "turn_to_heading", "b": "set_altitude"})
+        decisions["skill"] = decisions.skill.map({"a": "change_trajectory", "b": "launch"})
         if split == "test":
             decisions["skill"] = "not_in_catalogue"
         for part, frame in [("observations", observations), ("tracks", track), ("target_decisions", decisions)]:
@@ -196,7 +196,7 @@ def test_preparation_keeps_test_unread_and_fits_only_training_histories(tmp_path
     prediction = predictor.predict(raw[:61])
     np.testing.assert_allclose(prediction["probabilities"],
                                np.load(run / "validation_probabilities.npy")[0], atol=2e-7)
-    assert prediction["top3_skills"].shape == (3, 3)
+    assert prediction["top3_skills"].shape == (3, min(3, len(manifest["classes"])))
     with pytest.raises(ValueError, match="at least 56"):
         predictor.predict(raw[:51])
     with pytest.raises(ValueError, match="empty"):

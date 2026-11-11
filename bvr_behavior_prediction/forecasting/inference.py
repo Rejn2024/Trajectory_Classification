@@ -27,6 +27,8 @@ class MotionPredictor:
     def __init__(self, checkpoint, device="cpu"):
         self.device = torch.device(device)
         saved = torch.load(checkpoint, map_location=self.device, weights_only=False)
+        if saved["model_config"].get("output_size", 6) != 6:
+            raise ValueError("Use FlightStatePredictor for speed/heading/altitude regression checkpoints")
         self.model = MotionForecaster(**saved["model_config"]).to(self.device).eval()
         self.model.load_state_dict(saved["model_state"])
         self.history_steps = saved["model_config"]["history_steps"]

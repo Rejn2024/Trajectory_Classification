@@ -46,7 +46,7 @@ def build_report(root):
         if not directory.is_dir() or not (directory / "validation_metrics.csv").exists():
             continue
         tables.append(pd.read_csv(directory / "validation_metrics.csv"))
-        if not any((t.model == "constant_velocity").any() for t in tables):
+        if not any(t.model.str.startswith("constant_").any() for t in tables):
             tables.append(pd.read_csv(directory / "baseline_metrics.csv"))
         if (directory / "history.csv").exists():
             histories[directory.name] = pd.read_csv(directory / "history.csv")
@@ -57,11 +57,16 @@ def build_report(root):
     metrics.to_csv(root / "validation_comparison.csv", index=False)
     population = metrics[metrics.pilot_id == "population"]
     plt.style.use("seaborn-v0_8-whitegrid")
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4.2), constrained_layout=True)
-    for axis, quantity, units in zip(axes, ("position", "velocity"), ("metres", "m/s"), strict=True):
+    quantities = list(population.quantity.unique())
+    state_target = "heading" in quantities
+    reference_name = "constant state" if state_target else "constant velocity"
+    unit_labels = {"position": "metres", "velocity": "m/s", "speed": "m/s", "heading": "degrees", "altitude": "metres"}
+    fig, axes = plt.subplots(1, len(quantities), figsize=(5.5 * len(quantities), 4.2), constrained_layout=True)
+    for axis, quantity in zip(np.atleast_1d(axes), quantities, strict=True):
+        units = unit_labels[quantity]
         for model, frame in population[population.quantity == quantity].groupby("model"):
             axis.plot(frame.horizon_s, frame.episode_mean_error, marker="o", label=model.replace("_", " "))
-        axis.set(xlabel="Forecast horizon (seconds)", ylabel=f"Mean 3D error ({units})",
+        axis.set(xlabel="Forecast horizon (seconds)", ylabel=f"Mean error ({units})",
                  title=f"Validation {quantity} error", xticks=[1, 2, 5])
         axis.legend(fontsize=8)
     fig.savefig(root / "validation_errors.png", dpi=160)
@@ -71,8 +76,8 @@ def build_report(root):
         axes[0].plot(frame.epoch, frame.train_loss, label=name)
         axes[1].plot(frame.epoch, frame.validation_score, label=name)
     axes[0].set(xlabel="Epoch", ylabel="Scaled Huber loss", title="Training loss")
-    axes[1].set(xlabel="Epoch", ylabel="Error relative to constant velocity",
-                title="Validation score (constant velocity = 1)",
+    axes[1].set(xlabel="Epoch", ylabel=f"Error relative to {reference_name}",
+                title=f"Validation score ({reference_name} reference)",
                 ylim=(0, 1.1 * max(frame.validation_score.max() for frame in histories.values())))
     for axis in axes:
         axis.legend()
@@ -88,6 +93,9 @@ Backward acceleration features need an additional 0.5 seconds of raw history (56
 <p>These are development validation results, not final test results. The test scenarios remain locked.
 Splits hold out complete matched scenario groups across all ten pilots. Metrics average 3D error within each episode, then weight episodes equally.</p>
 <h2>Validation error by horizon</h2>""" + comparison.to_html(float_format=lambda x: f"{x:.3f}") + images
+    if state_target:
+        html = html.replace("position and velocity at 1, 2 and 5 seconds", "speed, circular heading and altitude at 1, 2 and 5 seconds")
+        html = html.replace("Metrics average 3D error within each episode", "Metrics average physical-unit absolute error (circular degrees for heading) within each episode")
     html += "<h2>Per-pilot validation results</h2>" + metrics[metrics.pilot_id != "population"].to_html(index=False, float_format=lambda x: f"{x:.3f}")
     html += "<h2>Scope</h2><p>Idealised exact simulator tracks; known trained pilot population, held-out initial scenarios. Overlapping windows are correlated. No claim of unseen-pilot or real-sensor generalisation is made. Internal target actions and identities are excluded from inputs.</p></body></html>"
     (root / "report.html").write_text(html, encoding="utf-8")

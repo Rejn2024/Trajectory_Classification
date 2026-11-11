@@ -265,7 +265,7 @@ def test_arbitrary_roster_trains_distinct_models_and_preserves_reward_identity(c
 
 @pytest.mark.parametrize("mismatch", [
     "unversioned", "legacy_labels", "skill_order", "parameter_order", "version", "bounds",
-    "absolute_controls",
+    "absolute_controls", "separate_controls",
 ])
 def test_inference_initialization_and_reuse_reject_changed_skill_contract(config, mismatch):
     from bvr_behavior_prediction.rl.multi_pilot import initialize_pilot_from_checkpoint
@@ -286,6 +286,9 @@ def test_inference_initialization_and_reuse_reject_changed_skill_contract(config
         metadata["parameter_names"].reverse()
     elif mismatch == "version":
         metadata["skill_catalogue"]["version"] = "2.0.0"
+    elif mismatch == "separate_controls":
+        metadata["skill_catalogue"]["version"] = "3.0.0"
+        metadata["skill_names"] = ["turn_to_heading", "set_altitude", "set_speed", "launch"]
     elif mismatch == "absolute_controls":
         # Four-skill v2 weights have matching tensor sizes but incompatible units
         # and decoding. Reject them before loading, initializing or copying runs.

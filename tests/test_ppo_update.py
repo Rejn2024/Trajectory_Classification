@@ -37,7 +37,7 @@ def test_reward_component_logging_preserves_critic_values(tmp_path, batched):
         ),
     )
     raw = np.zeros(len(trainer.pilot.parameter_names), dtype=np.float32)
-    action = ("turn_to_heading", {}, -1.0, 7.5, raw)
+    action = ("change_trajectory", {}, -1.0, 7.5, raw)
     trainer.pilot.act = lambda *args, **kwargs: action
     trainer.pilot.act_batch = lambda observations, **kwargs: (action,) * len(observations)
     if batched:

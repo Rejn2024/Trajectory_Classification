@@ -77,12 +77,12 @@ def test_historical_taxonomy_preserves_33_labels_and_masks_missing_labels():
 def test_simplified_catalogue_has_context_dependent_controls_and_preserves_masks():
     classes = paired.catalogue(ROOT)
     policy = intent.intent_policy(classes)
-    assert set(classes) == intent.SIMPLIFIED_SKILLS and len(classes) == 4
+    assert set(classes) == {"change_trajectory", "launch"}
     assert policy["version"] == "skill-intent-v2"
     assert policy["mapping"]["launch"] == "offensive"
     assert all(policy["mapping"][skill] == "context_dependent"
                for skill in classes if skill != "launch")
-    targets = np.array([[classes.index("set_altitude"), classes.index("launch"), -1]])
+    targets = np.array([[classes.index("change_trajectory"), classes.index("launch"), -1]])
     np.testing.assert_array_equal(intent.map_intent_targets(targets, policy["skill_to_intent"]),
                                   [[2, 0, -1]])
 

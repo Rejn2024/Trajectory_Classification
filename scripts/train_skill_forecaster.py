@@ -1,4 +1,4 @@
-"""Prepare, audit, train and evaluate exact future catalogue selections."""
+"""Forecast future speed, heading and altitude; archived label studies are opt-in."""
 
 import argparse
 import json
@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT / "bvr_sim_source"))
 from bvr_behavior_prediction.forecasting.data import read_json
 
 
-def main():
+def legacy_main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("prepare", "baseline", "train", "report", "status", "verify"))
     parser.add_argument("--corpus", type=Path, default=ROOT / "shared/corpora/trained-pilot-episodes-v1")
@@ -46,6 +46,16 @@ def main():
     else:
         for path in sorted(args.output.glob("*/progress.json")):
             print(path.parent.name, json.dumps(read_json(path), indent=2))
+
+
+def main():
+    if "--legacy-skill-labels" in sys.argv:
+        sys.argv.remove("--legacy-skill-labels")
+        legacy_main()
+    else:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from train_trajectory_forecaster import main as trajectory_main
+        trajectory_main()
 
 
 if __name__ == "__main__":

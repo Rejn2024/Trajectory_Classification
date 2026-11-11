@@ -50,18 +50,18 @@ def test_full_catalogue_has_29_families_four_complete_pairs_and_correct_masks():
         intent.hierarchy_policy(["launch", "notch_left"])
 
 
-def test_simplified_catalogue_has_four_singleton_families_and_no_directions():
+def test_simplified_catalogue_has_two_singleton_families_and_no_directions():
     classes = paired.catalogue(ROOT)
     policy = intent.hierarchy_policy(classes)
     assert policy["version"] == "skill-family-direction-v2"
-    assert policy["families"] == ["launch", "set_altitude", "set_speed", "turn_to_heading"]
+    assert policy["families"] == ["change_trajectory", "launch"]
     assert policy["paired_families"] == []
-    targets = np.array([[classes.index("set_altitude"), classes.index("launch"), -1]])
+    targets = np.array([[classes.index("change_trajectory"), classes.index("launch"), -1]])
     np.testing.assert_array_equal(intent.map_intent_targets(targets, policy["skill_to_direction"]),
                                   [[-1, -1, -1]])
     model = network(classes)
     result = model(torch.zeros(1, 51, 82 + len(classes)), return_hierarchy=True)
-    assert result["family_logits"].shape == (1, 3, 4)
+    assert result["family_logits"].shape == (1, 3, 2)
     assert result["direction_logits"].shape == (1, 3, 0, 2)
     torch.testing.assert_close(result["skill_log_probs"].exp().sum(-1), torch.ones(1, 3))
 

@@ -27,12 +27,17 @@ INTENT_GROUPS = {
 SIMPLIFIED_INTENT_GROUPS = {
     "offensive": ["launch"],
     "defensive": [],
+    "context_dependent": ["change_trajectory"],
+}
+LEGACY_SIMPLIFIED_INTENT_GROUPS = {
     "context_dependent": ["turn_to_heading", "set_altitude", "set_speed"],
 }
-SKILL_TO_INTENT = {skill: group for groups in (INTENT_GROUPS, SIMPLIFIED_INTENT_GROUPS)
+SKILL_TO_INTENT = {skill: group for groups in (INTENT_GROUPS, LEGACY_SIMPLIFIED_INTENT_GROUPS, SIMPLIFIED_INTENT_GROUPS)
                    for group, skills in groups.items() for skill in skills}
 SIMPLIFIED_SKILLS = {skill for skills in SIMPLIFIED_INTENT_GROUPS.values() for skill in skills}
-_NEW_SKILLS = SIMPLIFIED_SKILLS - {skill for skills in INTENT_GROUPS.values() for skill in skills}
+_NEW_SKILLS = (SIMPLIFIED_SKILLS | {skill for skills in LEGACY_SIMPLIFIED_INTENT_GROUPS.values() for skill in skills}) - {
+    skill for skills in INTENT_GROUPS.values() for skill in skills
+}
 MIRROR_PAIRS = {family: [f"{family}_left", f"{family}_right"]
                 for family in ("beam_missile", "beam_target", "crank_target", "notch")}
 

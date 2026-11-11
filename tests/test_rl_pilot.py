@@ -124,7 +124,7 @@ def test_episode_collection_parallelizes_simulators_and_batches_policy(tmp_path)
     def act_batch(observations, deterministic=False):
         batch_sizes.append(len(observations))
         raw = np.zeros(len(trainer.pilot.parameter_names), dtype=np.float32)
-        return tuple(("turn_to_heading", {}, 0.0, 0.0, raw.copy()) for _ in observations)
+        return tuple(("change_trajectory", {}, 0.0, 0.0, raw.copy()) for _ in observations)
 
     trainer.pilot.act_batch = act_batch
     episodes = trainer._episodes([object()] * 3, (1, 2, 3))
@@ -189,9 +189,10 @@ def test_hybrid_policy_exposes_every_skill_and_nn_parameters():
     pilot = HybridSkillPilot(12, hidden_size=16)
     assert isinstance(pilot.encoder, torch.nn.TransformerEncoder)
     assert pilot.skill_names == (
-        "turn_to_heading", "set_altitude", "set_speed", "launch",
+        "change_trajectory", "launch",
     )
     assert pilot.parameter_names == ("delta_altitude_m", "delta_heading_deg", "delta_speed_mps")
+    torch.testing.assert_close(pilot._skill_parameter_mask, torch.tensor([[1., 1., 1.], [0., 0., 0.]]))
     assert pilot._skill_indices == {name: i for i, name in enumerate(pilot.skill_names)}
     assert len(pilot._skill_contracts) == len(pilot.skill_names)
     name, params, _, _, raw = pilot.act(np.zeros(12, dtype=np.float32), deterministic=True)
@@ -242,7 +243,7 @@ def test_environment_builds_10_hz_history_with_separate_energy_features():
     initial = env.reset(3)
     assert initial.shape == (20, 5)
     np.testing.assert_allclose(initial[-1, 1:], [0.25, 0.5, 1.0, 1.0])
-    history, _, _, info = env.step("turn_to_heading", {})
+    history, _, _, info = env.step("change_trajectory", {})
     assert history.shape == (20, 5)
     np.testing.assert_array_equal(history[-10:, 0], np.arange(1, 11))
     assert info["elapsed_game_s"] == pytest.approx(1.0)

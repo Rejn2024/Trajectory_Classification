@@ -6,8 +6,9 @@ from torch import nn
 
 class MotionForecaster(nn.Module):
     def __init__(self, architecture="transformer", input_size=54, history_steps=51,
-                 width=128, layers=2, heads=4, dropout=0.1):
+                 width=128, layers=2, heads=4, dropout=0.1, output_size=6):
         super().__init__()
+        self.output_size = output_size
         self.architecture = architecture
         self.history_steps = history_steps
         self.projection = nn.Linear(input_size, width)
@@ -28,7 +29,7 @@ class MotionForecaster(nn.Module):
             raise ValueError(f"Unknown architecture: {architecture}")
         self.norm = nn.LayerNorm(width)
         self.head = nn.Sequential(nn.Linear(width, width), nn.GELU(), nn.Dropout(dropout),
-                                  nn.Linear(width, 3 * 6))
+                                  nn.Linear(width, 3 * output_size))
         nn.init.zeros_(self.head[-1].weight)
         nn.init.zeros_(self.head[-1].bias)
 
@@ -42,12 +43,17 @@ class MotionForecaster(nn.Module):
         else:
             _, state = self.encoder(tokens)
             hidden = state[-1]
-        return self.head(self.norm(hidden)).reshape(-1, 3, 6)
+        return self.head(self.norm(hidden)).reshape(-1, 3, self.output_size)
 
 
 def masked_loss(prediction, target, valid):
     """Balance horizons, position/velocity, and axes in scaled physical residuals."""
-    error = nn.functional.smooth_l1_loss(prediction.float(), target.float(), reduction="none").mean(-1)
+    element = nn.functional.smooth_l1_loss(prediction.float(), target.float(), reduction="none")
+    if prediction.shape[-1] == 4:
+        # Speed, circular heading and altitude have equal weight; heading has two coordinates.
+        error = (element[..., 0] + element[..., 1:3].mean(-1) + element[..., 3]) / 3
+    else:
+        error = element.mean(-1)
     counts = valid.sum(0)
     losses = (error * valid).sum(0) / counts.clamp_min(1)
     return losses[counts > 0].mean()

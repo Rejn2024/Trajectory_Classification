@@ -81,8 +81,16 @@ def parquet(frame, path):
     temp.replace(path)
 
 
+def training_root(job):
+    return job if (job / "pilots.json").exists() else job / "training"
+
+
+def source_root(job):
+    return ROOT if (job / "pilots.json").exists() else job / "source"
+
+
 def activate(job):
-    source = job / "source"
+    source = source_root(job)
     sys.path[:0] = [str(source), str(source / "bvr_sim_source")]
     resources = source / "bvr_sim_source/bvr_sim/resources"
     os.environ["BVR_SIM_RESOURCE_DIR"] = str(resources)
@@ -94,21 +102,38 @@ def prepare(args):
     source = activate(args.job)
     from bvr_behavior_prediction.rl.scenarios import ScenarioSampler
 
-    hashes = read(args.job / "experiment.json")["source_hashes"]
+    current_population = (args.job / "pilots.json").exists()
+    if current_population:
+        population = read(args.job / "pilots.json")
+        records = population["pilots"]
+        if not records or any(record["status"] != "completed" for record in records):
+            raise ValueError("Collection requires a completed pilot population")
+        names = subprocess.check_output(
+            ["git", "ls-files", "bvr_behavior_prediction", "bvr_sim_source"], cwd=ROOT, text=True).splitlines()
+        hashes = {name: digest(ROOT / name) for name in names if (ROOT / name).is_file()}
+        directories = [args.job / record["pilot_id"] for record in records]
+    else:
+        experiment = read(args.job / "experiment.json")
+        hashes = experiment["source_hashes"]
+        directories = ([args.job / "training" / name for name in experiment["pilot_ids"]]
+                       if "pilot_ids" in experiment else sorted((args.job / "training").glob("pilot_*")))
     for relative, expected in hashes.items():
         if digest(source / relative) != expected:
             raise ValueError(f"Snapshot mismatch: {relative}")
     pilots = []
-    for directory in sorted((args.job / "training").glob("pilot_*")):
+    for directory in directories:
         if not directory.is_dir():
+            if current_population:
+                raise ValueError(f"Missing completed pilot directory: {directory}")
             continue
         actual = digest(directory / "best_model.pt")
         if actual != read(directory / "manifest.json")["checkpoint_sha256"]:
             raise ValueError(f"Checkpoint mismatch: {directory}")
         pilots.append({"pilot_id": directory.name, "checkpoint_sha256": actual,
                        "config_sha256": digest(directory / "config.json")})
-    if len(pilots) != 10:
-        raise ValueError("Expected the complete population of ten pilots")
+    expected_count = len(records) if current_population else experiment.get("population_size", 10)
+    if len(pilots) != expected_count:
+        raise ValueError(f"Expected the complete population of {expected_count} pilots")
     scenarios = ScenarioSampler(seed=args.seed).sample_batch(args.episodes_per_pilot)
     cases = [{"scenario_index": i, "scenario_group": f"case_{i:04d}",
               "seed": args.seed + i, "scenario": s.as_dict()} for i, s in enumerate(scenarios)]
@@ -201,7 +226,7 @@ def collect_one(task):
                 raise ValueError(f"Resume file mismatch: {episode_id}/{part}")
         return result
     started = time.perf_counter()
-    run_dir = _WORKER["job"] / "training" / pilot_id
+    run_dir = training_root(_WORKER["job"]) / pilot_id
     if pilot_id not in _WORKER["models"]:
         if digest(run_dir / "best_model.pt") != pilot["checkpoint_sha256"]:
             raise ValueError("Checkpoint changed during generation")
@@ -443,16 +468,18 @@ def package(args, config):
                     raise ValueError(f"Collection script changed: {name}")
                 archive.write(path, f"scripts/{name}")
         for relative, expected_hash in config["source_hashes"].items():
-            path = args.job / "source" / relative
+            path = source_root(args.job) / relative
             if digest(path) != expected_hash:
                 raise ValueError(f"Snapshot changed: {relative}")
             archive.write(path, f"source/{relative}")
         for pilot in config["pilots"]:
             for name in ("best_model.pt", "config.json", "manifest.json"):
                 relative = f"training/{pilot['pilot_id']}/{name}"
-                archive.write(args.job / relative, relative)
+                archive.write(training_root(args.job) / pilot["pilot_id"] / name, relative)
         archive.writestr("experiment.json", json.dumps({
             "source_hashes": config["source_hashes"], "source_experiment": args.job.name,
+            "population_size": len(config["pilots"]),
+            "pilot_ids": [pilot["pilot_id"] for pilot in config["pilots"]],
             "note": "Inference reproduction subset; no optimizer state or training history."}, indent=2))
     with zipfile.ZipFile(output / "reproduction.zip") as archive:
         if archive.testzip() is not None:
@@ -488,7 +515,8 @@ def main():
     parser.add_argument("command", choices=("collect", "package", "verify", "status"))
     parser.add_argument("--perspective", choices=("learned", "tactical"), default="learned",
                         help="Recording observer; the learned aircraft remains A01 in both modes")
-    parser.add_argument("--job", type=Path, default=DEFAULT_JOB)
+    parser.add_argument("--job", type=Path, default=DEFAULT_JOB,
+                        help="Frozen experiment job or a completed notebook 05/06 population directory")
     parser.add_argument("--work", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--episodes-per-pilot", type=int, default=300)

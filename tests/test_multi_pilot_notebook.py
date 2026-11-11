@@ -186,7 +186,7 @@ def test_population_defaults_keep_acceleration_and_separate_outputs(
     assert config.mlflow_experiment == f"jsbsim-simplified-{family}-population"
     assert config.selected_skill_parameters
     assert [skill["name"] for skill in namespace["SKILL_CATALOGUE"]["skills"]] == [
-        "turn_to_heading", "set_altitude", "set_speed", "launch",
+        "change_trajectory", "launch",
     ]
     assert config.simulator_executor == "process"
     assert config.simulator_workers == max(1, ((os.cpu_count() or 1) * 80) // 100)

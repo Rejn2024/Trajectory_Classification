@@ -76,7 +76,7 @@ def test_processes_keep_environment_affinity_and_reuse_workers(tmp_path):
         seeds = (10, 11, 12, 13, 14)
         observations = pool.reset(range(5), seeds)
         assert [obs.item() for obs in observations] == list(seeds)
-        first = pool.step([(index, "turn_to_heading", {}) for index in range(5)])
+        first = pool.step([(index, "change_trajectory", {}) for index in range(5)])
         infos = [step[0][3] for step in first]
         pids = [info["pid"] for info in infos]
         assert set(pids) == {process.pid for process in processes}
@@ -87,14 +87,14 @@ def test_processes_keep_environment_affinity_and_reuse_workers(tmp_path):
         assert all(wall >= 0 and cpu >= 0 for _, wall, cpu in first)
 
         # Reordering/subsetting actions must still reach their original environment.
-        subset = pool.step([(3, "turn_to_heading", {}), (0, "turn_to_heading", {})])
+        subset = pool.step([(3, "change_trajectory", {}), (0, "change_trajectory", {})])
         assert [step[0][3]["seed"] for step in subset] == [13, 10]
         assert [step[0][3]["ticks"] for step in subset] == [2, 2]
         assert [step[0][3]["pid"] for step in subset] == [pids[3], pids[0]]
         pool.release()
         assert len(list(tmp_path.glob("closed_*"))) == 5
         pool.reset(range(5), seeds)
-        second = pool.step([(index, "turn_to_heading", {}) for index in range(5)])
+        second = pool.step([(index, "change_trajectory", {}) for index in range(5)])
         assert [step[0][3]["pid"] for step in second] == pids
         assert [step[0][3]["ticks"] for step in second] == [1] * 5
     finally:
@@ -124,7 +124,7 @@ def test_worker_failure_or_interrupt_stops_every_process(failure, monkeypatch):
 
                 monkeypatch.setattr(pool, "_receive", interrupted_receive)
             with pytest.raises(expected, match=match):
-                pool.step([(index, "turn_to_heading", {}) for index in range(3)])
+                pool.step([(index, "change_trajectory", {}) for index in range(3)])
         assert pool.closed
         assert all(not process.is_alive() for process in processes)
     finally:
@@ -161,7 +161,7 @@ def test_trainer_preserves_episode_state_and_closes_persistent_pool(tmp_path, in
     def act_batch(observations, deterministic=False):
         batch_sizes.append(len(observations))
         raw = np.zeros(len(trainer.pilot.parameter_names), dtype=np.float32)
-        return [("turn_to_heading", {}, 0.0, 0.0, raw.copy()) for _ in observations]
+        return [("change_trajectory", {}, 0.0, 0.0, raw.copy()) for _ in observations]
 
     trainer.pilot.act_batch = act_batch
     pools = []

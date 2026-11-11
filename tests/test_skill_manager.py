@@ -5,8 +5,9 @@ import sys
 import pytest
 from bvr_sim.agents.skill_manager import CATALOGUE_VERSION, SkillManager
 
-EXPECTED = ["turn_to_heading", "set_altitude", "set_speed", "launch"]
+EXPECTED = ["change_trajectory", "launch"]
 REMOVED = {
+    "turn_to_heading", "set_altitude", "set_speed",
     "maintain_heading", "climb_to_altitude", "descend_to_altitude", "accelerate_to_speed",
     "decelerate_to_speed", "pursue_target", "lead_pursuit", "lag_pursuit", "beam_target_left",
     "beam_target_right", "crank_target_left", "crank_target_right", "turn_cold", "extend",
@@ -33,22 +34,23 @@ def test_catalogue_contains_only_distinct_effective_controls():
         for name in EXPECTED
     }
     assert schemas == {
-        "turn_to_heading": {"delta_heading_deg"}, "set_altitude": {"delta_altitude_m"},
-        "set_speed": {"delta_speed_mps"}, "launch": set(),
+        "change_trajectory": {"delta_heading_deg", "delta_altitude_m", "delta_speed_mps"},
+        "launch": set(),
     }
 
 
 def test_catalogue_metadata_is_versioned_ordered_and_defensively_copied():
     manager = SkillManager()
     catalogue = manager.get_catalogue()
-    assert catalogue["version"] == CATALOGUE_VERSION == "3.0.0"
+    assert catalogue["version"] == CATALOGUE_VERSION == "4.0.0"
     assert [contract["name"] for contract in catalogue["skills"]] == EXPECTED
     for contract in catalogue["skills"]:
-        assert contract["version"] == "3.0.0"
+        assert contract["version"] == "4.0.0"
         for field in ("start_condition", "output_contract", "termination_condition",
                       "interruption_conditions", "parameter_schema"):
             assert contract[field], (contract["name"], field)
         assert contract["output_contract"]["additionalProperties"] is False
+        assert contract["output_contract"]["properties"]["skill_name"]["enum"] == EXPECTED
     catalogue["skills"][0]["parameter_schema"]["properties"]["delta_heading_deg"]["maximum"] = 1
     catalogue["skills"][0]["output_contract"]["properties"]["shoot"]["enum"].append(2)
     fresh = manager.get_catalogue()
@@ -68,14 +70,14 @@ def test_removed_skills_are_not_runtime_aliases(name):
 @pytest.mark.parametrize(
     "name,params,field,expected",
     [
-        ("turn_to_heading", {"delta_heading_deg": 20}, "delta_heading", math.radians(20)),
-        ("turn_to_heading", {"delta_heading_deg": -20}, "delta_heading", math.radians(-20)),
-        ("turn_to_heading", {"delta_heading_deg": 180}, "delta_heading", math.pi),
-        ("turn_to_heading", {"delta_heading_deg": -180}, "delta_heading", -math.pi),
-        ("set_altitude", {"delta_altitude_m": 80}, "delta_altitude", 80),
-        ("set_altitude", {"delta_altitude_m": -80}, "delta_altitude", -80),
-        ("set_speed", {"delta_speed_mps": 80}, "delta_speed", 80),
-        ("set_speed", {"delta_speed_mps": -80}, "delta_speed", -80),
+        ("change_trajectory", {"delta_heading_deg": 20}, "delta_heading", math.radians(20)),
+        ("change_trajectory", {"delta_heading_deg": -20}, "delta_heading", math.radians(-20)),
+        ("change_trajectory", {"delta_heading_deg": 180}, "delta_heading", math.pi),
+        ("change_trajectory", {"delta_heading_deg": -180}, "delta_heading", -math.pi),
+        ("change_trajectory", {"delta_altitude_m": 80}, "delta_altitude", 80),
+        ("change_trajectory", {"delta_altitude_m": -80}, "delta_altitude", -80),
+        ("change_trajectory", {"delta_speed_mps": 80}, "delta_speed", 80),
+        ("change_trajectory", {"delta_speed_mps": -80}, "delta_speed", -80),
         ("launch", {}, "shoot", 1),
     ],
 )
@@ -99,8 +101,8 @@ def test_zero_relative_defaults_request_no_change_at_any_current_state(name):
 
 @pytest.mark.parametrize(
     "name,params",
-    [("turn_to_heading", {"delta_heading_deg": 30}),
-     ("set_altitude", {"delta_altitude_m": -40}), ("set_speed", {"delta_speed_mps": 20})],
+    [("change_trajectory", {"delta_heading_deg": 30}),
+     ("change_trajectory", {"delta_altitude_m": -40}), ("change_trajectory", {"delta_speed_mps": 20})],
 )
 def test_relative_commands_stay_relative_when_aircraft_state_changes(name, params):
     skill = SkillManager().create_skill(name, params)
@@ -116,21 +118,21 @@ def test_relative_commands_stay_relative_when_aircraft_state_changes(name, param
 @pytest.mark.parametrize(
     "name,params,error",
     [
-        ("turn_to_heading", {"delta_heading_deg": 180.1}, ValueError),
-        ("turn_to_heading", {"delta_heading_deg": -180.1}, ValueError),
-        ("set_altitude", {"delta_altitude_m": -80.1}, ValueError),
-        ("set_altitude", {"delta_altitude_m": 80.1}, ValueError),
-        ("set_speed", {"delta_speed_mps": 80.1}, ValueError),
-        ("set_speed", {"delta_speed_mps": -80.1}, ValueError),
-        ("set_speed", {"delta_speed_mps": float("nan")}, ValueError),
-        ("set_speed", {"delta_speed_mps": float("inf")}, ValueError),
-        ("set_speed", {"delta_speed_mps": True}, TypeError),
-        ("set_speed", {"delta_speed_mps": "20"}, TypeError),
-        ("turn_to_heading", {"heading_deg": 30}, ValueError),
-        ("set_altitude", {"altitude_m": 8000}, ValueError),
-        ("set_speed", {"speed_mps": 250}, ValueError),
-        ("turn_to_heading", {"tolerance_deg": 3}, ValueError),
-        ("set_speed", {"timeout_s": 60}, ValueError),
+        ("change_trajectory", {"delta_heading_deg": 180.1}, ValueError),
+        ("change_trajectory", {"delta_heading_deg": -180.1}, ValueError),
+        ("change_trajectory", {"delta_altitude_m": -80.1}, ValueError),
+        ("change_trajectory", {"delta_altitude_m": 80.1}, ValueError),
+        ("change_trajectory", {"delta_speed_mps": 80.1}, ValueError),
+        ("change_trajectory", {"delta_speed_mps": -80.1}, ValueError),
+        ("change_trajectory", {"delta_speed_mps": float("nan")}, ValueError),
+        ("change_trajectory", {"delta_speed_mps": float("inf")}, ValueError),
+        ("change_trajectory", {"delta_speed_mps": True}, TypeError),
+        ("change_trajectory", {"delta_speed_mps": "20"}, TypeError),
+        ("change_trajectory", {"heading_deg": 30}, ValueError),
+        ("change_trajectory", {"altitude_m": 8000}, ValueError),
+        ("change_trajectory", {"speed_mps": 250}, ValueError),
+        ("change_trajectory", {"tolerance_deg": 3}, ValueError),
+        ("change_trajectory", {"timeout_s": 60}, ValueError),
         ("launch", {"launch_range_m": 40_000}, ValueError),
     ],
 )
@@ -143,3 +145,13 @@ def test_agents_package_does_not_eagerly_import_optional_api_clients():
     agents = importlib.import_module("bvr_sim.agents")
     assert agents.SkillManager is agents.SkillManager
     assert "bvr_sim.agents.bvr_strategist" not in sys.modules
+
+
+def test_trajectory_command_changes_all_three_axes_together():
+    action, complete = SkillManager().create_skill("change_trajectory", {
+        "delta_heading_deg": -30, "delta_altitude_m": 40, "delta_speed_mps": -20,
+    }).execute(OBSERVATION)
+    assert action["delta_heading"] == pytest.approx(math.radians(-30))
+    assert action["delta_altitude"] == 40
+    assert action["delta_speed"] == -20
+    assert action["shoot"] == 0 and not complete

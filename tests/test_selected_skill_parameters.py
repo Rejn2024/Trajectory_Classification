@@ -30,9 +30,9 @@ def active_indices(pilot, skill_index):
 
 @pytest.mark.parametrize("fraction", [-0.5, 0.0, 0.5])
 @pytest.mark.parametrize("name,key,limit", [
-    ("turn_to_heading", "delta_heading_deg", 180),
-    ("set_altitude", "delta_altitude_m", 80),
-    ("set_speed", "delta_speed_mps", 80),
+    ("change_trajectory", "delta_heading_deg", 180),
+    ("change_trajectory", "delta_altitude_m", 80),
+    ("change_trajectory", "delta_speed_mps", 80),
 ])
 def test_deterministic_neural_commands_decode_to_signed_deltas(pilot, fraction, name, key, limit):
     with torch.no_grad():
@@ -43,7 +43,8 @@ def test_deterministic_neural_commands_decode_to_signed_deltas(pilot, fraction, 
         pilot.parameter_mean.bias.fill_(float(np.arctanh(fraction)))
     action = pilot.act(np.zeros((2, 3), dtype=np.float32), deterministic=True)
     assert action[0] == name
-    assert action[1] == {key: pytest.approx(fraction * limit, abs=1e-4)}
+    assert action[1][key] == pytest.approx(fraction * limit, abs=1e-4)
+    assert set(action[1]) == {"delta_heading_deg", "delta_altitude_m", "delta_speed_mps"}
 
 
 def test_actions_architecture_and_sampling_match_legacy(pilot):
@@ -72,7 +73,7 @@ def test_actions_architecture_and_sampling_match_legacy(pilot):
 
 def test_log_probability_and_gradient_ignore_only_unused_parameters(pilot):
     obs = torch.randn(1, 2, 3)
-    skill_index = pilot._skill_indices["turn_to_heading"]
+    skill_index = pilot._skill_indices["change_trajectory"]
     skills = torch.tensor([skill_index])
     active = active_indices(pilot, skill_index)
     inactive = [j for j in range(len(pilot.parameter_names)) if j not in active]
@@ -104,7 +105,7 @@ def test_entropy_averages_all_skills_and_keeps_skill_probability_gradients(pilot
         ].sum(-1)
     raw = gaussian.mean.detach()
     _, entropy, _ = pilot.evaluate(obs, torch.tensor([0, 1]), raw)
-    _, other_entropy, _ = pilot.evaluate(obs, torch.tensor([2, 3]), raw)
+    _, other_entropy, _ = pilot.evaluate(obs, torch.tensor([1, 0]), raw)
     torch.testing.assert_close(entropy, expected)
     torch.testing.assert_close(entropy, other_entropy, rtol=0, atol=0)
     actual_gradient = torch.autograd.grad(entropy.sum(), pilot.skill_head.weight)[0]
