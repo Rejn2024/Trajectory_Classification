@@ -1,7 +1,7 @@
 """Slot-independent frame encoders for notebook 17's observer-centred histories.
 
 Only frame-local missile sets are encoded: compact slots are never treated as
-persistent tracks. Both models use notebook 18's temporal Transformer/readout.
+persistent tracks. Temporal readout uses a Transformer, or notebook 28's causal TCN.
 The original training-only normalisation is stored in checkpoint buffers so
 geometry and absence are recovered before using slot-independent encoders.
 """
@@ -170,11 +170,52 @@ class _HGTBlock(nn.Module):
         return (result, attention) if return_attention else result
 
 
+class _CausalTCNBlock(nn.Module):
+    """Two left-padded convolutions with per-time channel normalization and a residual."""
+
+    def __init__(self, width, kernel_size, dilation, dropout):
+        super().__init__()
+        self.left_padding = (kernel_size - 1) * dilation
+        self.norms = nn.ModuleList([nn.LayerNorm(width) for _ in range(2)])
+        self.convolutions = nn.ModuleList([
+            nn.Conv1d(width, width, kernel_size, dilation=dilation) for _ in range(2)])
+        self.activation = nn.GELU()
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, frames):
+        residual = frames
+        for norm, convolution in zip(self.norms, self.convolutions):
+            # Normalize channels at each time independently; no future time enters a statistic.
+            values = norm(frames).transpose(1, 2)
+            values = convolution(nn.functional.pad(values, (self.left_padding, 0)))
+            frames = self.dropout(self.activation(values.transpose(1, 2)))
+        return residual + frames
+
+
+class CausalTemporalConvEncoder(nn.Module):
+    """Length-preserving residual TCN over (batch, time, width) frame embeddings."""
+
+    def __init__(self, width, kernel_size=3, dilations=(1, 2, 4, 8), dropout=.25):
+        super().__init__()
+        if isinstance(kernel_size, bool) or not isinstance(kernel_size, int) or kernel_size < 2:
+            raise ValueError("tcn_kernel_size must be an integer at least two")
+        if (not isinstance(dilations, (tuple, list)) or not dilations
+                or any(isinstance(d, bool) or not isinstance(d, int) or d < 1 for d in dilations)):
+            raise ValueError("tcn_dilations must be a nonempty sequence of positive integers")
+        self.receptive_field = 1 + 2 * (kernel_size - 1) * sum(dilations)
+        self.blocks = nn.Sequential(*[
+            _CausalTCNBlock(width, kernel_size, dilation, dropout) for dilation in dilations])
+
+    def forward(self, frames):
+        return self.blocks(frames)
+
+
 class _MissileTransformer(nn.Module):
     def __init__(self, num_classes=33, width=96, heads=6, layers=2, dropout=.25,
                  input_features=115, mean=None, std=None, graph_width=64, graph_layers=2,
                  observer_acceleration=False, target_relative_missiles=False,
-                 target_relative_missile_velocities=False):
+                 target_relative_missile_velocities=False, temporal_encoder="transformer",
+                 tcn_kernel_size=3, tcn_dilations=(1, 2, 4, 8)):
         super().__init__()
         if not isinstance(observer_acceleration, bool):
             raise ValueError("observer_acceleration must be boolean")
@@ -190,7 +231,9 @@ class _MissileTransformer(nn.Module):
         self.target_relative_missile_velocities = target_relative_missile_velocities
         if input_features != 82 + num_classes:
             raise ValueError("Expected notebook-17 features: 82 numeric plus one own-skill per class")
-        if width < 1 or heads < 1 or width % heads or layers < 1:
+        if temporal_encoder not in ("transformer", "tcn"):
+            raise ValueError("temporal_encoder must be transformer or tcn")
+        if width < 1 or (temporal_encoder == "transformer" and (heads < 1 or width % heads or layers < 1)):
             raise ValueError("Positive width/layers and a width divisible by heads are required")
         if graph_width < 1 or graph_layers < 1:
             raise ValueError("graph_width and graph_layers must be positive")
@@ -211,14 +254,20 @@ class _MissileTransformer(nn.Module):
                                      nn.Linear(graph_width, graph_width), nn.GELU())
         self.role = nn.Embedding(4, graph_width)
         self.projection = nn.Linear(6 * graph_width + 2, width)
-        self.position = nn.Parameter(torch.randn(1, HISTORY_STEPS, width) * .02)
-        block = nn.TransformerEncoderLayer(width, heads, width * 4, dropout,
-                                           activation="gelu", batch_first=True, norm_first=True)
-        self.encoder = nn.TransformerEncoder(block, layers, enable_nested_tensor=False)
-        for layer in self.encoder.layers:
-            for parameter in layer.parameters():
-                if parameter.ndim > 1:
-                    nn.init.xavier_uniform_(parameter)
+        self.temporal_encoder = temporal_encoder
+        if temporal_encoder == "transformer":
+            self.position = nn.Parameter(torch.randn(1, HISTORY_STEPS, width) * .02)
+            block = nn.TransformerEncoderLayer(width, heads, width * 4, dropout,
+                                               activation="gelu", batch_first=True, norm_first=True)
+            self.encoder = nn.TransformerEncoder(block, layers, enable_nested_tensor=False)
+            for layer in self.encoder.layers:
+                for parameter in layer.parameters():
+                    if parameter.ndim > 1:
+                        nn.init.xavier_uniform_(parameter)
+        else:
+            self.encoder = CausalTemporalConvEncoder(width, tcn_kernel_size, tcn_dilations, dropout)
+            if self.encoder.receptive_field < HISTORY_STEPS:
+                raise ValueError("TCN receptive field must cover all 51 history frames")
         self.norm = nn.LayerNorm(width)
         self.head = nn.Sequential(nn.Linear(width, width), nn.GELU(), nn.Dropout(dropout),
                                   nn.Linear(width, 3 * num_classes))
@@ -284,9 +333,9 @@ class _MissileTransformer(nn.Module):
         return self.encode_history_from_frames(self.encode_frames(windows))
 
     def encode_history_from_frames(self, frames):
-        if frames.ndim != 3 or tuple(frames.shape[1:]) != tuple(self.position.shape[1:]):
+        if frames.ndim != 3 or tuple(frames.shape[1:]) != (HISTORY_STEPS, self.projection.out_features):
             raise ValueError("Expected (batch, 51, temporal width) frame encodings")
-        encoded = self.encoder(frames + self.position)
+        encoded = self.encoder(frames + self.position if self.temporal_encoder == "transformer" else frames)
         return self.norm(encoded[:, -1])
 
     def forward_from_frame_encodings(self, frames, **kwargs):
@@ -485,7 +534,7 @@ class HGTIntentTransformer(HGTTransformer):
             raise ValueError("Skill-intent forecasting requires three intent groups and HGT-v2")
         super().__init__(*args, hgt_version=hgt_version, **kwargs)
         self.num_intents = num_intents
-        width = self.position.shape[-1]
+        width = self.projection.out_features
         self.intent_head = nn.Sequential(nn.Linear(width, width), nn.GELU(),
                                          nn.Dropout(kwargs.get("dropout", .25)), nn.Linear(width, 3 * num_intents))
 
@@ -547,7 +596,7 @@ class HGTHierarchicalIntentTransformer(HGTIntentTransformer):
         self.register_buffer("directional_skills", torch.tensor(direction, dtype=torch.long) >= 0)
         self.register_buffer("family_pair_index", torch.tensor(family_pair, dtype=torch.long))
         self.register_buffer("family_leaf_index", torch.tensor(family_leaves, dtype=torch.long))
-        width = self.position.shape[-1]
+        width = self.projection.out_features
         dropout = kwargs.get("dropout", .25)
         del self.head  # No independent 33-class head: every leaf uses the factorization.
         self.family_head = nn.Sequential(nn.Linear(width, width), nn.GELU(), nn.Dropout(dropout),
@@ -593,3 +642,11 @@ class HGTHierarchicalIntentTransformer(HGTIntentTransformer):
             direction = torch.full_like(family, -1)
         skill = self.family_leaf_index[family, direction.clamp_min(0)]
         return {"family_indices": family, "direction_indices": direction, "skill_indices": skill}
+
+
+class HGTHierarchicalIntentTCN(HGTHierarchicalIntentTransformer):
+    """Notebook 27's HGT and heads with a causal residual TCN instead of temporal attention."""
+
+    def __init__(self, *args, tcn_kernel_size=3, tcn_dilations=(1, 2, 4, 8), **kwargs):
+        super().__init__(*args, temporal_encoder="tcn", tcn_kernel_size=tcn_kernel_size,
+                         tcn_dilations=tcn_dilations, **kwargs)

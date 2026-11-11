@@ -31,6 +31,9 @@ STRIDE_STEPS = 10
 OBS_COLUMNS = [f"obs_{i:02d}" for i in range(51)]
 KEYS = ["episode_id", "step", "time_s"]
 SPLITS = ("train", "test", "validation")
+HIERARCHICAL_ARCHITECTURES = ("hgt_hierarchical_intent", "hgt_hierarchical_intent_tcn")
+INTENT_ARCHITECTURES = ("hgt_intent", *HIERARCHICAL_ARCHITECTURES)
+HGT_ARCHITECTURES = ("hgt", *INTENT_ARCHITECTURES)
 BASE_FEATURES = OBS_COLUMNS + [f"observed_target_acceleration_{a}" for a in "nwu"]
 FEATURES = [f"B01_{f}" for f in BASE_FEATURES]
 DATA_CONTRACT = "trained-pilot-only-skill-horizon-v2"
@@ -758,9 +761,14 @@ class PairedTransformer(nn.Module):
 def model_configuration(config, input_features, skill_hierarchy=None):
     """Keep historical Transformer checkpoint configuration compatible."""
     name = config.get("architecture", "transformer")
-    if name not in ("transformer", "missile_set", "typed_graph", "hgt", "hgt_intent", "hgt_hierarchical_intent"):
+    if name not in ("transformer", "missile_set", "typed_graph", *HGT_ARCHITECTURES):
         raise ValueError(f"Unknown forecasting architecture: {name}")
-    result = {k: config[k] for k in ("width", "heads", "layers", "dropout")}
+    temporal_tcn = name == "hgt_hierarchical_intent_tcn"
+    keys = ("width", "dropout") if temporal_tcn else ("width", "heads", "layers", "dropout")
+    result = {k: config[k] for k in keys}
+    if temporal_tcn:
+        result.update(tcn_kernel_size=config.get("tcn_kernel_size", 3),
+                      tcn_dilations=config.get("tcn_dilations", [1, 2, 4, 8]))
     result["input_features"] = input_features
     if name != "transformer":
         result.update(architecture=name, graph_width=config.get("graph_width", 64),
@@ -771,7 +779,7 @@ def model_configuration(config, input_features, skill_hierarchy=None):
             result["target_relative_missiles"] = True
         if config.get("target_relative_missile_velocities", False):
             result["target_relative_missile_velocities"] = True
-        if name in ("hgt", "hgt_intent", "hgt_hierarchical_intent"):
+        if name in HGT_ARCHITECTURES:
             result.update(graph_heads=config.get("graph_heads", 4),
                           missile_distance_floor_m=config.get("missile_distance_floor_m", 1000.0),
                           missile_distance_power=config.get("missile_distance_power", 1.0))
@@ -781,10 +789,10 @@ def model_configuration(config, input_features, skill_hierarchy=None):
                               threat_cpa_horizon_s=config.get("threat_cpa_horizon_s", 30.0),
                               threat_time_scale_s=config.get("threat_time_scale_s", 5.0),
                               threat_prior_strength=config.get("threat_prior_strength", 1.0))
-            if name in ("hgt_intent", "hgt_hierarchical_intent"):
+            if name in INTENT_ARCHITECTURES:
                 result["num_intents"] = 3
                 result["hgt_version"] = version
-            if name == "hgt_hierarchical_intent":
+            if name in HIERARCHICAL_ARCHITECTURES:
                 hierarchy = skill_hierarchy if skill_hierarchy is not None else config.get("skill_hierarchy")
                 if hierarchy is None:
                     raise ValueError("Hierarchical model requires notebook-26 family/direction mapping")
@@ -799,12 +807,13 @@ def make_model(num_classes, model_config, mean=None, std=None):
     if name == "transformer":
         return PairedTransformer(num_classes=num_classes, **settings)
     from .enemy_missile_models import (
-        HGTHierarchicalIntentTransformer, HGTIntentTransformer, HGTTransformer,
+        HGTHierarchicalIntentTCN, HGTHierarchicalIntentTransformer, HGTIntentTransformer, HGTTransformer,
         MissileSetTransformer, TypedGraphTransformer,
     )
     constructors = {"missile_set": MissileSetTransformer, "typed_graph": TypedGraphTransformer,
                     "hgt": HGTTransformer, "hgt_intent": HGTIntentTransformer,
-                    "hgt_hierarchical_intent": HGTHierarchicalIntentTransformer}
+                    "hgt_hierarchical_intent": HGTHierarchicalIntentTransformer,
+                    "hgt_hierarchical_intent_tcn": HGTHierarchicalIntentTCN}
     if name not in constructors:
         raise ValueError(f"Unknown forecasting architecture: {name}")
     return constructors[name](num_classes=num_classes, mean=mean, std=std, **settings)
@@ -1346,8 +1355,12 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
     from .paired_skill_tracking import RunTracker
 
     config = {**DEFAULT_TRAINING, **(config or {})}
-    multitask = config.get("architecture") in ("hgt_intent", "hgt_hierarchical_intent")
-    hierarchical = config.get("architecture") == "hgt_hierarchical_intent"
+    if config.get("architecture") == "hgt_hierarchical_intent_tcn":
+        # Transformer-only defaults must not reappear in the saved TCN recipe.
+        config.pop("heads", None)
+        config.pop("layers", None)
+    multitask = config.get("architecture") in INTENT_ARCHITECTURES
+    hierarchical = config.get("architecture") in HIERARCHICAL_ARCHITECTURES
     hierarchy_settings = hierarchical_loss_settings(config) if hierarchical else {}
     if multitask:
         config.setdefault("intent_loss_weight", .25)
@@ -1357,7 +1370,7 @@ def train_model(data, output, config=None, callback=None, device=None, resume=Fa
             or (not multitask and intent_loss_weight != 0)):
         raise ValueError("intent_loss_weight must be finite/nonnegative and requires an intent architecture")
     if config.get("handedness_weighting", "none") != "none" and not hierarchical:
-        raise ValueError("Handedness weighting requires hgt_hierarchical_intent")
+        raise ValueError("Handedness weighting requires a hierarchical intent architecture")
     schedule_settings = learning_rate_schedule_settings(config)
     if config["evaluation_precision"] not in {"fp32", "bf16"}:
         raise ValueError("evaluation_precision must be fp32 or bf16")
@@ -1776,11 +1789,11 @@ def final_evaluation(data, output, device=None, tracking=None):
                                        frame_batch_size=config["evaluation_frame_batch_size"],
                                        cache_max_frames=config["evaluation_cache_max_frames"],
                                        **({"intent_loss_weight": config["intent_loss_weight"]}
-                                          if config.get("architecture") in ("hgt_intent", "hgt_hierarchical_intent") else {}),
-                                       **(hierarchical_loss_settings(config) if config.get("architecture") == "hgt_hierarchical_intent"
+                                          if config.get("architecture") in INTENT_ARCHITECTURES else {}),
+                                       **(hierarchical_loss_settings(config) if config.get("architecture") in HIERARCHICAL_ARCHITECTURES
                                           else {}),
                                        **({"handedness_weights": handedness_weight_tensor(saved.get("handedness_weighting"), device)}
-                                          if config.get("architecture") == "hgt_hierarchical_intent" else {})) for s in SPLITS}
+                                          if config.get("architecture") in HIERARCHICAL_ARCHITECTURES else {})) for s in SPLITS}
             except NonfiniteEvaluationError as error:
                 error.details.update(epoch=saved["epoch"], phase="final_evaluation")
                 write_json(output / "nonfinite_evaluation.json", error.details)
@@ -1792,7 +1805,7 @@ def final_evaluation(data, output, device=None, tracking=None):
         for split, result in results.items():
             np.savez_compressed(output / f"final_{split}.npz", **{
                 k: result[k] for k in ("probabilities", "targets", "sample_indices", "confusion")})
-        if config.get("architecture") in ("hgt_intent", "hgt_hierarchical_intent"):
+        if config.get("architecture") in INTENT_ARCHITECTURES:
             intent_summary = pd.concat([r["intent"]["summary"] for r in results.values()], ignore_index=True)
             intent_scores = pd.concat([r["intent"]["per_class"] for r in results.values()], ignore_index=True)
             intent_summary.to_csv(output / "final_intent_metrics.csv", index=False)
@@ -1802,7 +1815,7 @@ def final_evaluation(data, output, device=None, tracking=None):
                     k: result["intent"][k] for k in ("probabilities", "targets", "sample_indices", "confusion", "losses")})
             tracker.metrics({f"final/intent/{row.split}/h{int(row.horizon_s)}/{key}": float(getattr(row, key))
                              for row in intent_summary.itertuples() for key in ("nll", "accuracy", "macro_f1")}, saved["epoch"])
-        if config.get("architecture") == "hgt_hierarchical_intent":
+        if config.get("architecture") in HIERARCHICAL_ARCHITECTURES:
             credit_metrics = pd.concat([r["hierarchical_reward"] for r in results.values()], ignore_index=True)
             credit_metrics.to_csv(output / "final_hierarchical_credit_metrics.csv", index=False)
             tracker.metrics({f"final/{row.split}/h{int(row.horizon_s)}/{key}": float(getattr(row, key))
@@ -1842,8 +1855,8 @@ def benchmark_batches(data, config=None, device=None, batch_sizes=(512, 1024),
     intent_options = ({"intent_mapping": torch.tensor(data.manifest["intent_supervision"]["skill_to_intent"],
                                                       dtype=torch.long, device=device),
                        "intent_loss_weight": config.get("intent_loss_weight", .25)}
-                      if config.get("architecture") in ("hgt_intent", "hgt_hierarchical_intent") else {})
-    if config.get("architecture") == "hgt_hierarchical_intent":
+                      if config.get("architecture") in INTENT_ARCHITECTURES else {})
+    if config.get("architecture") in HIERARCHICAL_ARCHITECTURES:
         intent_options["hierarchy_mapping"] = hierarchy_mapping_tensors(data.manifest["skill_hierarchy"], device)
         intent_options.update(hierarchical_loss_settings(config))
         intent_options["handedness_weights"] = handedness_weight_tensor(fit_handedness_weighting(data, config), device)

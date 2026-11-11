@@ -303,7 +303,7 @@ class RunTracker:
         import torch
         from mlflow.models import ModelSignature
         from mlflow.types import Schema, TensorSpec
-        from .paired_skill_forecasting import make_model
+        from .paired_skill_forecasting import HIERARCHICAL_ARCHITECTURES, make_model
 
         saved = torch.load(checkpoint, map_location="cpu", weights_only=False)
         input_features = len(saved["feature_names"])
@@ -341,7 +341,7 @@ class RunTracker:
             _write(root / "model" / "paired_input_schema.json", {
                 "input": f"Normalized feature histories, shape [batch,51,{input_features}]",
                 "output": ("Joint original-skill log probabilities, shape [batch,3,classes]; exp or softmax on last axis"
-                           if saved["model_config"].get("architecture") == "hgt_hierarchical_intent" else
+                           if saved["model_config"].get("architecture") in HIERARCHICAL_ARCHITECTURES else
                            "Raw logits, shape [batch,3,classes]; apply softmax on the last axis"),
                 "skill_hierarchy": saved.get("skill_hierarchy"),
                 "classes": saved["classes"], "features": saved["feature_names"],

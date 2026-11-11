@@ -363,3 +363,14 @@ formulas differ, so cross-population comparisons require a common evaluation rew
 Notebook 04 is unchanged. Existing batches are preserved. See the
 [multi-pilot guide](../docs/multi_pilot_training.md) for arbitrary custom reward
 formulas, a short smoke run, and loading checkpoints after restarting the kernel.
+
+## Hierarchical skill forecasting with a TCN
+
+[28: HGT + TCN skill/intent forecasting](28_skill_intent_target_relative_missile_hgt_tcn_nn_duel_skill_forecasting.ipynb)
+is the temporal-convolution counterpart to notebook 27. Run notebook 26 first,
+then Run All in 28. It reuses the prepared v2 dataset, HGT-v2 graph encoder,
+family/direction/intent heads and training/reporting policy, replacing temporal
+attention with four causal residual convolution blocks covering all 51 frames.
+Its checkpoints and reports have a separate output directory. See the
+[forecasting guide](../docs/nn_duel_skill_forecasting.md#notebook-28-hgt--tcn)
+for settings and reuse.

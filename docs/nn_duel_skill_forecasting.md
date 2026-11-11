@@ -1,5 +1,35 @@
 # Own-skill-conditioned NN-duel forecasting
 
+## Notebook 28: HGT + TCN
+
+After notebook 26 has prepared the v2 skill/intent overlay, run
+`28_skill_intent_target_relative_missile_hgt_tcn_nn_duel_skill_forecasting.ipynb`.
+This is notebook 27's single-seed recipe with a **Temporal Convolutional Network
+(TCN)** replacing only its temporal Transformer and learned position embeddings.
+The HGT-v2 spatial encoder and hierarchical skill/auxiliary intent heads are shared.
+Four width-96 residual blocks each contain two causal kernel-3 convolutions;
+dilations 1/2/4/8 give a receptive field of 61 frames, covering the 51-frame input.
+Per-time channel LayerNorm preserves causality. The final temporal position feeds
+the existing output heads. Spatial graph attention remains present.
+
+The notebook uses the same dataset receipt or `BVR_NN_INTENT_DATA` override as 27.
+Run artifacts live separately under `artifacts/nn_duel_skill_intent_tcn_forecasting/`,
+with `comparisons/latest_hgt_hierarchical_intent_tcn_run.json`. Optional tracking
+uses its own experiment; `BVR_NN_INTENT_TCN_MLFLOW=0` disables it. The family/side
+weight caps are 100/20, matching notebook 27's actual reviewed configuration.
+Unweighted exact-skill test NLL continues to select checkpoints; weighted F1 is
+reported at each horizon. No performance improvement is assumed.
+
+Start a fresh TCN run. Resume requires a TCN `EXISTING_RUN` with matching source,
+configuration and data. Notebook-27 Transformer checkpoints have incompatible
+temporal weights. The model factory saves/reloads kernel and dilation settings,
+and final evaluation retains the same skill, family, conditional-direction,
+credit, intent and baseline reports. Bounded HGT frame caching and streaming
+epoch metrics are supported. Full flight-data training and GPU performance
+must be measured on the intended training machine.
+
+## Preparing the NN-duel forecasting dataset
+
 Run these notebooks in order on `forecasting_ed_261104`:
 
 1. `notebooks/12_prepare_nn_duel_skill_forecasting.ipynb` discovers the latest complete
