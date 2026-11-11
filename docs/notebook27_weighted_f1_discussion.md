@@ -13,6 +13,10 @@ run. The numerical findings below refer to that refreshed version. This review
 did not run new training, generate flights, or establish a causal ranking of
 architectures.
 
+For the subsequent review of rare-skill sampling, catalogue/executor equivalences
+and the speed-command override (clarifying the "forced-throttle" terminology),
+see [Notebook 11: synthetic-data generation findings](notebook11_synthetic_data_generation_findings.md).
+
 ## 1. What the final-report cell displays
 
 The cell begins with:
