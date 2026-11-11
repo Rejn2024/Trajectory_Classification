@@ -2,6 +2,10 @@
 
 Discussion summary, 11 November 2026, on branch `forecasting_ed_261104`.
 
+This audit describes the original frozen simulator behaviour. The subsequent
+[speed-control change](speed_command_control.md) makes the override optional and
+disables it for new campaigns; it does not implement missing manoeuvre controllers.
+
 This note complements the [notebook 27 weighted-F1 discussion](notebook27_weighted_f1_discussion.md).
 It reviews [notebook 11](../notebooks/11_nn_vs_nn_training_data.ipynb), its
 [collector](../scripts/generate_nn_duel_corpus.py), notebook 27's saved outputs,

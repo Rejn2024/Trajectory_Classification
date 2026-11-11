@@ -58,6 +58,7 @@ def setup_environment(tmp_path, monkeypatch):
         "SEED": 42,
         "EPISODE_SECONDS": 2.0,
         "DETERMINISTIC": True,
+        "FORCE_SPEED_COMMAND": False,
         "BATCH_WAIT_MS": 2.0,
         "BATCH_MAX_REQUESTS": 32,
         "WORKER_CANDIDATES": [1],
@@ -106,6 +107,7 @@ def test_setup_key_changes_with_each_recorded_software_version(setup_environment
         ("SEED", 43),
         ("EPISODE_SECONDS", 3.0),
         ("DETERMINISTIC", False),
+        ("FORCE_SPEED_COMMAND", True),
         ("BATCH_WAIT_MS", 5.0),
         ("BATCH_MAX_REQUESTS", 8),
     ],
@@ -115,3 +117,41 @@ def test_setup_key_changes_with_preparation_settings(setup_environment, option, 
     original = select_setup(namespace)
     namespace[option] = value
     assert select_setup(namespace) != original
+
+
+def test_speed_mode_is_recorded_and_cannot_change_on_resume(setup_environment):
+    namespace, _ = setup_environment
+    work = select_setup(namespace)
+    config = duel.prepare(work, flights=3, seed=42, seconds=2.0)
+    assert config["native_throttle_override"] is False
+    with pytest.raises(ValueError, match="Resume configuration/source/software differs"):
+        duel.prepare(work, flights=3, seed=42, seconds=2.0, native_throttle_override=True)
+    assert duel.read(work / "config.json") == config
+    namespace["FORCE_SPEED_COMMAND"] = True
+    legacy = duel.prepare(
+        select_setup(namespace), flights=3, seed=42, seconds=2.0, native_throttle_override=True
+    )
+    assert legacy["native_throttle_override"] is True
+
+
+@pytest.mark.parametrize("invalid", ["false", 0, 1, None])
+def test_speed_mode_rejects_non_boolean_preparation(tmp_path, invalid):
+    with pytest.raises(TypeError, match="native_throttle_override must be a boolean"):
+        duel.prepare(tmp_path, native_throttle_override=invalid)
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_cli_passes_speed_mode_to_preparation(tmp_path, monkeypatch, legacy):
+    calls = []
+
+    def prepare(*args, **kwargs):
+        calls.append(kwargs["native_throttle_override"])
+        return {"flights": 3, "pilots": {}}
+
+    monkeypatch.setattr(duel, "prepare", prepare)
+    argv = ["collector", "prepare", "--work", str(tmp_path / "work"), "--flights", "3"]
+    if legacy:
+        argv.append("--force-speed-command")
+    monkeypatch.setattr(sys, "argv", argv)
+    duel.main()
+    assert calls == [legacy]

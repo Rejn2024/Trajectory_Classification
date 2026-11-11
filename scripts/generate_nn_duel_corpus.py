@@ -241,8 +241,11 @@ def prepare(
     inference_backend="local_cpu",
     batch_wait_ms=2.0,
     batch_max_requests=32,
+    native_throttle_override=False,
 ):
     work = Path(work).resolve()
+    if not isinstance(native_throttle_override, bool):
+        raise TypeError("native_throttle_override must be a boolean")
     if not math.isfinite(seconds) or not 0 < seconds <= 300 or not float(seconds / DT).is_integer():
         raise ValueError("Duration must be a multiple of 0.1 seconds, at most 300")
     if inference_backend not in ("local_cpu", "central_cpu", "central_cuda"):
@@ -294,7 +297,7 @@ def prepare(
         "batch_wait_ms": batch_wait_ms,
         "batch_max_requests": batch_max_requests,
         "inference_precision": "fp32",
-        "native_throttle_override": True,
+        "native_throttle_override": native_throttle_override,
     }
     if (work / "config.json").exists():
         if read(work / "config.json") != config:
@@ -304,6 +307,20 @@ def prepare(
     else:
         write(work / "config.json", config)
     return config
+
+
+def configure_speed_control(sim_module, config):
+    """Apply the recorded speed mode in an isolated frozen-simulator worker.
+
+    Old configs without the field retain the archive's original forced request.
+    The verified files on disk stay unchanged; this switch is process-local.
+    """
+    override = config.get("native_throttle_override", True)
+    if not isinstance(override, bool):
+        raise TypeError("native_throttle_override must be a boolean")
+    if not hasattr(sim_module, "BYPASS_RL_THROTTLE_CONTROL"):
+        raise ValueError("Frozen simulator does not expose the speed-command override")
+    sim_module.BYPASS_RL_THROTTLE_CONTROL = override
 
 
 def initialize_worker(work, assignments=None, channels=None):
@@ -329,6 +346,7 @@ def initialize_worker(work, assignments=None, channels=None):
     torch.set_num_threads(1)
     torch.set_num_interop_threads(1)
     STATE.update(work=work, config=read(work / "config.json"), models={}, loader=load_trained_pilot)
+    configure_speed_control(sim_module, STATE["config"])
     if channels is not None:
         STATE["inference_connection"] = channels[assignments.get(timeout=30)]
 
@@ -406,6 +424,7 @@ def collect_one(case):
         "blue_opponent_type": None,
         "obs_type": "compact",
         "ground_units": {},
+        "bypass_rl_throttle_control": config.get("native_throttle_override", True),
     }
     frames = {s: [] for s in SIDES}
     tracks = {s: [] for s in SIDES}
@@ -997,6 +1016,11 @@ def package(work, output, config, shard_flights=100):
             destination = output / "collector" / source.name
             destination.parent.mkdir(exist_ok=True)
             shutil.copyfile(source, destination)
+        speed_control_note = (
+            "Legacy speed override is enabled: every requested speed delta becomes +1."
+            if config.get("native_throttle_override", True)
+            else "Speed override is disabled: requested speed deltas reach the flight controller."
+        )
         readme = (
             "# NN versus NN collection\n\n"
             "Two recorded perspectives per physical engagement, using frozen notebook-07 tactical pilots.\n"
@@ -1005,7 +1029,7 @@ def package(work, output, config, shard_flights=100):
             "Observations are idealised 51-feature controller inputs at 10 Hz. Target decisions are privileged.\n"
             "Decisions occur at 1 Hz before the next physics step. Terminal samples have no new decision.\n"
             "No forward filling, fitted scaling, splits, or forecast windows are stored.\n"
-            "The native forced-throttle setting is preserved; catalogue speed labels may not change throttle.\n"
+            f"{speed_control_note}\n"
             "A01/ and B01/ each contain observations, tracks and target_decisions, sharded by 100 flights by default.\n"
             "episodes.parquet has one row per perspective (twice the physical flight count).\n"
             "Use scripts/generate_nn_duel_corpus.py load_forecasting_view for a 09b-compatible episode.\n"
@@ -1222,6 +1246,11 @@ def main():
     parser.add_argument("--batch-wait-ms", type=float, default=2.0)
     parser.add_argument("--batch-max-requests", type=int, default=32)
     parser.add_argument(
+        "--force-speed-command",
+        action="store_true",
+        help="Legacy mode: replace every speed request with +1; recorded in campaign config",
+    )
+    parser.add_argument(
         "--verification-cache",
         type=Path,
         help="Reuse semantic checks for unchanged indexed payloads; all bytes are still hashed",
@@ -1261,6 +1290,7 @@ def main():
                 args.inference_backend,
                 args.batch_wait_ms,
                 args.batch_max_requests,
+                native_throttle_override=args.force_speed_command,
             )
         if args.command == "collect":
             result = {"new_flights": len(collect(args.work, config, args.workers, args.limit))}

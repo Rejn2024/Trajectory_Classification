@@ -167,6 +167,18 @@ def test_partial_then_complete_shards_and_canonical_target(campaign):
         duel.verify(output)
 
 
+@pytest.mark.parametrize("legacy", [False, True])
+def test_package_describes_recorded_speed_mode(campaign, legacy):
+    work, output, config = campaign
+    config["native_throttle_override"] = legacy
+    for case in config["cases"]:
+        save_episode(work, case)
+    duel.package(work, output, config, shard_flights=2)
+    readme = (output / "README.md").read_text()
+    assert ("every requested speed delta becomes +1" in readme) is legacy
+    assert ("requested speed deltas reach the flight controller" in readme) is not legacy
+
+
 def test_lock_excludes_another_writer_and_releases_after_error(tmp_path):
     with pytest.raises(RuntimeError, match="example failure"), duel.campaign_lock(tmp_path):
         with pytest.raises(RuntimeError, match="locked"), duel.campaign_lock(tmp_path):
@@ -207,7 +219,7 @@ def test_notebook_is_valid_and_defaults_to_requested_campaign():
         if cell.cell_type == "code":
             assert cell.source.startswith("%%time\n")
             compile(cell.source.removeprefix("%%time\n"), str(path), "exec")
-    assert '"20000"' in sources and '"BVR_NN_SECONDS", "300"' in sources
+    assert '"BVR_NN_FLIGHTS", "10000"' in sources and '"BVR_NN_SECONDS", "300"' in sources
     assert 'run("verify", full_verify=True)' in sources
     assert "central_cuda" in sources and "estimate_campaign" in sources
     assert 'os.getenv("BVR_NN_PROGRESS_SECONDS", "300")' in sources

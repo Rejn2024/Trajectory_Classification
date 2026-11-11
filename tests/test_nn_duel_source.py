@@ -12,14 +12,19 @@ SCRIPTS = Path(__file__).parents[1] / "scripts"
 
 @pytest.mark.parametrize("preload", [False, True])
 @pytest.mark.parametrize("editable_hook", [False, True])
-def test_worker_uses_snapshot_despite_installed_packages(tmp_path, preload, editable_hook):
+@pytest.mark.parametrize("speed_override", [False, True, None])
+def test_worker_uses_snapshot_despite_installed_packages(
+    tmp_path, preload, editable_hook, speed_override
+):
     work = tmp_path / "work"
     source = work / "tactical_snapshot/source"
     installed = tmp_path / "installed"
     for root, marker in ((source, "frozen"), (installed, "installed")):
         files = {
             "bvr_sim_source/bvr_sim/__init__.py": f"marker = {marker!r}\n",
-            "bvr_sim_source/bvr_sim/bvr_env.py": f"marker = {marker!r}\n",
+            "bvr_sim_source/bvr_sim/bvr_env.py": (
+                f"marker = {marker!r}\nBYPASS_RL_THROTTLE_CONTROL = True\n"
+            ),
             "bvr_sim_source/bvr_sim/installed_only.py": "",
             "bvr_behavior_prediction/__init__.py": f"marker = {marker!r}\n",
             "bvr_behavior_prediction/rl/__init__.py": "",
@@ -31,11 +36,15 @@ def test_worker_uses_snapshot_despite_installed_packages(tmp_path, preload, edit
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(contents, encoding="utf-8")
     (source / "bvr_sim_source/bvr_sim/installed_only.py").unlink()
-    (work / "config.json").write_text(json.dumps({"pilots": {}}), encoding="utf-8")
+    config = {"pilots": {}}
+    if speed_override is not None:
+        config["native_throttle_override"] = speed_override
+    (work / "config.json").write_text(json.dumps(config), encoding="utf-8")
     # Run in a child: initialization deliberately replaces these package trees.
     code = """
 import importlib.abc
 import importlib.machinery
+import json
 import os
 import sys
 import types
@@ -71,6 +80,8 @@ import bvr_sim.bvr_env as simulator
 import bvr_behavior_prediction.rl.pilot as pilot
 source = work / "tactical_snapshot/source"
 assert simulator.marker == pilot.marker == "frozen"
+config = json.loads((work / "config.json").read_text())
+assert simulator.BYPASS_RL_THROTTLE_CONTROL is config.get("native_throttle_override", True)
 assert Path(simulator.__file__).is_relative_to(source)
 assert Path(pilot.__file__).is_relative_to(source)
 assert Path(os.environ["BVR_SIM_RESOURCE_DIR"]) == source / "bvr_sim_source/bvr_sim/resources"

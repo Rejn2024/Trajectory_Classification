@@ -75,6 +75,7 @@ def test_benchmark_retries_failures_and_reuses_successes(tmp_path, initial_failu
         "BACKEND": "auto",
         "CUDA_AVAILABLE": False,
         "DETERMINISTIC": True,
+        "FORCE_SPEED_COMMAND": False,
         "config": {"collector_hashes": {}, "software": {}},
         "runtime": {},
         "WORKER_CANDIDATES": [1, 2],
@@ -118,3 +119,7 @@ def test_benchmark_retries_failures_and_reuses_successes(tmp_path, initial_failu
     collected.clear()
     exec(code, namespace)
     assert collected == []  # A wholly successful cached benchmark needs no new rollouts.
+    namespace["FORCE_SPEED_COMMAND"] = True
+    exec(code, namespace)
+    assert collected == [1, 2]  # Changing speed mode invalidates every cached candidate.
+    assert duel.read(tmp_path / "benchmark_batched.json")["identity"]["native_throttle_override"]

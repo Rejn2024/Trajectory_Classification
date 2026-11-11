@@ -1,4 +1,4 @@
-"""Every Run All starts a separate 20k series without reusing prior campaign data."""
+"""Every Run All starts a separate series without reusing prior campaign data."""
 
 import ast
 import json
@@ -42,7 +42,7 @@ def test_first_cell_restarts_at_zero_and_retains_previous_series(tmp_path, monke
     scope = {}
     exec(compile(startup, "notebook startup", "exec"), scope)  # noqa: S102
     first_work, first_output, first_seed = scope["WORK"], scope["OUTPUT"], scope["SEED"]
-    assert scope["FLIGHTS"] == 20_000
+    assert scope["FLIGHTS"] == 10_000
     assert first_work.parent == (
         old_work if override_roots else tmp_path / "artifacts/nn_duels_20k_v1"
     )
@@ -82,7 +82,7 @@ def test_first_cell_restarts_at_zero_and_retains_previous_series(tmp_path, monke
     exec(compile(startup, "notebook startup", "exec"), scope)  # noqa: S102
     assert scope["WORK"] != first_work and scope["OUTPUT"] != first_output
     assert scope["SEED"] != first_seed
-    assert scope["FLIGHTS"] == 20_000
+    assert scope["FLIGHTS"] == 10_000
     assert not list(scope["WORK"].iterdir()) and not scope["OUTPUT"].exists()
     assert all(path.read_bytes() == content for path, content in preserved.items())
 

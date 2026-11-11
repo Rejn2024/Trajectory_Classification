@@ -37,6 +37,7 @@ def namespace(tmp_path):
         "BACKEND": "local_cpu",
         "CUDA_AVAILABLE": False,
         "DETERMINISTIC": True,
+        "FORCE_SPEED_COMMAND": False,
         "BATCH_WAIT_MS": 2,
         "BATCH_MAX_REQUESTS": 32,
         "GIT_EXECUTABLE": None,
@@ -60,6 +61,14 @@ def namespace(tmp_path):
 def bootstrap(scope):
     _, source = notebook_sources()
     exec(compile(source, "notebook Git setup", "exec"), scope)  # noqa: S102 -- actual repository cell
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_notebook_passes_speed_mode_to_collector(tmp_path, legacy):
+    scope, recorded = namespace(tmp_path)
+    scope["FORCE_SPEED_COMMAND"] = legacy
+    scope["run"]("prepare", backend="local_cpu")
+    assert ("--force-speed-command" in recorded[0][0]) is legacy
 
 
 @pytest.fixture

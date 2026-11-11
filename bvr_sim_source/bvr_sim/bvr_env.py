@@ -38,7 +38,8 @@ ENABLE_MADDOG_MISSILE = False
 # RED_BASELINE_TYPES = ['mad']
 RED_BASELINE_TYPES = ['tactical']
 BYPASS_RL_CONTROL = False
-BYPASS_RL_THROTTLE_CONTROL = True
+# Legacy speed override is opt-in; normal control honours the requested delta.
+BYPASS_RL_THROTTLE_CONTROL = False
 
 USE_DISTILL_REWARD_ACTION = False
 
@@ -61,6 +62,7 @@ class BVR3DEnv(gymnasium.Env):
         super().__init__()
 
         self.config = config
+        self._setup_speed_control(config)
         self._setup_dt(config)
         self.max_steps = config.get('max_steps', 1200)  
         self.red_meta = config.get('red_fighters', {'A01': {'model': 'F16', 'record': False}})
@@ -130,6 +132,13 @@ class BVR3DEnv(gymnasium.Env):
         )
 
         self._step_profiler = StepProfiler(name=self.__class__.__name__) if PRINT_STEP_TIME else None
+
+    def _setup_speed_control(self, config: dict):
+        """Select speed-command handling per environment, without global mutation."""
+        override = config.get('bypass_rl_throttle_control', BYPASS_RL_THROTTLE_CONTROL)
+        if not isinstance(override, bool):
+            raise TypeError('bypass_rl_throttle_control must be a boolean')
+        self.bypass_rl_throttle_control = override
 
     def _setup_dt(self, config: dict):
         self.dt =config.get('dt', 0.4)
@@ -326,11 +335,11 @@ class BVR3DEnv(gymnasium.Env):
                 rl_action = actions[uid]
 
                 # Handle both dict and array actions
-                action_dict = rl_action if self.act_manager.is_dict_action(rl_action) else self.act_manager.array_to_dict(rl_action)
+                action_dict = dict(rl_action) if self.act_manager.is_dict_action(rl_action) else self.act_manager.array_to_dict(rl_action)
 
                 # Extract other commands for extensibility
                 other_commands = self.act_manager.extract_other_commands(rl_action)
-                if BYPASS_RL_THROTTLE_CONTROL:
+                if self.bypass_rl_throttle_control:
                     action_dict['delta_speed'] = 1.0
 
                 if USE_DISTILL_REWARD_ACTION and hasattr(self, "_distillRewardAction"):
