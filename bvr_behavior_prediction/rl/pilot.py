@@ -14,6 +14,8 @@ class HybridSkillPilot(nn.Module):
     supplies one raw value per effective numeric control parameter. Values are
     transformed through each skill's signed relative-command bounds; a raw zero
     decodes to no requested change, rather than an absolute flight setpoint.
+    ``observation_size`` is the feature count per temporal frame, including any
+    backend missile features and the environment's four energy features.
     """
 
     def __init__(
@@ -95,6 +97,11 @@ class HybridSkillPilot(nn.Module):
             observations = observations.unsqueeze(1)
         if observations.ndim != 3:
             raise ValueError("observations must have shape (batch, time, features)")
+        if observations.shape[-1] != self.input_projection.in_features:
+            raise ValueError(
+                f"expected {self.input_projection.in_features} observation features, "
+                f"got {observations.shape[-1]}; use a matching backend/checkpoint"
+            )
         if observations.shape[1] > self.history_steps:
             raise ValueError("observation history exceeds configured history_steps")
         tokens = self.input_projection(observations)

@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 import torch
 
+from bvr_behavior_prediction.rl.bvr_jsbsim_backend import BVRJSBSimBackend
 from bvr_behavior_prediction.rl.multi_pilot import load_trained_pilot
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,9 +39,13 @@ def test_varied_notebook_trains_records_and_replays_ten_distinct_configurations(
     instances = []
 
     class Backend:
-        OBSERVATION_SIZE = 47
+        HOSTILE_MISSILE_OBSERVATION_SIZE = BVRJSBSimBackend.HOSTILE_MISSILE_OBSERVATION_SIZE
+        HOSTILE_MISSILE_SLOTS = BVRJSBSimBackend.HOSTILE_MISSILE_SLOTS
+        HOSTILE_MISSILE_FEATURE_NAMES = BVRJSBSimBackend.HOSTILE_MISSILE_FEATURE_NAMES
 
-        def __init__(self, scenario_dict, recording_path=None, log_dir=None):
+        def __init__(self, scenario_dict, recording_path=None, log_dir=None,
+                     include_hostile_missiles=False):
+            assert include_hostile_missiles is True
             self.path, self.closed = recording_path, False
             self.info = {
                 'blue_alive': True, 'blue_altitude_m': 6000, 'red_altitude_m': 6000,
@@ -49,7 +54,7 @@ def test_varied_notebook_trains_records_and_replays_ten_distinct_configurations(
                 'initial_target_range_m': 30000, 'initial_target_alignment': 1,
                 'missiles_avoided_total': 0, 'missiles_launched_total': 0,
                 'opponent_eliminated': False, 'opponent_destroyed': False,
-                'incoming_missiles': 0, 'target_locked': True,
+                'incoming_missiles': 1, 'target_locked': True,
             }
             instances.append(self)
 
@@ -57,11 +62,18 @@ def test_varied_notebook_trains_records_and_replays_ten_distinct_configurations(
             self.steps = 0
             if self.path:
                 self.path.write_text('fixture replay')
-            return np.zeros(47, np.float32), self.info
+            return self.observation(), self.info
+
+        def observation(self):
+            # A live incoming missile exercises the new policy input during PPO.
+            frame = np.zeros(self.HOSTILE_MISSILE_OBSERVATION_SIZE, np.float32)
+            frame[18] = 1
+            frame[47:57] = [1, 0.1, 0, 0, -0.5, 0, 0, 0.1, 0.5, 1]
+            return frame
 
         def step(self, blue_action, red_action):
             self.steps += 1
-            return np.zeros(47, np.float32), 0., self.steps >= 10, self.info
+            return self.observation(), 0., self.steps >= 10, self.info
 
         def close(self):
             self.closed = True
@@ -86,6 +98,7 @@ def test_varied_notebook_trains_records_and_replays_ten_distinct_configurations(
         torch.set_num_threads(threads)
         plt.close('all')
     assert namespace['PILOT_COUNT'] == len(namespace['results']) == 10
+    assert namespace['OBSERVATION_SIZE'] == 91
     batch = json.loads((tmp_path / 'batch/pilots.json').read_text())
     assert batch['population_metadata']['variation_seed'] == 42
     assert batch['population_metadata']['roster'] == namespace['VARIATION_ROSTER']
@@ -94,12 +107,16 @@ def test_varied_notebook_trains_records_and_replays_ten_distinct_configurations(
     assert all(instance.closed for instance in instances)
     for spec, result, record in zip(namespace['PILOTS'], namespace['results'], batch['pilots']):
         metadata = json.loads((tmp_path / 'batch' / spec.pilot_id / 'config.json').read_text())
+        assert metadata['observation_size'] == 91
         assert spec.training_overrides == result['training_overrides'] == record['training_overrides']
         assert metadata['reward']['parameters']['weights'] == spec.reward.parameters['weights']
         for key, value in spec.training_overrides.items():
             assert metadata['training'][key] == value
         assert result['benchmark_reward']['name'] == 'common_hybrid_dogfight'
     selected = load_trained_pilot(tmp_path / 'batch/pilot_010')
+    assert selected.input_projection.in_features == 91
+    with pytest.raises(ValueError, match='expected 91 observation features, got 51'):
+        selected.act(np.zeros((20, 51), np.float32))
     assert len(selected.encoder.layers) == namespace['selected_config'].transformer_layers
     assert selected.input_projection.out_features == namespace['selected_config'].hidden_size
     assert len(namespace['final_evaluation_manifest']) == 3

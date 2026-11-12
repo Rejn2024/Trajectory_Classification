@@ -21,11 +21,27 @@ class BVRJSBSimBackend:
     CONTROLLED_ID = "A01"
     OPPONENT_ID = "B01"
     OBSERVATION_SIZE = 47  # compact 1-v-1 observation supplied by BVR Sim
+    HOSTILE_MISSILE_SLOTS = 4
+    HOSTILE_MISSILE_FEATURE_NAMES = (
+        "present", "relative_north", "relative_west", "relative_up",
+        "relative_velocity_north", "relative_velocity_west", "relative_velocity_up",
+        "range", "closing_speed", "seeker_active",
+    )
+    HOSTILE_MISSILE_OBSERVATION_SIZE = (
+        OBSERVATION_SIZE + HOSTILE_MISSILE_SLOTS * len(HOSTILE_MISSILE_FEATURE_NAMES)
+    )
 
     def __init__(self, scenario: dict, recording_path=None, env_factory=None, log_dir=None,
-                 opponent_type="simple"):
+                 opponent_type="simple", include_hostile_missiles=False):
         if opponent_type not in ("simple", "tactical"):
             raise ValueError("opponent_type must be simple or tactical")
+        if type(include_hostile_missiles) is not bool:
+            raise ValueError("include_hostile_missiles must be a boolean")
+        self.include_hostile_missiles = include_hostile_missiles
+        self.observation_size = (
+            self.HOSTILE_MISSILE_OBSERVATION_SIZE if include_hostile_missiles
+            else self.OBSERVATION_SIZE
+        )
         self.opponent_type = opponent_type
         self.scenario = scenario
         self.recording_path = Path(recording_path) if recording_path else None
@@ -80,6 +96,54 @@ class BVRJSBSimBackend:
         if result.ndim != 1:
             raise ValueError(f"expected one flat BVR observation, got shape {result.shape}")
         return result
+
+    def _policy_observation(self, observation) -> np.ndarray:
+        """Optionally append four nearest incoming missiles to the compact state.
+
+        Each ten-value slot holds presence, NWU relative position and velocity,
+        range, signed closing speed (positive when approaching), and seeker-on.
+        Position/range scales match CompactObsSpace (50 km horizontal/range,
+        10 km vertical); velocity/closing speed use its missile scale, 1200 m/s.
+        These are simulator-truth features, not radar/MWS-gated measurements.
+        The legacy 47-value backend remains the default for saved 51-input pilots.
+        """
+        compact = self._flat_observation(observation)
+        if not self.include_hostile_missiles:
+            return compact
+
+        controlled = self.env.agents[self.CONTROLLED_ID]
+        slots = np.zeros(
+            (self.HOSTILE_MISSILE_SLOTS, len(self.HOSTILE_MISSILE_FEATURE_NAMES)),
+            dtype=np.float32,
+        )
+        if controlled.is_alive:
+            threats = [
+                missile for missile in controlled.under_missiles
+                if missile.is_alive and missile.target is controlled
+                and missile.color != controlled.color
+            ]
+            threats.sort(key=lambda missile: (
+                float(np.linalg.norm(missile.position - controlled.position)), str(missile.uid)
+            ))
+            for slot, missile in zip(slots, threats):
+                relative_position = np.asarray(missile.position) - controlled.position
+                relative_velocity = np.asarray(missile.velocity) - controlled.velocity
+                distance = float(np.linalg.norm(relative_position))
+                closing_speed = (
+                    -float(np.dot(relative_position, relative_velocity)) / distance
+                    if distance > 0.0 else 0.0
+                )
+                slot[:] = (
+                    1.0,
+                    relative_position[0] / 50_000.0,
+                    relative_position[1] / 50_000.0,
+                    relative_position[2] / 10_000.0,
+                    *(relative_velocity / 1200.0),
+                    distance / 50_000.0,
+                    closing_speed / 1200.0,
+                    float(missile.radar_on),
+                )
+        return np.concatenate((compact, slots.reshape(-1)))
 
     def _target_geometry(self):
         controlled = self.env.agents[self.CONTROLLED_ID]
@@ -157,7 +221,7 @@ class BVRJSBSimBackend:
         }
         if self.recording_path:
             self.env.render()
-        return self._flat_observation(observation), self._aircraft_info()
+        return self._policy_observation(observation), self._aircraft_info()
 
     def _guidance_observation(self) -> dict:
         aircraft = self.env.agents[self.CONTROLLED_ID]
@@ -219,7 +283,7 @@ class BVRJSBSimBackend:
         terminated = bool(np.asarray(done).reshape(-1)[0]) or bool(
             simulator_info.get("episode_done", False)
         )
-        return self._flat_observation(observation), simulator_reward, terminated, info
+        return self._policy_observation(observation), simulator_reward, terminated, info
 
     def close(self):
         self.env.close()

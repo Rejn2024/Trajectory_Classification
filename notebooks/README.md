@@ -1,6 +1,8 @@
 **Varied pilot population:** [30_train_varied_transformer_pilots.ipynb](30_train_varied_transformer_pilots.ipynb)
 trains ten pilots as in notebook 06, with recorded random Transformer widths/layers
-and PPO loss coefficients. See the [guide](../docs/varied_transformer_pilots.md).
+and PPO loss coefficients. Its 91-feature frames include the four nearest incoming
+hostile missiles. See the [guide](../docs/varied_transformer_pilots.md) for the
+observation layout and checkpoint compatibility.
 
 **Current workflow:** train catalogue-v4 pilots with notebooks 04–06, then use
 [29_trajectory_state_forecasting.ipynb](29_trajectory_state_forecasting.ipynb) for

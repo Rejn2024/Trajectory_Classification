@@ -17,6 +17,7 @@ class _Aircraft:
         self.enemies_lock = []
         self.under_missiles = []
         self.launched_missiles = []
+        self.color = "Red"
 
     def get_speed(self):
         return self.speed
@@ -274,3 +275,99 @@ def test_backend_holds_relative_delta_and_accepts_new_commands(tmp_path):
     backend.step({"skill_name": "change_trajectory", "parameters": {"delta_altitude_m": -40}}, {})
     assert backend.env.last_actions["A01"]["delta_altitude"] == -40
     backend.close()
+
+
+@pytest.fixture
+def missile_backend(tmp_path):
+    backend = BVRJSBSimBackend(
+        {"range_m": 30_000, "blue_altitude_m": 6000, "red_altitude_m": 7000},
+        env_factory=_Environment, log_dir=tmp_path, include_hostile_missiles=True,
+    )
+    yield backend
+    backend.close()
+
+
+def _incoming(backend, uid, relative_position, relative_velocity=(0, 0, 0), **overrides):
+    aircraft = backend.env.agents["A01"]
+    missile = SimpleNamespace(**{
+        "uid": uid, "color": "Blue", "is_alive": True, "is_success": False,
+        "target": aircraft, "radar_on": False,
+        "position": aircraft.position + np.asarray(relative_position),
+        "velocity": aircraft.velocity + np.asarray(relative_velocity),
+        **overrides,
+    })
+    aircraft.under_missiles.append(missile)
+    return missile
+
+
+def test_hostile_missile_slots_encode_relative_geometry_and_seeker(missile_backend):
+    backend = missile_backend
+    _incoming(backend, "incoming", [3000, -4000, 12000], [-300, 400, -1200], radar_on=True)
+    observation, _ = backend.reset(7)
+    assert backend.observation_size == observation.size == 87
+    assert observation.dtype == np.float32
+    np.testing.assert_array_equal(observation[:47], np.zeros(47))
+    np.testing.assert_allclose(
+        observation[47:57], [1, .06, -.08, 1.2, -.25, 1 / 3, -1, .26, 13 / 12, 1],
+        rtol=1e-6,
+    )
+    np.testing.assert_array_equal(observation[57:], np.zeros(30))
+    # Read fresh state on step, including signed recession and seeker changes.
+    missile = backend.env.agents["A01"].under_missiles[0]
+    missile.velocity = backend.env.agents["A01"].velocity + [300, -400, 1200]
+    missile.radar_on = False
+    observation, *_ = backend.step({"skill_name": "launch", "parameters": {}}, {})
+    np.testing.assert_array_equal(observation[:47], np.ones(47))
+    assert observation[55] == pytest.approx(-13 / 12)
+    assert observation[56] == 0
+
+
+def test_hostile_slots_filter_history_and_keep_nearest_four_with_stable_ties(missile_backend):
+    backend = missile_backend
+    for uid, offset in (("far", 60), ("b", 10), ("e", 40), ("d", 30), ("c", 20), ("a", -10)):
+        _incoming(backend, uid, [offset, 0, 0])
+    _incoming(backend, "dead", [1, 0, 0], is_alive=False)
+    _incoming(backend, "friendly", [2, 0, 0], color="Red")
+    _incoming(backend, "other_target", [3, 0, 0], target=backend.env.agents["B01"])
+    observation, _ = backend.reset(7)
+    slots = observation[47:].reshape(4, 10)
+    np.testing.assert_allclose(slots[:, 1] * 50_000, [-10, 10, 20, 30])
+    np.testing.assert_array_equal(slots[:, 0], np.ones(4))
+    backend.env.agents["A01"].under_missiles.reverse()
+    reordered, _ = backend.reset(7)
+    np.testing.assert_array_equal(observation, reordered)
+
+
+def test_missile_history_is_sampled_and_resolved_slots_do_not_stay_stale(missile_backend):
+    from bvr_behavior_prediction.rl.environment import BluePilotEnvironment
+
+    backend = missile_backend
+    missile = _incoming(backend, "incoming", [5000, 0, 0], [-600, 0, 0])
+    environment = BluePilotEnvironment(lambda *_: backend, SimpleNamespace(as_dict=lambda: {}))
+    initial = environment.reset(7)
+    assert initial.shape == (20, 91)
+    np.testing.assert_array_equal(initial[:, 47], np.ones(20))
+    np.testing.assert_allclose(initial[0, 87:], [(250 / 400) ** 2, .5, (275 / 400) ** 2, 7000 / 12000])
+    missile.is_alive = False
+    history, *_ = environment.step("change_trajectory", {})
+    np.testing.assert_array_equal(history[:10, 47], np.ones(10))
+    np.testing.assert_array_equal(history[10:, 47:87], np.zeros((10, 40)))
+    reset = environment.reset(8)
+    np.testing.assert_array_equal(reset[:, 47:87], np.zeros((20, 40)))
+
+
+def test_missile_zero_range_and_dead_aircraft_have_finite_slots(missile_backend):
+    backend = missile_backend
+    _incoming(backend, "incoming", [0, 0, 0], [-600, 0, 0])
+    observation, _ = backend.reset(7)
+    assert np.isfinite(observation).all()
+    assert observation[47] == 1
+    assert observation[54] == observation[55] == 0
+    backend.env.agents["A01"].is_alive = False
+    observation, *_ = backend.step({"skill_name": "launch", "parameters": {}}, {})
+    np.testing.assert_array_equal(observation[47:], np.zeros(40))
+
+
+def test_hostile_missile_mode_requires_an_explicit_boolean(tmp_path):
+    with pytest.raises(ValueError, match="include_hostile_missiles must be a boolean"):
+        BVRJSBSimBackend({}, include_hostile_missiles="false")
