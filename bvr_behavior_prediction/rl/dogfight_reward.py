@@ -149,10 +149,12 @@ class HybridDogfightReward(DogfightReward):
 
     def __init__(
         self, weights=None, elimination_bonus=100.0, lock_bonus=2.0,
+            dumb_launch_penalty :float = -8.0,
         launch_bonus=8.0, support_bonus=5.0, support_budget_s=20.0, **settings,
     ):
         for name, value in (
             ("elimination_bonus", elimination_bonus), ("lock_bonus", lock_bonus),
+            ("dumb_launch_penalty", dumb_launch_penalty),
             ("launch_bonus", launch_bonus), ("support_bonus", support_bonus),
         ):
             if not math.isfinite(value) or value < 0:
@@ -184,6 +186,7 @@ class HybridDogfightReward(DogfightReward):
         counts = info.get("reward_event_counts", {})
         acquired = counts.get("target_locked", int(bool(info.get("target_locked", False)))) > 0
         launched = counts.get("fired_with_lock", int(bool(info.get("fired_with_lock", False)))) > 0
+        dumb_launch = counts.get("fired_without_lock", int(bool(info.get("fired_without_lock", False)))) > 0
         support = min(1.0, max(0.0, float(info["missile_support_time_s"])) / self.support_budget_s)
         components.update({
             "combat_elimination": self.elimination_bonus * (
@@ -191,6 +194,7 @@ class HybridDogfightReward(DogfightReward):
             ),
             "lock_acquired": self.lock_bonus * (acquired and not self._lock_paid),
             "locked_launch": self.launch_bonus * (launched and not self._launch_paid),
+            "dumb_launch": self.dumb_launch_penalty * dumb_launch,
             "missile_support": self.support_bonus * max(0.0, support - self._support_paid),
         })
         self._lock_paid |= acquired

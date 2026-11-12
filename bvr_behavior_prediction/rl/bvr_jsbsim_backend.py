@@ -155,10 +155,13 @@ class BVRJSBSimBackend:
         alignment = float(np.dot(velocity, relative) / (speed * distance)) if speed * distance else 0.0
         return {"target_range_m": distance, "target_alignment": float(np.clip(alignment, -1, 1))}
 
-    def _aircraft_info(self, fired=0, missiles_avoided=0) -> dict:
+    def _aircraft_info(self, skill_name :str, fired=0, missiles_avoided=0) -> dict:
         controlled = self.env.agents[self.CONTROLLED_ID]
         opponent = self.env.agents[self.OPPONENT_ID]
         locked = bool(controlled.enemies_lock)
+        launch_ordered = (skill_name == "launch")
+        fired_l = launch_ordered or fired
+
         threats = [
             missile for missile in controlled.under_missiles
             if missile.is_alive and missile.target is controlled
@@ -196,8 +199,8 @@ class BVRJSBSimBackend:
             "crashed": not controlled.is_alive and controlled.get_altitude() <= 500.0,
             "shot_down": not controlled.is_alive and controlled.get_altitude() > 500.0,
             "reward_event_counts": {
-                "fired_with_lock": int(fired if locked else 0),
-                "fired_without_lock": int(fired if not locked else 0),
+                "fired_with_lock": int(fired_l if locked else 0),
+                "fired_without_lock": int(fired_l if not locked else 0),
                 "missile_avoided": missiles_avoided,
             },
         }
@@ -277,7 +280,7 @@ class BVRJSBSimBackend:
         self._missiles_avoided_total += avoided
         info = {
             **simulator_info,
-            **self._aircraft_info(fired=fired, missiles_avoided=avoided),
+            **self._aircraft_info(skill_name = name, fired=fired, missiles_avoided=avoided),
         }
         simulator_reward = float(np.asarray(reward).reshape(-1)[0])
         terminated = bool(np.asarray(done).reshape(-1)[0]) or bool(
