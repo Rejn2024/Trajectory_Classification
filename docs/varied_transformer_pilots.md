@@ -6,6 +6,10 @@ pilots (`change_trajectory` and `launch`). It retains the existing hybrid reward
 preferences and common comparison benchmark, and adds random architecture/loss
 variations to each pilot.
 
+For the complete observation path, the current 91-feature layout, available radar
+state, and a proposed radar integration with test/downstream requirements, see
+[Pilot observations and radar integration](pilot_observations_and_radar_integration.md).
+
 | Setting | Sampling rule |
 | --- | --- |
 | Transformer width | Uniform choice from 56, 64, 72 (64 ±12.5%) |
