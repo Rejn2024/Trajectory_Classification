@@ -157,8 +157,8 @@ class HybridDogfightReward(DogfightReward):
             ("dumb_launch_penalty", dumb_launch_penalty),
             ("launch_bonus", launch_bonus), ("support_bonus", support_bonus),
         ):
-            if not math.isfinite(value) or value < 0:
-                raise ValueError(f"{name} must be finite and non-negative")
+            if not math.isfinite(value):
+                raise ValueError(f"{name} must be finite")
             setattr(self, name, value)
         if not math.isfinite(support_budget_s) or support_budget_s <= 0:
             raise ValueError("support_budget_s must be finite and positive")

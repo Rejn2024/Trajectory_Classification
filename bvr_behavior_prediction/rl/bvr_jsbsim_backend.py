@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 from bvr_sim.agents.skill_manager import SkillManager
+from torch._C import NoneType
 
 
 class BVRJSBSimBackend:
@@ -155,7 +156,7 @@ class BVRJSBSimBackend:
         alignment = float(np.dot(velocity, relative) / (speed * distance)) if speed * distance else 0.0
         return {"target_range_m": distance, "target_alignment": float(np.clip(alignment, -1, 1))}
 
-    def _aircraft_info(self, skill_name :str, fired=0, missiles_avoided=0) -> dict:
+    def _aircraft_info(self, skill_name :str|NoneType =None, fired=0, missiles_avoided=0) -> dict:
         controlled = self.env.agents[self.CONTROLLED_ID]
         opponent = self.env.agents[self.OPPONENT_ID]
         locked = bool(controlled.enemies_lock)
