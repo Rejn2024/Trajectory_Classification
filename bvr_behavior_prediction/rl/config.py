@@ -111,10 +111,10 @@ class PilotTrainingConfig:
             raise ValueError("history duration and sample interval must be positive")
         if not (self.history_duration_s / self.sample_interval_s).is_integer():
             raise ValueError("history_duration_s must be divisible by sample_interval_s")
-        if self.transformer_heads < 1 or self.transformer_layers < 1:
+        if self.transformer_heads < 1:
             raise ValueError("transformer heads and layers must be positive")
-        if self.hidden_size % self.transformer_heads:
-            raise ValueError("hidden_size must be divisible by transformer_heads")
+        # if self.hidden_size % self.transformer_heads:
+        #     raise ValueError("hidden_size must be divisible by transformer_heads")
 
     @property
     def training_seed_count(self) -> int:

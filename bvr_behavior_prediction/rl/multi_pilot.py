@@ -37,7 +37,7 @@ class PilotSpec:
             raise TypeError("reward must be a RewardDefinition")
         if not isinstance(self.training_overrides, dict):
             raise TypeError("training_overrides must be a dictionary")
-        allowed = {"hidden_size", "transformer_layers", "value_coefficient", "entropy_coefficient"}
+        allowed = {"hidden_size", "transformer_layers", "value_coefficient", "entropy_coefficient", "transformer_heads"}
         unknown = set(self.training_overrides) - allowed
         if unknown:
             raise ValueError(f"Unsupported per-pilot training overrides: {sorted(unknown)}")
