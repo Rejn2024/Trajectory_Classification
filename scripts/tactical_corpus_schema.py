@@ -9,7 +9,37 @@ STATE_COLUMNS = tuple(f"{role}_{name}" for role in ("observer", "target")
                       for name in ("x", "y", "z", "vx", "vy", "vz"))
 
 
-def observer_frame(simulator, observer_id, target_id):
+def observation_feature_schema(observation_size=51):
+    """Names/scales in the exact CompactObsSpace + threat + energy order."""
+    fields = [(f"own_{axis}", scale) for axis, scale in zip(
+        ("north", "west", "up", "velocity_north", "velocity_west", "velocity_up"),
+        (50000, 50000, 10000, 600, 600, 600), strict=True)]
+    fields += [("own_altitude", 10000), ("own_heading_sin", 1), ("own_heading_cos", 1)]
+    fields += [(f"target_relative_{axis}", scale) for axis, scale in zip(
+        ("north", "west", "up", "velocity_north", "velocity_west", "velocity_up", "range"),
+        (50000, 50000, 10000, 600, 600, 600, 50000), strict=True)]
+    fields += [("target_bearing_sin", 1), ("target_bearing_cos", 1), ("hostile_missile_incoming", 1)]
+    for slot in range(4):
+        fields += [(f"friendly_{slot}_relative_{axis}", scale) for axis, scale in zip(
+            ("north", "west", "up", "velocity_north", "velocity_west", "velocity_up", "range"),
+            (50000, 50000, 10000, 1200, 1200, 1200, 50000), strict=True)]
+    if observation_size == 91:
+        for slot in range(4):
+            fields += [(f"hostile_{slot}_{name}", scale) for name, scale in zip(
+                ("present", "relative_north", "relative_west", "relative_up", "relative_velocity_north",
+                 "relative_velocity_west", "relative_velocity_up", "range", "closing_speed", "seeker_active"),
+                (1, 50000, 50000, 10000, 1200, 1200, 1200, 50000, 1200, 1), strict=True)]
+    elif observation_size != 51:
+        raise ValueError("Unknown observation contract")
+    fields += [(f"{role}_{kind}", formula) for role in ("own", "target")
+               for kind, formula in (("kinetic_energy", "(speed_mps / 400)^2"),
+                                     ("potential_energy", "altitude_m / 12000"))]
+    return [{"column": f"obs_{i:02d}", "name": name,
+             **({"divisor": scale} if isinstance(scale, int) else {"formula": scale})}
+            for i, (name, scale) in enumerate(fields)]
+
+
+def observer_frame(simulator, observer_id, target_id, observation_size=51):
     """Read the compact interface for either aircraft, with observer-first energies.
 
     The scripted tactical controller uses aircraft objects directly. This is a
@@ -19,13 +49,19 @@ def observer_frame(simulator, observer_id, target_id):
     observer = simulator.agents[observer_id]
     target = simulator.agents[target_id]
     compact = simulator.obs_manager.extract_obs(observer, simulator.agents, simulator.missiles)
+    if observation_size == 91:
+        from bvr_behavior_prediction.rl.bvr_jsbsim_backend import BVRJSBSimBackend
+
+        compact = np.concatenate((compact, BVRJSBSimBackend.hostile_missile_features(observer)))
+    elif observation_size != 51:
+        raise ValueError("Expected a 51- or 91-feature observation contract")
     energy = [(float(aircraft.get_speed()) / 400.0) ** 2
               if kind == "speed" else float(aircraft.get_altitude()) / 12000.0
               for aircraft in (observer, target) for kind in ("speed", "altitude")]
     frame = np.concatenate((np.asarray(compact, dtype=np.float32),
                             np.asarray(energy, dtype=np.float32)))
-    if frame.shape != (51,):
-        raise ValueError("Expected a 51-feature observer frame")
+    if frame.shape != (observation_size,):
+        raise ValueError(f"Expected a {observation_size}-feature observer frame")
     return frame
 
 
@@ -55,7 +91,7 @@ def reconstruct_policy_history(frames, step, history_steps=20):
     return np.asarray(frames, dtype=np.float32)[indices]
 
 
-def validate_episode(observations, tracks):
+def validate_episode(observations, tracks, observation_columns=OBSERVATION_COLUMNS):
     """Reject missing, misaligned or nonfinite samples without transforming them."""
     if observations.episode_id.nunique() != 1 or tracks.episode_id.nunique() != 1:
         raise ValueError("Expected exactly one episode")
@@ -67,7 +103,7 @@ def validate_episode(observations, tracks):
         raise ValueError("Missing or repeated simulator step")
     if not np.allclose(tracks.time_s, tracks.step * DT, atol=1e-8):
         raise ValueError("Unexpected sample cadence")
-    if not np.isfinite(observations[list(OBSERVATION_COLUMNS)].to_numpy()).all():
+    if not np.isfinite(observations[list(observation_columns)].to_numpy()).all():
         raise ValueError("Non-finite pilot observation")
     if not np.isfinite(tracks[list(STATE_COLUMNS)].to_numpy()).all():
         raise ValueError("Non-finite aircraft state")

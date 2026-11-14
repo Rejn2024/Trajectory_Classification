@@ -4,6 +4,13 @@ and PPO loss coefficients. Its 91-feature frames include the four nearest incomi
 hostile missiles. See the [guide](../docs/varied_transformer_pilots.md) for the
 observation layout and checkpoint compatibility.
 
+**Continue and collect:** [31_continue_varied_pilots_and_generate_corpus.ipynb](31_continue_varied_pilots_and_generate_corpus.ipynb)
+loads those ten saved pilots, adds 200 simple-opponent epochs and 300 tactical-opponent
+epochs per pilot, then collects 10,000 NN-versus-NN flights with all 91 policy features.
+Run All performs preflight, training, tactical assessments, collection and verification;
+the same job directory resumes committed epochs and flights. See the
+[weekend campaign guide](../docs/varied_pilot_weekend.md).
+
 **Current workflow:** train catalogue-v4 pilots with notebooks 04–06, then use
 [29_trajectory_state_forecasting.ipynb](29_trajectory_state_forecasting.ipynb) for
 future speed, heading and altitude regression. See the

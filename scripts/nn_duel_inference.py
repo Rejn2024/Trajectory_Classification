@@ -106,7 +106,8 @@ class BatchedActors:
         """Compare every frozen actor against CPU reference outputs before rollouts."""
         rng = np.random.default_rng(731)
         requests = [
-            (name, rng.normal(0, 0.3, (self.models[name].history_steps, 51)).astype(np.float32))
+            (name, rng.normal(0, 0.3, (self.models[name].history_steps,
+                                     self.models[name].input_projection.in_features)).astype(np.float32))
             for name in self.names
             for _ in range(histories)
         ]
@@ -142,6 +143,41 @@ class BatchedActors:
         }
 
 
+class GroupedActors:
+    """Batch independent actors by architecture, preserving request order."""
+
+    def __init__(self, models, device="cuda"):
+        groups = {}
+        for name, model in models.items():
+            signature = (tuple((k, tuple(v.shape)) for k, v in model.state_dict().items()),
+                         tuple(layer.self_attn.num_heads for layer in model.encoder.layers),
+                         model.history_steps, model.skill_conditioned_parameters)
+            groups.setdefault(signature, {})[name] = model
+        self.groups = [BatchedActors(group, device) for group in groups.values()]
+
+    def act(self, requests):
+        actions = [None] * len(requests)
+        stats = {"rows": 0, "padded_rows": 0}
+        for group in self.groups:
+            selected = [(i, request) for i, request in enumerate(requests)
+                        if request[0] in group.indices]
+            if not selected:
+                continue
+            results, counts = group.act([request for _, request in selected])
+            for (i, _), action in zip(selected, results, strict=True):
+                actions[i] = action
+            for key in stats:
+                stats[key] += counts[key]
+        if any(action is None for action in actions):
+            raise ValueError("Unknown pilot in inference request")
+        return actions, stats
+
+    def parity_check(self, histories=8):
+        results = [group.parity_check(histories) for group in self.groups]
+        return {"passed": all(r["passed"] for r in results), "architecture_groups": len(results),
+                "groups": results}
+
+
 def serve(work, connections, stop, ready, device, batch_wait_ms, max_requests):
     """Spawn target. Requests contain both aircraft; replies preserve their order."""
     from pathlib import Path
@@ -167,7 +203,8 @@ def serve(work, connections, stop, ready, device, batch_wait_ms, max_requests):
             name: STATE["loader"](work / "tactical_snapshot/training" / name, device="cpu")
             for name in sorted(config["pilots"])
         }
-        actors = BatchedActors(models, device)
+        actors = (GroupedActors if config.get("population_kind") == "varied_transformers_v1"
+                  else BatchedActors)(models, device)
         stats["parity"] = actors.parity_check()
         stats["gpu_name"] = torch.cuda.get_device_name(0) if device == "cuda" else None
         ready.send({"ready": True, **stats})

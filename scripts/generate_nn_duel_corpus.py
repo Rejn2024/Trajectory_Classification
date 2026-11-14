@@ -36,7 +36,8 @@ import pyarrow.parquet as pq
 from tactical_corpus_schema import (
     DT,
     KEYS,
-    OBSERVATION_COLUMNS,
+    OBSERVATION_COLUMNS,  # noqa: F401 -- legacy public schema constant
+    observation_feature_schema,
     observer_frame,
     validate_episode,
     validate_observer_geometry,
@@ -204,7 +205,8 @@ def scenarios(count=10_000, seed=26_110_600):
 
 def verify_snapshot(job):
     plan = read(job / "experiment.json")
-    if "20261010T200223_142625Z_tactical" not in plan["source_experiment"]:
+    varied = plan.get("population_kind") == "varied_transformers_v1"
+    if not varied and "20261010T200223_142625Z_tactical" not in plan["source_experiment"]:
         raise ValueError("Expected the post-tactical population used by notebook 07")
     for relative, expected in plan["source_hashes"].items():
         if sha256(job / "source" / relative) != expected:
@@ -219,11 +221,11 @@ def verify_snapshot(job):
             raise ValueError(f"Checkpoint mismatch: {name}")
         config = read(directory / "config.json")
         if (
-            config["observation_size"] != 51
+            config["observation_size"] != (91 if varied else 51)
             or config["training"]["sample_interval_s"] != DT
             or config["training"]["planning_horizon_s"] != 1
         ):
-            raise ValueError("Expected notebook-07's 51-feature, 1 Hz pilots")
+            raise ValueError("Unexpected policy observation size or decision/sample cadence")
         pilots[name] = {
             "checkpoint_sha256": checksum,
             "config_sha256": sha256(directory / "config.json"),
@@ -242,6 +244,7 @@ def prepare(
     batch_wait_ms=2.0,
     batch_max_requests=32,
     native_throttle_override=False,
+    population_archive=None,
 ):
     work = Path(work).resolve()
     if not isinstance(native_throttle_override, bool):
@@ -256,13 +259,15 @@ def prepare(
         )
     if not math.isfinite(batch_wait_ms) or not 0 <= batch_wait_ms <= 50 or batch_max_requests < 1:
         raise ValueError("Use a finite 0-50 ms batching window and positive request cap")
-    expected = read(PARENT / "manifest.json")["files"]["reproduction.zip"]["sha256"]
-    if sha256(ARCHIVE) != expected:
+    archive = Path(population_archive).resolve() if population_archive else ARCHIVE
+    parent = archive.parent
+    expected = read(parent / "manifest.json")["files"]["reproduction.zip"]["sha256"]
+    if sha256(archive) != expected:
         raise ValueError("Fetch the verified tactical reproduction.zip with Git LFS first")
     job = work / "tactical_snapshot"
     if not (job / "experiment.json").exists():
         job.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(ARCHIVE) as z:
+        with zipfile.ZipFile(archive) as z:
             for info in z.infolist():
                 destination = (job / info.filename).resolve()
                 if (
@@ -288,7 +293,7 @@ def prepare(
         "pilots": pilots,
         "cases": scenarios(flights, seed),
         "parent_archive_sha256": expected,
-        "parent_manifest_sha256": sha256(PARENT / "manifest.json"),
+        "parent_manifest_sha256": sha256(parent / "manifest.json"),
         "source_experiment": read(job / "experiment.json")["source_experiment"],
         "collector_hashes": {p.name: sha256(p) for p in collector_sources()},
         "software": versions,
@@ -299,6 +304,11 @@ def prepare(
         "inference_precision": "fp32",
         "native_throttle_override": native_throttle_override,
     }
+    if population_archive:
+        if read(job / "experiment.json").get("population_kind") != "varied_transformers_v1":
+            raise ValueError("Custom archives must contain the notebook-30 continuation population")
+        config.update(population_kind="varied_transformers_v1", observation_size=91,
+                      schema_version="nn-duels-varied-v1", population_archive=str(archive))
     if (work / "config.json").exists():
         if read(work / "config.json") != config:
             raise ValueError(
@@ -377,6 +387,8 @@ def collect_one(case):
     from bvr_sim.agents.skill_manager import SkillManager
 
     work, config = STATE["work"], STATE["config"]
+    observation_size = config.get("observation_size", 51)
+    observation_columns = tuple(f"obs_{i:02d}" for i in range(observation_size))
     previous = completed(work, case)
     if previous:
         return previous
@@ -444,7 +456,7 @@ def collect_one(case):
     def snapshot(env):
         step = env.current_step
         for side, target in (("A01", "B01"), ("B01", "A01")):
-            frame = observer_frame(env, side, target)
+            frame = observer_frame(env, side, target, observation_size=observation_size)
             frames[side].append(frame)
             if not histories[side]:
                 histories[side].extend([frame] * histories[side].maxlen)
@@ -533,6 +545,9 @@ def collect_one(case):
                                     "time_s": round(step * DT, 8),
                                     "skill": name,
                                     "parameters_json": json.dumps(parameters, sort_keys=True),
+                                    **({"policy_history_sha256": hashlib.sha256(
+                                        np.asarray(histories[side], dtype="<f4").tobytes()
+                                    ).hexdigest()} if observation_size == 91 else {}),
                                 }
                             )
                     actions = {}
@@ -579,11 +594,11 @@ def collect_one(case):
         observation = pd.concat(
             [
                 track[list(KEYS)],
-                pd.DataFrame(np.array(frames[side], dtype=np.float32), columns=OBSERVATION_COLUMNS),
+                pd.DataFrame(np.array(frames[side], dtype=np.float32), columns=observation_columns),
             ],
             axis=1,
         )
-        validate_episode(observation, track)
+        validate_episode(observation, track, observation_columns=observation_columns)
         validate_observer_geometry(observation, track)
         support_counts[side] = forecast_counts(
             track, pd.DataFrame(decisions[target]), classes
@@ -618,20 +633,35 @@ def collect_one(case):
 
 @contextlib.contextmanager
 def campaign_lock(work):
+    """Use an OS-released advisory guard; a killed process cannot leave a live lock."""
     lock = Path(work) / "collection.lock"
     lock.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError as e:
-        raise RuntimeError(
-            f"Campaign is locked: {lock}. After a crash, confirm its PID is dead before removing it."
-        ) from e
-    try:
-        os.write(fd, str(os.getpid()).encode())
-        os.close(fd)
-        yield
-    finally:
-        lock.unlink()
+    # Keep this inode in place; unlinking an advisory lock creates a writer race.
+    with (Path(work) / ".writer.guard").open("a+b") as guard:
+        guard.seek(0, os.SEEK_END)
+        if guard.tell() == 0:
+            guard.write(b"0")
+            guard.flush()
+        guard.seek(0)
+        try:
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(guard.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(guard.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            raise RuntimeError(f"Campaign is locked: {lock}") from error
+        try:
+            lock.write_text(str(os.getpid()), encoding="ascii")
+            yield
+        finally:
+            lock.unlink(missing_ok=True)
+            if os.name == "nt":
+                guard.seek(0)
+                msvcrt.locking(guard.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(guard.fileno(), fcntl.LOCK_UN)
 
 
 @contextlib.contextmanager
@@ -853,6 +883,8 @@ def estimate_campaign(
 def package(work, output, config, shard_flights=100):
     """Publish only closed immutable shards. A partial manifest never claims completion."""
     work, output = Path(work), Path(output)
+    observation_size = config.get("observation_size", 51)
+    observation_columns = [f"obs_{i:02d}" for i in range(observation_size)]
     if shard_flights < 1:
         raise ValueError("Positive shard size required")
     with campaign_lock(work):
@@ -871,9 +903,17 @@ def package(work, output, config, shard_flights=100):
         write(
             output / "schema.json",
             {
-                "schema_version": "nn-duels-v1",
+                "schema_version": config.get("schema_version", "nn-duels-v1"),
                 "shard_flights": shard_flights,
-                "observation_columns": list(OBSERVATION_COLUMNS),
+                "observation_columns": observation_columns,
+                "features": observation_feature_schema(observation_size),
+                "hostile_missile_contract": "Simulator truth; four live enemy missiles targeting the observer; "
+                                            "nearest range then UID; zero padding; closing speed positive on approach.",
+                "policy_history": "Chronological, 20 frames; repeat reset frame for left padding. "
+                                  "Decision at step k consumes frames max(0,k-19)..k.",
+                "feature_layout": ({"compact": [0, 46], "hostile_missiles": [47, 86],
+                                    "energy": [87, 90]} if observation_size == 91 else
+                                   {"compact": [0, 46], "energy": [47, 50]}),
                 "key_columns": list(KEYS),
                 "coordinate_frame": "North/West/Up; metres, metres/second; 10 Hz",
                 "perspectives": {
@@ -1009,7 +1049,7 @@ def package(work, output, config, shard_flights=100):
         save_table(output / "skill_support_by_pilot_family.parquet", pd.DataFrame(breakdown))
         # Include the exact code/assets/weights used; the archive is already hash verified.
         if not (output / "tactical_reproduction.zip").exists():
-            shutil.copyfile(ARCHIVE, output / "tactical_reproduction.zip")
+            shutil.copyfile(config.get("population_archive", ARCHIVE), output / "tactical_reproduction.zip")
         if sha256(output / "tactical_reproduction.zip") != config["parent_archive_sha256"]:
             raise ValueError("Published reproduction archive differs")
         for source in collector_sources():
@@ -1023,10 +1063,10 @@ def package(work, output, config, shard_flights=100):
         )
         readme = (
             "# NN versus NN collection\n\n"
-            "Two recorded perspectives per physical engagement, using frozen notebook-07 tactical pilots.\n"
+            "Two recorded perspectives per physical engagement, using the frozen pilots in tactical_reproduction.zip.\n"
             "manifest.json reports the actual flight count; complete is true only at the requested count.\n"
             "Both perspectives share scenario_group. Keep them in the same future split.\n"
-            "Observations are idealised 51-feature controller inputs at 10 Hz. Target decisions are privileged.\n"
+            f"Observations are idealised {observation_size}-feature controller inputs at 10 Hz. Target decisions are privileged.\n"
             "Decisions occur at 1 Hz before the next physics step. Terminal samples have no new decision.\n"
             "No forward filling, fitted scaling, splits, or forecast windows are stored.\n"
             f"{speed_control_note}\n"
@@ -1047,7 +1087,7 @@ def package(work, output, config, shard_flights=100):
                     "sha256": sha256(path),
                 }
         manifest = {
-            "name": "nn-duels-v1",
+            "name": config.get("schema_version", "nn-duels-v1"),
             "complete": len(published) == config["flights"],
             "requested_flights": config["flights"],
             "physical_flights": len(published),
@@ -1063,6 +1103,7 @@ def verify(output, require_complete=False, cache_path=None):
     output = Path(output)
     manifest = read(output / "manifest.json")
     config = read(output / "config.json")
+    observation_columns = tuple(f"obs_{i:02d}" for i in range(config.get("observation_size", 51)))
     if sha256(output / "config.json") != manifest["config_sha256"]:
         raise ValueError("Configuration checksum differs")
     if require_complete and not manifest["complete"]:
@@ -1113,13 +1154,25 @@ def verify(output, require_complete=False, cache_path=None):
         obs, track, decisions = _load_shard_episode(
             output, row.episode_id, row.observer_id, row.shard
         )
-        validate_episode(obs, track)
+        validate_episode(obs, track, observation_columns=observation_columns)
         validate_observer_geometry(obs, track)
         expected_decisions = np.arange(0, len(track) - 1, 10)
         if not np.array_equal(decisions.step, expected_decisions) or set(decisions.aircraft_id) != {
             row.target_id
         }:
             raise ValueError("Invalid target decision cadence/identity")
+        if config.get("observation_size") == 91:
+            # target_decisions belongs to the OTHER aircraft. Verify its exact
+            # chronological input using that aircraft's recorded observations.
+            from tactical_corpus_schema import reconstruct_policy_history
+
+            target_obs = _load_shard_episode(
+                output, row.episode_id, row.target_id, row.shard
+            )[0][list(observation_columns)].to_numpy(dtype="<f4")
+            for decision in decisions.itertuples():
+                history = reconstruct_policy_history(target_obs, decision.step)
+                if hashlib.sha256(history.astype("<f4").tobytes()).hexdigest() != decision.policy_history_sha256:
+                    raise ValueError("Recorded policy input differs from the history used for inference")
         if len(obs) != row.frames or float(track.time_s.iloc[-1]) != row.duration_s:
             raise ValueError("Index disagrees with frames")
         if row.duration_s > config["episode_limit_s"] or (

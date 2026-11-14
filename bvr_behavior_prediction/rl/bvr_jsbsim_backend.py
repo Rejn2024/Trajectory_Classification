@@ -112,9 +112,14 @@ class BVRJSBSimBackend:
         if not self.include_hostile_missiles:
             return compact
 
-        controlled = self.env.agents[self.CONTROLLED_ID]
+        slots = self.hostile_missile_features(self.env.agents[self.CONTROLLED_ID])
+        return np.concatenate((compact, slots))
+
+    @classmethod
+    def hostile_missile_features(cls, controlled):
+        """Shared training/recording extraction for either aircraft's threat slots."""
         slots = np.zeros(
-            (self.HOSTILE_MISSILE_SLOTS, len(self.HOSTILE_MISSILE_FEATURE_NAMES)),
+            (cls.HOSTILE_MISSILE_SLOTS, len(cls.HOSTILE_MISSILE_FEATURE_NAMES)),
             dtype=np.float32,
         )
         if controlled.is_alive:
@@ -144,7 +149,7 @@ class BVRJSBSimBackend:
                     closing_speed / 1200.0,
                     float(missile.radar_on),
                 )
-        return np.concatenate((compact, slots.reshape(-1)))
+        return slots.reshape(-1)
 
     def _target_geometry(self):
         controlled = self.env.agents[self.CONTROLLED_ID]
