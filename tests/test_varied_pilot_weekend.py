@@ -4,6 +4,7 @@ import hashlib
 import json
 import subprocess
 import sys
+import time
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -247,6 +248,7 @@ def test_interrupted_epoch_restores_optimizer_rng_selection_and_metrics(tmp_path
     ]
     assert [row["epoch"] for row in rows] == [1, 2, 3, 4]
     assert [row["evaluation_performed"] for row in rows] == [1, 1, 1, 1]
+    assert [row["checkpoint_timing_recorded"] for row in rows] == [0, 1, 1, 1]
 
 
 def test_stage_seeds_and_varied_objectives_survive_both_transitions(tmp_path):
@@ -280,8 +282,18 @@ def test_stage_seeds_and_varied_objectives_survive_both_transitions(tmp_path):
         "learning_rate",
         "training_reward_scale",
         "update_epochs",
+        "minibatch_size",
+        "target_kl",
     ):
         assert getattr(continued, key) == getattr(tactical, key) == getattr(config, key)
+    accelerated = weekend.stage_config(source, tmp_path / "accelerated", {
+        **settings, "target_kl": .02, "minibatch_size": 256,
+        "simulator_transport": "pipe",
+    }, "simple")
+    assert accelerated.target_kl == .02 and accelerated.minibatch_size == 256
+    assert accelerated.simulator_transport == "pipe"
+    assert accelerated.update_epochs == config.update_epochs
+    assert accelerated.learning_rate == config.learning_rate
 
 
 @pytest.mark.parametrize("opponent", ["simple", "tactical"])
@@ -337,6 +349,14 @@ def test_every_epoch_validates_and_only_improvements_write_selected_weights(
             epochs.append((epoch, weekend.sha256(output / "best_model.pt")))
 
     monkeypatch.setattr(weekend, "save_best_weights", save_best)
+    save_state = weekend.save_state
+
+    def delayed_checkpoint(trainer, epoch, metrics):
+        save_state(trainer, epoch, metrics)
+        if epoch:
+            time.sleep(.02)
+
+    monkeypatch.setattr(weekend, "save_state", delayed_checkpoint)
     weekend.train_one(source, output, replace(config, output_dir=output), opponent, "cpu", progress)
     assert writes == [1, 4]
     assert epochs[0][1] == epochs[1][1] == epochs[2][1] != epochs[3][1]
@@ -344,6 +364,13 @@ def test_every_epoch_validates_and_only_improvements_write_selected_weights(
     assert state["epoch"] == state["best_epoch"] == 4
     assert [row["evaluation_performed"] for row in state["metrics"]] == [1] * 4
     assert [row["best_model_improved"] for row in state["metrics"]] == [1, 0, 0, 1]
+    recorded = weekend.metric_rows(output / "training_metrics.jsonl")
+    for row in recorded:
+        assert row["checkpoint_timing_recorded"] == 1
+        assert row["checkpoint_seconds"] >= .02
+        assert row["epoch_seconds"] >= row["compute_seconds"] + row["checkpoint_seconds"]
+    weekend.train_one(source, output, replace(config, output_dir=output), opponent, "cpu")
+    assert weekend.metric_rows(output / "training_metrics.jsonl") == recorded
 
 
 @pytest.mark.parametrize("conditioned", [False, True])
@@ -451,6 +478,7 @@ def test_explicit_performance_repair_keeps_original_plan_and_saved_state(tmp_pat
     weekend.prepare_campaign(tmp_path, current, accept_performance_fix=True)
     receipt = weekend.read(tmp_path / "performance_fix.json")
     assert receipt["original_campaign"] == previous
+    assert receipt["base_commit"] == weekend.PERFORMANCE_FIX_ORIGINAL_COMMIT
     assert receipt["updated_source_hashes"] == current["source_hashes"]
     assert weekend.read(tmp_path / "campaign.json") == current
     assert weekend.sha256(checkpoint) == checksum
@@ -458,13 +486,17 @@ def test_explicit_performance_repair_keeps_original_plan_and_saved_state(tmp_pat
     assert weekend.read(tmp_path / "performance_fix.json") == receipt
 
 
-@pytest.mark.parametrize("mutation", ["budget", "kl", "parent", "asset", "unknown", "deleted"])
+@pytest.mark.parametrize("mutation", [
+    "budget", "kl", "minibatch", "parent", "asset", "unknown", "deleted",
+])
 def test_performance_repair_rejects_experiment_changes(tmp_path, mutation):
     previous, current = repair_settings(), repair_settings(new=True)
     if mutation == "budget":
         current["simple_epochs"] = 201
     elif mutation == "kl":
         current["target_kl"] = .02
+    elif mutation == "minibatch":
+        current["minibatch_size"] = 256
     elif mutation == "parent":
         current["parent_hashes"]["best_model.pt"] = "different"
     elif mutation == "asset":
@@ -486,3 +518,50 @@ def test_performance_repair_refuses_an_active_campaign(tmp_path):
     with weekend.duel.campaign_lock(tmp_path), pytest.raises(RuntimeError, match="locked"):
         weekend.prepare_campaign(tmp_path, current, accept_performance_fix=True)
     assert weekend.read(tmp_path / "campaign.json") == previous
+
+
+def test_latest_timing_recovery_rejects_uncommitted_or_mismatched_metrics():
+    row = {"epoch": 2, "loss": 7., "compute_seconds": 2., "epoch_seconds": 2.,
+           "checkpoint_seconds": 0., "checkpoint_timing_recorded": 0}
+    actual = {**row, "epoch_seconds": 3., "checkpoint_seconds": 1.,
+              "checkpoint_timing_recorded": 1}
+    pending = [row.copy()]
+    weekend.restore_last_epoch_timing(pending, [{**actual, "loss": 8.}])
+    assert pending == [row]
+    weekend.restore_last_epoch_timing(pending, [{**actual, "epoch": 3}])
+    assert pending == [row]
+    weekend.restore_last_epoch_timing(pending, [actual, {**actual, "epoch": 3}])
+    assert pending == [actual]
+
+
+def test_second_source_repair_keeps_legacy_provenance_and_recovers_commit_gap(tmp_path, monkeypatch):
+    original, previous, current = repair_settings(), repair_settings(), repair_settings(new=True)
+    # Model a job already migrated by commit 26b3446's earlier receipt format.
+    for name, hashes in weekend.PERFORMANCE_FIX_BASE_HASHES.items():
+        previous["source_hashes"][name] = hashes[-2]
+    weekend.write(tmp_path / "campaign.json", previous)
+    weekend.write(tmp_path / "performance_fix.json", {
+        "updated_utc": "earlier", "base_commit": "bc01bf4",
+        "original_campaign": original,
+        "updated_source_hashes": previous["source_hashes"],
+        "changed_files": list(weekend.PERFORMANCE_FIX_BASE_HASHES),
+    })
+    write = weekend.write
+
+    def fail_plan_write(path, value):
+        if path.name == "campaign.json":
+            raise OSError("interrupted after receipt commit")
+        write(path, value)
+
+    monkeypatch.setattr(weekend, "write", fail_plan_write)
+    with pytest.raises(OSError, match="receipt commit"):
+        weekend.prepare_campaign(tmp_path, current, accept_performance_fix=True)
+    monkeypatch.setattr(weekend, "write", write)
+    receipt = weekend.read(tmp_path / "performance_fix.json")
+    assert receipt["original_campaign"] == original
+    assert len(receipt["upgrades"]) == 2
+    assert receipt["upgrades"][-1]["previous_campaign"] == previous
+    assert receipt["upgrades"][-1]["base_commit"] == weekend.PERFORMANCE_FIX_BASE_COMMIT
+    weekend.prepare_campaign(tmp_path, current, accept_performance_fix=True)
+    assert weekend.read(tmp_path / "campaign.json") == current
+    assert weekend.read(tmp_path / "performance_fix.json") == receipt

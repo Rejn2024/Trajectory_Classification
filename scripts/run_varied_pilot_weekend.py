@@ -48,34 +48,63 @@ from bvr_behavior_prediction.rl.trainer import PPOTrainer
 
 read, write, sha256 = duel.read, duel.write, duel.sha256
 PILOTS = [f"pilot_{i:03d}" for i in range(1, 11)]
-# Only the operational repair from this known notebook-31 revision may upgrade
+# Only operational repairs from known notebook-31 revisions may upgrade
 # an existing campaign. Hyperparameters, assets, parents and software stay pinned.
-PERFORMANCE_FIX_BASE_COMMIT = "bc01bf41798d9858df739ec2e0bfefb4000fe3a9"
+PERFORMANCE_FIX_BASE_COMMIT = '26b3446d839861ff68c3250a1dbcac34db0d2e34'
+PERFORMANCE_FIX_ORIGINAL_COMMIT = "bc01bf41798d9858df739ec2e0bfefb4000fe3a9"
 PERFORMANCE_FIX_BASE_HASHES = {
-    # Known LF and CRLF checkouts of each original file (the saved run is Windows).
-    "scripts/run_varied_pilot_weekend.py": (
-        "ebe16ca6eeb58b64a4753355ed2a13b76456e4d2ff340ea34104abb1e7ae927b",
-        "078518d1ff5aa4506bd92383f67bc362673b2961d4ab82423dbe2094a5a5111d",
+    # Known LF/CRLF versions from bc01bf4 and 26b3446; other source stays pinned.
+    'scripts/run_varied_pilot_weekend.py': (
+        'ebe16ca6eeb58b64a4753355ed2a13b76456e4d2ff340ea34104abb1e7ae927b',
+        '078518d1ff5aa4506bd92383f67bc362673b2961d4ab82423dbe2094a5a5111d',
+        '222025a69d59f1805cb152ba74f68433123cdf219752c19864b467979c391a4e',
+        'b09e07393afaa14c09ad2c6c7b8bbd0bf31774f1f8d2ca0501af7d128036d3fa',
     ),
-    "scripts/weekend_training_progress.py": (
-        "d2e885ed5eaaf56fcc0fa2e22339ccd51ec0c830bf14ba5d1a270a2cb0e21e6c",
-        "9ea08795c666c64289bc00d8a408defb0c26338934a943045ef78d4934497f81",
+    'scripts/weekend_training_progress.py': (
+        'd2e885ed5eaaf56fcc0fa2e22339ccd51ec0c830bf14ba5d1a270a2cb0e21e6c',
+        '9ea08795c666c64289bc00d8a408defb0c26338934a943045ef78d4934497f81',
+        '922d451cff3156a561d02ce2af7a596429c1e30804cfb5f7eb74a6f95abc77dc',
+        'af11af629d0b838407fc249be0426d34053d9ab9251cb1936eaf1112c8a9a110',
     ),
-    "bvr_behavior_prediction/rl/trainer.py": (
-        "35ceffd912541a1a70d3b108977e50fd10d810b139de3951f8b9bdd51d5b78f2",
-        "87e552c94dd91676df3e4086ccfb0006c7e0bdefc9106435941c0fdd95fb8c3b",
+    'bvr_behavior_prediction/rl/trainer.py': (
+        '35ceffd912541a1a70d3b108977e50fd10d810b139de3951f8b9bdd51d5b78f2',
+        '87e552c94dd91676df3e4086ccfb0006c7e0bdefc9106435941c0fdd95fb8c3b',
+        'b46fe96f8f1881b78d84c91b3d34c9a2b0882dea0c87099d6fc90020275318a0',
+        'dbad41f004088dd79222659b7ea6efb20168e13e70e601c70fd174398faa8e33',
     ),
-    "bvr_behavior_prediction/rl/bvr_jsbsim_backend.py": (
-        "0b69bcc1854ec0c468b10157e256a3fa0082652a6adca315130a387a2fc7c8af",
-        "bb738123e87c442f32ccdef3eae9e6e7070c6b33f9be9dd32b4ea01549c251fe",
+    'bvr_behavior_prediction/rl/bvr_jsbsim_backend.py': (
+        '0b69bcc1854ec0c468b10157e256a3fa0082652a6adca315130a387a2fc7c8af',
+        'bb738123e87c442f32ccdef3eae9e6e7070c6b33f9be9dd32b4ea01549c251fe',
+        'e2d1c46168ac54ba6af08120d1e2f8cd6889a9ef9084a31d9f42462812d60b33',
+        '03d04271c97b632e2f555ca2505a5f07f9ea35ef3dedbe8eec95195b3b167a31',
     ),
-    "bvr_sim_source/bvr_sim/bvr_env.py": (
-        "9333c2ab18b033ad804736e095787afead1da2e73d0db607ac3837083f8e8a57",
-        "2ce5e4d2b75f6e8b2a8b37f8d4e6c8789b05be66767f8b52115f2aef24c51661",
+    'bvr_behavior_prediction/rl/config.py': (
+        '7c5161a82668c5190c7f7281f153750220192756cd91b400a679dbe4e371fdd3',
+        '96b65acf5a38a936b6b28d52ddc64345dd31f49444826974906b667da9c4b1d1',
     ),
-    "bvr_sim_source/bvr_sim/src_py/simulator/aircraft/fdm/jsbsim_fdm.py": (
-        "a8c0e76c02bee9257cf8a14d3a574d1e5231c159da06e1763c91ff0aa2b0a014",
-        "ad248e52361a6dd39a6b00b32721ee490ee440771d48b783915052fae4a87bf5",
+    'bvr_behavior_prediction/rl/pilot.py': (
+        '6b89aea1b262befd27bcd01db69aa31805fd670dfa16983f2eea9b80720bba84',
+        '95a45e59d279adb4160a0dd62fed8b59d4e382bd6692a36a09af574573909290',
+    ),
+    'bvr_behavior_prediction/rl/cuda_update.py': (
+        'a4746f5a4c2e0dc024ba595f7e4ff17a24c5db94dc9638bf0cb6eb8ed48f05c3',
+        'c2251a436ea03f274a9cb6038c2d608bf733680462fc29c21c68914dace9f26f',
+    ),
+    'bvr_behavior_prediction/rl/simulation_workers.py': (
+        'f2d57b3276ec0a46a6a108613a218a60cb5a3b09a03592e42de69349a6e7f885',
+        '23c8256cf96483c4a7b421c15ed64627c7ce533c8960f7d9bb77a1d2b3e37c2d',
+    ),
+    'bvr_sim_source/bvr_sim/bvr_env.py': (
+        '9333c2ab18b033ad804736e095787afead1da2e73d0db607ac3837083f8e8a57',
+        '2ce5e4d2b75f6e8b2a8b37f8d4e6c8789b05be66767f8b52115f2aef24c51661',
+        '6cc8698f87e84eda9edda7fbdd8b0d29d05f2ee57ff701a91e45cdac83f6f78d',
+        '3b89aa7598d3083d39baa69edc9347bc4cb8261f7e1b9a127fa876b6e330da6d',
+    ),
+    'bvr_sim_source/bvr_sim/src_py/simulator/aircraft/fdm/jsbsim_fdm.py': (
+        'a8c0e76c02bee9257cf8a14d3a574d1e5231c159da06e1763c91ff0aa2b0a014',
+        'ad248e52361a6dd39a6b00b32721ee490ee440771d48b783915052fae4a87bf5',
+        '21bf0effc9ad7be4081ba8c5a09173a7353ba20249471daca392ab9e736db9a6',
+        'b409797286559e96f31782c188e2ee9bde7798705d301d957b5bbff7cae39deb',
     ),
 }
 
@@ -131,7 +160,7 @@ def prepare_campaign(job, settings, accept_performance_fix=False):
             return
         error = (
             "Campaign settings/source/checkpoints/software changed; choose a new JOB directory. "
-            "For this revision's cleanup/progress repair only, stop the old process and use "
+            "For known operational acceleration repairs, stop the old process and use "
             "--accept-performance-fix with otherwise identical settings."
         )
         if not accept_performance_fix:
@@ -148,19 +177,46 @@ def prepare_campaign(job, settings, accept_performance_fix=False):
             for name in changes
         ):
             raise ValueError("Performance repair cannot accept unrelated or unknown source changes")
+        runner = "scripts/run_varied_pilot_weekend.py"
+        base_commit = (PERFORMANCE_FIX_ORIGINAL_COMMIT
+                       if before.get(runner) in PERFORMANCE_FIX_BASE_HASHES[runner][:2]
+                       else PERFORMANCE_FIX_BASE_COMMIT)
         receipt = job / "performance_fix.json"
-        # Write the original plan first; retrying a crash between these atomic
-        # replacements is safe and never loses the original provenance.
-        if receipt.exists() and read(receipt)["original_campaign"] != previous:
+        # Commit provenance first. A crash between receipt and plan replacement
+        # can be retried, and a later repair appends to the original history.
+        history = read(receipt) if receipt.exists() else None
+        if history is not None and history["updated_source_hashes"] == after:
+            latest_previous = (history["upgrades"][-1]["previous_campaign"]
+                               if history.get("upgrades") else history["original_campaign"])
+            if latest_previous != previous:
+                raise ValueError("An existing performance repair has different original provenance")
+            write(plan, settings)
+            return
+        if history is not None and history["updated_source_hashes"] != before:
             raise ValueError("An existing performance repair has different original provenance")
-        write(receipt, {
-            "updated_utc": now(),
-            "base_commit": PERFORMANCE_FIX_BASE_COMMIT,
-            "original_campaign": previous,
-            "updated_source_hashes": after,
+        upgrades = list(history.get("upgrades", [])) if history else []
+        if history and not upgrades:
+            upgrades.append({
+                "updated_utc": history["updated_utc"],
+                "base_commit": history["base_commit"],
+                "previous_campaign": history["original_campaign"],
+                "updated_source_hashes": history["updated_source_hashes"],
+                "changed_files": history["changed_files"],
+            })
+        upgrades.append({
+            "updated_utc": now(), "base_commit": base_commit,
+            "previous_campaign": previous, "updated_source_hashes": after,
             "changed_files": sorted(changes),
-            "note": "Operational cleanup, progress and diagnostics repair; "
-                    "saved model/optimizer/RNG/epochs and training budgets are retained.",
+        })
+        write(receipt, {
+            "updated_utc": upgrades[-1]["updated_utc"],
+            "base_commit": history["base_commit"] if history else base_commit,
+            "original_campaign": history["original_campaign"] if history else previous,
+            "updated_source_hashes": after,
+            "changed_files": sorted(changes | set(history["changed_files"] if history else [])),
+            "upgrades": upgrades,
+            "note": "Operational acceleration and diagnostics repair; saved "
+                    "model/optimizer/RNG/epochs and training budgets are retained.",
         })
         write(plan, settings)
 
@@ -285,6 +341,8 @@ def stage_config(source, output, settings, stage):
         "scenarios_per_epoch",
         "evaluation_scenarios_per_epoch",
         "update_epochs",
+        "minibatch_size",
+        "simulator_transport",
         "target_kl",
     ):
         if settings.get(name) is not None:
@@ -321,6 +379,27 @@ def save_best_weights(trainer):
     temporary = trainer.output / "best_model.pt.tmp"
     torch.save(trainer.best_pilot, temporary)
     duel.durable_replace(temporary, trainer.output / "best_model.pt")
+
+
+def restore_last_epoch_timing(metrics, recorded):
+    """Recover post-checkpoint timings without accepting uncommitted metrics.
+
+    A checkpoint cannot contain the duration of its own atomic write. The next
+    checkpoint includes the previous epoch's finalized timings; only the last
+    row needs recovery from JSONL. If a crash preceded that append, its compute
+    timing remains available and checkpoint_timing_recorded stays zero.
+    """
+    if not metrics:
+        return
+    pending = metrics[-1]
+    timing = {"epoch_seconds", "checkpoint_seconds", "checkpoint_timing_recorded"}
+    for row in reversed(recorded):
+        if row.get("epoch") == pending["epoch"]:
+            if row.get("checkpoint_timing_recorded") == 1 and {
+                k: v for k, v in row.items() if k not in timing
+            } == {k: v for k, v in pending.items() if k not in timing}:
+                metrics[-1] = row
+            return
 
 
 def train_one(source, output, config, opponent, device, progress=None):
@@ -378,6 +457,7 @@ def train_one(source, output, config, opponent, device, progress=None):
             flush=True,
         )
         # Repair derived files if a previous process died after committing resume.pt.
+        restore_last_epoch_timing(metrics, metric_rows(trainer.diagnostics_path))
         trainer.diagnostics_path.write_text(
             "".join(json.dumps(m) + "\n" for m in metrics), encoding="utf8"
         )
@@ -425,6 +505,9 @@ def train_one(source, output, config, opponent, device, progress=None):
                 "update_seconds": update_seconds,
                 "evaluation_seconds": evaluation_seconds,
                 "epoch_seconds": time.perf_counter() - started,
+                "compute_seconds": 0.0,
+                "checkpoint_seconds": 0.0,
+                "checkpoint_timing_recorded": 0,
                 **trainer._last_update_profile,
                 **{f"training_{k}": v for k, v in collection_profile.items()},
                 **{f"evaluation_{k}": v for k, v in evaluation_profile.items()},
@@ -442,9 +525,17 @@ def train_one(source, output, config, opponent, device, progress=None):
                 raise ValueError("Nonfinite training metrics")
             metrics.append(row)
             report("saving checkpoint", epoch - 1, metrics[:-1])
+            row["compute_seconds"] = time.perf_counter() - started
+            row["epoch_seconds"] = row["compute_seconds"]
+            checkpoint_started = time.perf_counter()
             save_state(trainer, epoch, metrics)
             if improved:
                 save_best_weights(trainer)
+            row.update(
+                checkpoint_seconds=time.perf_counter() - checkpoint_started,
+                epoch_seconds=time.perf_counter() - started,
+                checkpoint_timing_recorded=1,
+            )
             with trainer.diagnostics_path.open("a", encoding="utf8") as stream:
                 stream.write(json.dumps(row) + "\n")
             report("epoch complete", epoch, metrics)
@@ -733,8 +824,9 @@ def run(args):
     settings.pop("job")
     settings.pop("preflight_only")
     settings.pop("accept_performance_fix")
-    if settings["target_kl"] is None:
-        settings.pop("target_kl")  # Keep old, otherwise identical campaign plans compatible.
+    for option in ("target_kl", "minibatch_size", "simulator_transport"):
+        if settings[option] is None:
+            settings.pop(option)  # Keep otherwise identical old campaign plans compatible.
     settings.update(
         source=str(source),
         output=str(args.output.resolve()),
@@ -826,7 +918,7 @@ def parser():
     p.add_argument("--preflight-only", action="store_true")
     p.add_argument(
         "--accept-performance-fix", action="store_true",
-        help="After stopping the old process, accept only this known cleanup/progress repair "
+        help="After stopping the old process, accept only known operational acceleration repairs "
         "for the existing JOB and preserve its original campaign provenance",
     )
     p.add_argument("--job", type=Path, required=True)
@@ -858,8 +950,14 @@ def parser():
         "scenarios-per-epoch",
         "evaluation-scenarios-per-epoch",
         "update-epochs",
+        "minibatch-size",
     ):
         p.add_argument("--" + option, type=int)
+    p.add_argument(
+        "--simulator-transport", choices=("auto", "shared_memory", "pipe"),
+        help="Process observations use shared memory when available by default; "
+        "pipe selects the reference transport",
+    )
     p.add_argument(
         "--target-kl", type=float,
         help="Stop PPO passes once approximate KL exceeds 1.5 times this target; "
@@ -875,6 +973,8 @@ if __name__ == "__main__":
         not np.isfinite(arguments.target_kl) or arguments.target_kl <= 0
     ):
         raise ValueError("target-kl must be finite and positive")
+    if arguments.minibatch_size is not None and arguments.minibatch_size < 1:
+        raise ValueError("minibatch-size must be positive")
     if (
         min(
             arguments.workers,

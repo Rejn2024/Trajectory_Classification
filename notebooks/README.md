@@ -12,6 +12,9 @@ weights on improvement. Inline tqdm bars show phase, elapsed time and ETA foreca
 Without widget support, progress uses plain text events and suppresses unchanged
 polls. A timing table compares epoch costs with flight decisions and PPO minibatches;
 simulator workers release native engines and avoid importing PyTorch.
+Shared observation memory and cached CUDA minibatch graphs reduce repeated work.
+For new experiments, `BVR_WEEKEND_MINIBATCH_SIZE` and `BVR_WEEKEND_TARGET_KL`
+control PPO workload; epoch timing now includes durable checkpoint writes.
 Run All performs preflight, training, tactical assessments, collection and verification;
 the same job directory resumes committed epochs and flights. See the
 [weekend campaign guide](../docs/varied_pilot_weekend.md).

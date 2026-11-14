@@ -199,18 +199,81 @@ and software versions. Restore the recorded environment to resume it, or choose
 new JOB and OUTPUT directories for a changed experiment. The final archive also
 rejects code changes made during a running campaign.
 
-To resume a campaign pinned to `bc01bf4` after this repair, stop its old process
+To resume a campaign pinned to `bc01bf4` or `26b3446` after these repairs, stop its old process
 and restart the kernel before Run All. Notebook setup enables this known
 operational repair by default (`ACCEPT_PERFORMANCE_FIX=True`); set
 `BVR_WEEKEND_ACCEPT_PERFORMANCE_FIX=0` to retain strict source rejection. The CLI equivalent is
 `--accept-performance-fix`. Preflight takes the campaign lock and checks the
-original LF/CRLF hashes of the six repair files. All other source/assets,
+known LF/CRLF hashes of the ten operational repair files. All other source/assets,
 parent checkpoints, software and experiment settings must still match exactly.
-The original plan and changed hashes are retained in `JOB/performance_fix.json`
+The original plan and an appended upgrade history are retained in `JOB/performance_fix.json`
 and included in the final reproduction archive. Committed model, optimizer,
 scaler, RNG and epoch state are preserved. The flag may remain set after migration;
 repeated preflight is idempotent. Changing KL or other budgets still needs a new
 experiment directory.
+
+### Epoch acceleration
+
+CUDA action selection now combines distribution validity with the existing
+action-output transfer, avoiding five Python tensor-boolean checks per stochastic
+rollout batch. Invalid probabilities/scales receive safe sampling inputs on the
+device, and the original validity flag rejects the batch on the CPU before actions
+reach a simulator. This prevents a CUDA sampling assertion from poisoning the
+device. Valid probabilities and samples retain their values and RNG consumption.
+Score-only validation uses the same combined validation/transfer approach.
+
+One full-minibatch forward/backward CUDA graph is cached per trainer. Later epochs
+reuse it while tensor shapes/dtypes/devices/strides, parameter and buffer storage,
+training mode, attention heads, action parameterization, loss coefficients and AMP
+scale storage match. A changed scale **value** at the same address is read by the
+graph; replacement scale storage triggers recapture. Small eager batches preserve
+the cache, and eager remainder gradients are replaced by graph-owned buffers before
+replay. Invalidated graphs and trainer shutdown explicitly release captured
+storage. `cuda_graph_cache_hit` and `cuda_graph_capture_seconds` expose reuse.
+
+Process workers use a parent-owned shared-memory array for observation histories.
+Only actions and step metadata cross pipes after reset/attachment. The parent
+copies independent snapshots before the next command so training histories cannot
+be overwritten by later simulator steps. Mappings are reused across matching
+batches and resized after worker acknowledgments when layouts change. The owner
+closes/unlinks mappings after normal shutdown and transport failures. Default
+`auto` falls back to pipes if allocation is unavailable or observations are not
+supported numeric histories; explicit `shared_memory` requires that transport.
+`training_simulator_shared_memory` and its evaluation counterpart record usage.
+
+`PilotTrainingConfig.simulator_transport`, CLI `--simulator-transport`, and notebook
+`BVR_WEEKEND_SIMULATOR_TRANSPORT` accept `auto`, `shared_memory`, or `pipe`. Omit
+the notebook override to retain compatibility with an existing pinned job. A
+transport-only benchmark can be run without training or production checkpoints:
+
+```bash
+python scripts/benchmark_pilot_transport.py --workers 2 --scenarios 60 --decisions 100 --repeats 5
+```
+
+On this Linux CPU environment, alternating five repetitions measured median
+transport times of **0.1015 seconds with pipes** and **0.0503 seconds with shared
+memory** for 100 batches of sixty 20-by-91 float32 histories, including independent
+parent snapshots. This is about **2.02x** for synthetic communication. It excludes
+worker startup, physics, policy inference and PPO and is not an epoch speedup.
+
+Epoch timing now includes both durable restart and selected-weight writes.
+`compute_seconds` and `checkpoint_seconds` split those costs; `epoch_seconds`
+includes both. `checkpoint_timing_recorded=1` identifies a complete measurement.
+A crash immediately after committing `resume.pt` can leave a compute-only row
+with flag zero, since a checkpoint cannot record its own write duration. Completed
+JSONL timings are recovered on resume only when their epoch and non-timing fields
+match the committed checkpoint. Uncommitted/mismatched rows are discarded. The
+notebook table shows complete timing counts and excludes unknown checkpoint
+durations from checkpoint medians.
+
+For a **new JOB and OUTPUT**, the notebook now accepts
+`BVR_WEEKEND_MINIBATCH_SIZE=256` / CLI `--minibatch-size 256`, alongside
+`BVR_WEEKEND_TARGET_KL=0.02` / `--target-kl 0.02`. Both default to inheritance.
+At the 18,000-transition limit, increasing minibatches from 64 to 256 reduces the
+60-pass maximum from 16,920 to 4,260 optimizer steps; it changes gradient averaging
+and optimization, so this is an explicit experiment rather than an automatic
+resumption change. KL stopping may reduce passes further. Keep these settings
+unchanged to resume that experiment and compare flight quality on matched cases.
 
 On a CUDA machine, `auto` benchmarks local CPU inference and central CUDA
 inference on separate flights. The central inference owner groups pilots by
@@ -328,3 +391,24 @@ notebook CPU-default and batch-size assertions, and notebook 30's assertion that
 executed cells have no saved execution count. Those notebooks were not changed.
 The original Windows/CUDA campaign and its raw metrics/checkpoints remain
 unavailable here; its end-to-end speedup has not been measured.
+
+### Acceleration verification
+
+The main relevant suite passed **172 tests**, with **20 CUDA checks skipped**.
+After the final provenance and unsupported-observation refinements, the focused
+recovery/action/transport suite passed **62 tests**, with **12 CUDA checks
+skipped**, including four additional buffer/fallback cases. Coverage includes
+exact pipe/shared policy, Adam and RNG parity; independent observation snapshots;
+layout reuse/resizing; failure cleanup; allocation fallback; invalid layout
+rejection; seeded deferred-validation parity; and graph-cache invalidation.
+Cached CUDA replay, AMP scale changes and invalid-input device recovery have
+CUDA-conditional tests, but were not executed on this CPU environment.
+
+A real JSBSim/process-worker run completed two additional epochs with three
+ten-second training and validation flights per epoch, recording shared-memory
+usage, KL, compute and checkpoint timings. Restarting the completed run preserved
+model tensors and epoch counts. Tests with delayed checkpoint writes verify that
+epoch timing includes those writes; crash/restart tests retain unknown timings
+honestly and recover complete timings without accepting uncommitted metrics.
+Notebook cells compile, changed-file Ruff and `git diff --check` pass. Production
+Windows/CUDA training and its epoch speedup remain unmeasured.

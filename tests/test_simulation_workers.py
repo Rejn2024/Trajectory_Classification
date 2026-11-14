@@ -1,16 +1,19 @@
 """Exercise real subprocess isolation, state affinity, and failure cleanup."""
 
-import os
 import json
+import os
 import random
 import sys
 import time
+from multiprocessing.shared_memory import SharedMemory
 
 import numpy as np
 import pytest
 
 from bvr_behavior_prediction.rl.simulation_workers import (
-    ProcessSimulatorPool, SimulatorWorkerError, ThreadSimulatorPool,
+    ProcessSimulatorPool,
+    SimulatorWorkerError,
+    ThreadSimulatorPool,
 )
 
 
@@ -107,12 +110,14 @@ def test_processes_keep_environment_affinity_and_reuse_workers(tmp_path):
 def test_worker_failure_or_interrupt_stops_every_process(failure, monkeypatch):
     pool = ProcessSimulatorPool(environment_factory(fail=failure), 2)
     processes = [process for process, _ in pool.workers]
+    memory_name = None
     try:
         if failure == "reset":
             with pytest.raises(RuntimeError, match="deliberate reset failure"):
                 pool.reset(range(3), (1, 2, 3))
         else:
             pool.reset(range(3), (1, 2, 3))
+            memory_name = pool.shared_memory_name
             expected = RuntimeError
             match = "deliberate step failure" if failure == "step" else "worker"
             if failure in ("interrupt", "timeout"):
@@ -127,6 +132,10 @@ def test_worker_failure_or_interrupt_stops_every_process(failure, monkeypatch):
                 pool.step([(index, "change_trajectory", {}) for index in range(3)])
         assert pool.closed
         assert all(not process.is_alive() for process in processes)
+        assert pool.shared_memory_name is None
+        if memory_name is not None:
+            with pytest.raises(FileNotFoundError):
+                SharedMemory(name=memory_name)
     finally:
         pool.close(force=True)
 
@@ -197,6 +206,7 @@ def test_worker_death_replays_same_batch_and_random_state(tmp_path, monkeypatch,
     if device == "cuda" and not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
     from dataclasses import replace
+
     from bvr_behavior_prediction.rl.config import PilotTrainingConfig
     from bvr_behavior_prediction.rl.reward import RewardDefinition
     from bvr_behavior_prediction.rl.trainer import PPOTrainer
@@ -308,3 +318,179 @@ def test_retries_are_bounded_and_python_errors_are_not_retried(tmp_path, monkeyp
         assert len(pools) == 1
         assert not (tmp_path / "simulator_recovery.jsonl").exists()
     assert all(not process.is_alive() for pool in pools for process, _ in pool.workers)
+
+
+@pytest.mark.parametrize("transport", ["pipe", "shared_memory"])
+def test_observation_snapshots_survive_later_steps_reset_resize_and_close(transport):
+    def factory(scenario, path):
+        class Environment:
+            def reset(self, seed):
+                self.observation = np.full((20, 91), seed, np.float32)
+                return self.observation
+
+            def step(self, name, parameters):
+                self.observation += 1
+                return self.observation, False, False, {}
+
+            def close(self):
+                pass
+
+        return Environment()
+
+    pool = ProcessSimulatorPool(factory, 2, transport=transport)
+    try:
+        initial = pool.reset(range(5), (1, 2, 3, 4, 5))
+        assert pool.observation_transport == transport
+        name = pool.shared_memory_name
+        request = pool._request
+
+        def checked_request(operation, groups):
+            result = request(operation, groups)
+            if operation == "step":
+                for batch in result:
+                    for _, item in batch:
+                        assert (item[0][0] is None) == (transport == "shared_memory")
+            return result
+
+        pool._request = checked_request
+        earlier = pool.step([(4, "skill", {}), (0, "skill", {})])
+        pool.step([(4, "skill", {}), (0, "skill", {})])
+        np.testing.assert_array_equal(initial[4], np.full((20, 91), 5, np.float32))
+        np.testing.assert_array_equal(earlier[0][0][0], np.full((20, 91), 6, np.float32))
+        np.testing.assert_array_equal(earlier[1][0][0], np.full((20, 91), 2, np.float32))
+        pool.reset(range(5), (5, 4, 3, 2, 1))
+        assert pool.shared_memory_name == name  # The same layout reuses its mapping.
+        pool.reset(range(3), (8, 9, 10))
+        if name is not None:
+            assert pool.shared_memory_name != name
+            with pytest.raises(FileNotFoundError):
+                SharedMemory(name=name)
+        name = pool.shared_memory_name
+        latest = pool.step([(2, "skill", {})])[0][0][0]
+        np.testing.assert_array_equal(latest, np.full((20, 91), 11, np.float32))
+    finally:
+        pool.close()
+    np.testing.assert_array_equal(latest, np.full((20, 91), 11, np.float32))
+    if name is not None:
+        with pytest.raises(FileNotFoundError):
+            SharedMemory(name=name)
+
+
+def test_auto_transport_falls_back_once_when_shared_memory_is_unavailable(monkeypatch):
+    import bvr_behavior_prediction.rl.simulation_workers as workers
+
+    def unavailable(*args, **kwargs):
+        raise OSError("No shared memory available")
+
+    pool = ProcessSimulatorPool(environment_factory(), 1)
+    try:
+        monkeypatch.setattr(workers, "SharedMemory", unavailable)
+        with pytest.warns(RuntimeWarning, match="using pipes"):
+            pool.reset(range(3), (1, 2, 3))
+        assert pool.observation_transport == "pipe"
+        pool.reset(range(3), (1, 2, 3))
+        assert pool.step([(0, "skill", {})])[0][0][0].item() == 2
+    finally:
+        pool.close()
+
+
+@pytest.mark.parametrize("kind", ["scalar", "mapping"])
+def test_auto_transport_preserves_unsupported_observation_types(kind):
+    def factory(scenario, path):
+        class Environment:
+            def reset(self, seed):
+                return np.array(seed, np.float32) if kind == "scalar" else {"seed": seed}
+
+            def close(self):
+                pass
+
+        return Environment()
+
+    pool = ProcessSimulatorPool(factory, 1)
+    try:
+        observations = pool.reset(range(3), (1, 2, 3))
+        assert pool.observation_transport == "pipe"
+        if kind == "scalar":
+            assert observations[0].shape == ()
+            assert observations[0].item() == 1
+        else:
+            assert observations == [{"seed": 1}, {"seed": 2}, {"seed": 3}]
+    finally:
+        pool.close()
+
+
+@pytest.mark.parametrize("changed", ["shape", "dtype"])
+def test_midflight_observation_layout_change_is_rejected_and_unlinked(changed):
+    def factory(scenario, path):
+        class Environment:
+            def reset(self, seed):
+                return np.zeros((20, 91), np.float32)
+
+            def step(self, *args):
+                observation = (np.zeros((1, 91), np.float32) if changed == "shape"
+                               else np.zeros((20, 91), np.float64))
+                return observation, False, False, {}
+
+            def close(self):
+                pass
+
+        return Environment()
+
+    pool = ProcessSimulatorPool(factory, 1, transport="shared_memory")
+    pool.reset(range(3), (1, 2, 3))
+    name = pool.shared_memory_name
+    try:
+        with pytest.raises(RuntimeError, match="shape/dtype changed"):
+            pool.step([(0, "skill", {})])
+        assert pool.closed and pool.shared_memory_name is None
+        with pytest.raises(FileNotFoundError):
+            SharedMemory(name=name)
+    finally:
+        pool.close()
+
+
+def test_shared_and_pipe_training_have_identical_policy_optimizer_and_rng(tmp_path):
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("mlflow")
+    from bvr_behavior_prediction.rl.config import PilotTrainingConfig
+    from bvr_behavior_prediction.rl.reward import RewardDefinition
+    from bvr_behavior_prediction.rl.trainer import PPOTrainer
+
+    previous_threads = torch.get_num_threads()
+    torch.set_num_threads(1)
+    trainers, traces = [], []
+    try:
+        for transport in ("pipe", "shared_memory"):
+            config = PilotTrainingConfig(
+                episode_duration_s=3, hidden_size=8, transformer_heads=2, transformer_layers=1,
+                history_duration_s=1, sample_interval_s=1, scenarios_per_epoch=3,
+                evaluation_scenarios_per_epoch=3, evaluation_seed=1000,
+                simulator_executor="process", simulator_workers=2,
+                simulator_transport=transport, update_epochs=2, minibatch_size=4,
+                output_dir=tmp_path / transport,
+            )
+            trainer = PPOTrainer(environment_factory(), 1, config, "cpu", RewardDefinition(
+                "ticks", lambda: lambda info: (float(info["ticks"]), {}),
+            ))
+            trainer._training_active = True
+            trainers.append(trainer)
+            trace = []
+            for _ in range(2):
+                episodes = trainer._training_episodes()
+                loss = trainer._update([episode[0] for episode in episodes])
+                trace.append((loss, trainer._evaluate().copy(), torch.get_rng_state().clone()))
+            traces.append(trace)
+        for left, right in zip(traces[0], traces[1]):
+            assert left[0] == right[0]
+            np.testing.assert_array_equal(left[1], right[1])
+            assert torch.equal(left[2], right[2])
+        for name, tensor in trainers[0].pilot.state_dict().items():
+            torch.testing.assert_close(tensor, trainers[1].pilot.state_dict()[name], rtol=0, atol=0)
+        for left, right in zip(trainers[0].optimizer.state.values(),
+                               trainers[1].optimizer.state.values()):
+            for name, tensor in left.items():
+                torch.testing.assert_close(tensor, right[name], rtol=0, atol=0)
+    finally:
+        for trainer in trainers:
+            trainer.close()
+        torch.set_num_threads(previous_threads)

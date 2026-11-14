@@ -10,8 +10,8 @@ class CUDABatchBackward:
     optimizer steps, and scaler updates. Warmup computes gradients only: it must
     not advance parameters, the optimizer, or the scaler. Inputs and gradients
     retain their capture-time addresses, including after eager remainder batches.
-    Construct once per PPO update so changed shapes/settings cannot reuse a stale
-    graph and memory use stays bounded to one minibatch graph.
+    The trainer caches one graph while shapes, parameter/buffer storage, loss
+    settings and AMP scale storage match. Changing any of those releases it.
     """
 
     def __init__(self, backward, parameters, batch):
@@ -46,3 +46,15 @@ class CUDABatchBackward:
         self.graph.replay()
         # Each replay overwrites self.loss. Preserve each minibatch's diagnostic.
         return self.loss.clone()
+
+    def close(self):
+        """Release the graph pool, including gradients still owned by parameters."""
+        if self.graph is None:
+            return
+        for parameter, gradient in zip(self.parameters, self.gradients):
+            if parameter.grad is gradient:
+                parameter.grad = None
+        with torch.cuda.device(self.inputs[0].device):
+            self.graph.reset()
+        self.parameters = self.gradients = self.inputs = ()
+        self.loss = self.graph = None

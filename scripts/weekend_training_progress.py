@@ -46,6 +46,8 @@ def timing_windows(path, size=10):
     result = []
     fields = {
         "epoch_s": "epoch_seconds",
+        "compute_s": "compute_seconds",
+        "checkpoint_s": "checkpoint_seconds",
         "rollout_s": "rollout_seconds",
         "PPO_s": "update_seconds",
         "validation_s": "evaluation_seconds",
@@ -55,12 +57,17 @@ def timing_windows(path, size=10):
         "validation_decisions": "evaluation_transitions",
         "KL": "approx_kl",
         "CUDA_peak_MB": "cuda_peak_allocated_mb",
+        "CUDA_graph_cache_hit": "cuda_graph_cache_hit",
+        "shared_memory": "training_simulator_shared_memory",
     }
     for left in range(0, len(rows), size):
         window = rows[left:left + size]
-        summary = {"first_epoch": window[0]["epoch"], "last_epoch": window[-1]["epoch"]}
+        summary = {"first_epoch": window[0]["epoch"], "last_epoch": window[-1]["epoch"],
+                   "timed_epochs": sum(row.get("checkpoint_timing_recorded") == 1 for row in window)}
         for label, key in fields.items():
-            values = [row[key] for row in window if key in row]
+            values = [row[key] for row in window if key in row and (
+                key != "checkpoint_seconds" or row.get("checkpoint_timing_recorded") == 1
+            )]
             if values:
                 summary[label] = statistics.median(values)
         for label, seconds, count in (

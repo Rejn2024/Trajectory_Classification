@@ -133,16 +133,14 @@ class HybridSkillPilot(nn.Module):
         # Rollouts only retain plain numbers, so inference mode can also skip
         # autograd's version-counter bookkeeping.
         with torch.inference_mode():
-            skill_dist, param_dist, value = self.distributions(obs)
-            skill_index = skill_dist.probs.argmax(-1) if deterministic else skill_dist.sample()
-            selected_params = self._selected_parameter_distribution(param_dist, skill_index)
-            raw = selected_params.mean if deterministic else selected_params.sample()
-            log_prob = self._action_log_prob(skill_dist, param_dist, skill_index, raw)
+            skill_index, raw, log_prob, value, valid = self._rollout_tensors(
+                obs, deterministic, defer_validation=device.type == "cuda",
+            )
         if device.type == "cuda":
             # One device-to-host transfer for the entire batch rather than four
             # small synchronous transfers at every rollout decision.
             indices, raw_cpu, log_prob_cpu, value_cpu = self._rollout_outputs_to_cpu(
-                skill_index, raw, log_prob, value
+                skill_index, raw, log_prob, value, valid=valid,
             )
         else:
             indices = skill_index.cpu().tolist()
@@ -162,10 +160,63 @@ class HybridSkillPilot(nn.Module):
             )
         )
 
+    def _rollout_tensors(self, observations, deterministic, *, defer_validation):
+        """Validate CUDA outputs with their existing transfer, without scalar reads.
+
+        Invalid distributions get safe sampling inputs so they cannot trigger a
+        CUDA device assertion. The original validity flag/log probabilities are
+        retained and rejected on the CPU before any decoded action is returned.
+        For valid inputs, probabilities, samples and RNG consumption are unchanged.
+        """
+        skill, parameters, value = self.distributions(
+            observations, validate_args=not defer_validation,
+        )
+        sampling_parameters, valid = parameters, None
+        if defer_validation:
+            probabilities = skill.probs
+            valid = (
+                torch.isfinite(torch.cat((
+                    probabilities.reshape(-1), parameters.loc.reshape(-1),
+                    parameters.scale.reshape(-1), value.reshape(-1),
+                ))).all()
+                & (parameters.scale > 0).all()
+            )
+            # Assign the cached probabilities directly: constructing another
+            # Categorical(probs=...) would renormalize valid probabilities.
+            skill.probs = torch.where(
+                valid, probabilities, torch.full_like(probabilities, 1 / len(self.skill_names)),
+            )
+            sampling_parameters = Normal(
+                torch.where(valid, parameters.loc, torch.zeros_like(parameters.loc)),
+                torch.where(valid, parameters.scale, torch.ones_like(parameters.scale)),
+                validate_args=False,
+            )
+        indices = skill.probs.argmax(-1) if deterministic else skill.sample()
+        selected = self._selected_parameter_distribution(sampling_parameters, indices)
+        raw = selected.mean if deterministic else selected.sample()
+        log_probs = self._action_log_prob(skill, parameters, indices, raw)
+        return indices, raw, log_probs, value, valid
+
     @staticmethod
-    def _rollout_outputs_to_cpu(indices, raw, log_probs, values):
+    def _checked_outputs_to_cpu(packed, valid):
+        """One transfer carries both action data and a device-side validity flag."""
+        rows, columns = packed.shape
+        if valid is not None:
+            transfer = torch.cat((packed.reshape(-1), valid.to(packed.dtype).reshape(1)))
+            host = transfer.cpu().numpy()
+            if not host[-1]:
+                raise ValueError("Nonfinite or invalid policy distribution")
+            packed = host[:-1].reshape(rows, columns)
+        else:
+            packed = packed.cpu().numpy()
+        if not np.isfinite(packed).all():
+            raise ValueError("Nonfinite policy outputs")
+        return packed
+
+    @staticmethod
+    def _rollout_outputs_to_cpu(indices, raw, log_probs, values, *, valid=None):
         packed = torch.cat((indices[:, None], raw, log_probs[:, None], values[:, None]), dim=1)
-        packed = packed.cpu().numpy()
+        packed = HybridSkillPilot._checked_outputs_to_cpu(packed, valid)
         return (packed[:, 0].astype(np.int64).tolist(), packed[:, 1:-2],
                 packed[:, -2].tolist(), packed[:, -1].tolist())
 
@@ -177,15 +228,19 @@ class HybridSkillPilot(nn.Module):
             hidden = self._encode(obs)
             # Match act_batch's normalized categorical probabilities, including
             # tie-breaking; no sampling consumes the training RNG state.
-            indices = Categorical(logits=self.skill_head(hidden)).probs.argmax(-1)
+            probabilities = Categorical(
+                logits=self.skill_head(hidden), validate_args=False,
+            ).probs
+            indices = probabilities.argmax(-1)
             means = self.parameter_mean(hidden)
-            if not torch.isfinite(means).all():
-                raise ValueError("Nonfinite deterministic policy parameters")
+            valid = torch.isfinite(torch.cat((probabilities.reshape(-1), means.reshape(-1)))).all()
             if self.skill_conditioned_parameters:
                 means = means.reshape(-1, len(self.skill_names), len(self.parameter_names))
                 gather = indices[:, None, None].expand(-1, 1, len(self.parameter_names))
                 means = means.gather(1, gather).squeeze(1)
-            packed = torch.cat((indices[:, None], means), dim=1).cpu().numpy()
+            packed = self._checked_outputs_to_cpu(
+                torch.cat((indices[:, None], means), dim=1), valid,
+            )
         return tuple((self.skill_names[int(row[0])], self.decode_parameters(int(row[0]), row[1:]))
                      for row in packed)
 

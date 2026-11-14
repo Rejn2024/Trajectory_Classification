@@ -33,6 +33,7 @@ class PilotTrainingConfig:
     evaluation_interval: int = 5
     simulator_workers: int = 0
     simulator_executor: str = "thread"
+    simulator_transport: str = "auto"
     epochs: int = 100
     simulation_dt_s: float = 0.1
     seed: int = 7
@@ -107,6 +108,8 @@ class PilotTrainingConfig:
             raise ValueError("simulator_workers must be non-negative")
         if self.simulator_executor not in ("thread", "process"):
             raise ValueError("simulator_executor must be 'thread' or 'process'")
+        if self.simulator_transport not in ("auto", "shared_memory", "pipe"):
+            raise ValueError("simulator_transport must be 'auto', 'shared_memory' or 'pipe'")
         if self.epochs < 1 or self.simulation_dt_s <= 0:
             raise ValueError("epochs and simulation_dt_s must be positive")
         if self.history_duration_s <= 0 or self.sample_interval_s <= 0:

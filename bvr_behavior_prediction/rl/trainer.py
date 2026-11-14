@@ -44,6 +44,8 @@ class PPOTrainer:
         self._simulator_pool = None
         self._training_active = False
         self._last_update_profile = {}
+        self._cuda_backward = None
+        self._cuda_backward_key = None
         self.score_only_evaluation = False
         # Reinitialize every pilot independently of the previous run's RNG state.
         random.seed(config.seed)
@@ -242,14 +244,18 @@ class PPOTrainer:
                 else ThreadSimulatorPool
             )
             pool = pool_type(
-                self.env_factory, min(self.config.resolved_simulator_workers, len(scenarios))
+                self.env_factory, min(self.config.resolved_simulator_workers, len(scenarios)),
+                **({"transport": self.config.simulator_transport}
+                   if self.config.simulator_executor == "process" else {}),
             )
             if self._training_active:
                 self._simulator_pool = pool
         failed = True
+        shared_observations = False
 
         try:
             observations = pool.reset(scenarios, seeds)
+            shared_observations = getattr(pool, "observation_transport", None) == "shared_memory"
             rollouts = ([Rollout([], [], [], [], [], [], []) for _ in scenarios]
                         if retain_rollouts else [None] * len(scenarios))
             totals = [0.0] * len(scenarios)
@@ -317,6 +323,7 @@ class PPOTrainer:
             "episodes": len(scenarios),
             "transitions": transitions,
             "policy_batches": policy_batches,
+            "simulator_shared_memory": int(shared_observations),
             "game_seconds": sum(info.get("elapsed_game_s", 0.0) for info in final_info),
             "policy_seconds": policy_seconds,
             "simulator_wall_seconds": simulator_wall_seconds,
@@ -444,19 +451,18 @@ class PPOTrainer:
         batch_tensors = (obs, skills, raw, old, adv, ret)
         graph_backward = None
         capture_seconds = 0.0
+        graph_cache_hit = False
         if (self.config.cuda_graph_updates and self.device.type == "cuda"
                 and n >= self.config.minibatch_size):
             valid = torch.stack([torch.isfinite(tensor).all() for tensor in batch_tensors]).all()
             valid = valid & ((skills >= 0) & (skills < len(self.pilot.skill_names))).all()
             if not valid.item():
                 raise ValueError("PPO rollout contains non-finite data or invalid skill indices")
-            capture_started = perf_counter()
-            graph_backward = CUDABatchBackward(
-                lambda batch: self._backward_minibatch(batch, capture=True),
-                self.pilot.parameters(),
+            graph_backward, capture_seconds, graph_cache_hit = self._get_cuda_backward(
                 tuple(tensor[:self.config.minibatch_size] for tensor in batch_tensors),
             )
-            capture_seconds = perf_counter() - capture_started
+        elif not self.config.cuda_graph_updates or self.device.type != "cuda":
+            self._release_cuda_backward()
         # Shuffle each tensor once per update epoch. Contiguous minibatch slices are
         # views; the previous advanced indexing performed five GPU gathers for every
         # minibatch. Keep losses on-device too, avoiding a device synchronization on
@@ -498,11 +504,54 @@ class PPOTrainer:
             "update_minibatches": len(losses),
             "cuda_graph_updates": int(graph_backward is not None),
             "cuda_graph_capture_seconds": capture_seconds,
+            "cuda_graph_cache_hit": int(graph_cache_hit),
             "update_passes_completed": update_pass,
             "kl_early_stopped": int(stopped_early),
             **diagnostics,
         }
         return mean_loss
+
+    def _cuda_graph_signature(self, batch):
+        def specification(tensor, storage=False):
+            shape = (tuple(tensor.shape), tuple(tensor.stride()), tensor.dtype, tensor.device)
+            return (id(tensor), tensor.data_ptr(), tensor.requires_grad, *shape) if storage else shape
+
+        scale = getattr(self.grad_scaler, "_scale", None)
+        return (
+            id(self.pilot),
+            tuple(specification(tensor) for tensor in batch),
+            tuple(specification(tensor, True) for tensor in self.pilot.parameters()),
+            tuple(specification(tensor, True) for tensor in self.pilot.buffers()),
+            tuple((id(module), module.training) for module in self.pilot.modules()),
+            tuple(layer.self_attn.num_heads for layer in self.pilot.encoder.layers),
+            self.pilot.selected_skill_parameters, self.pilot.skill_conditioned_parameters,
+            self.config.clip_ratio, self.config.value_coefficient, self.config.entropy_coefficient,
+            self.use_mixed_precision, id(self.grad_scaler),
+            scale.data_ptr() if scale is not None else None,
+            getattr(self._backward_minibatch, "__func__", self._backward_minibatch),
+        )
+
+    def _get_cuda_backward(self, batch):
+        key = self._cuda_graph_signature(batch)
+        if self._cuda_backward is not None and self._cuda_backward_key == key:
+            return self._cuda_backward, 0.0, True
+        self._release_cuda_backward()
+        started = perf_counter()
+        graph = CUDABatchBackward(
+            lambda values: self._backward_minibatch(values, capture=True),
+            self.pilot.parameters(), batch,
+        )
+        self._cuda_backward = graph
+        # Warmup initializes GradScaler's device scale lazily; capture its pointer
+        # after construction so the next epoch recognizes the same scale storage.
+        self._cuda_backward_key = self._cuda_graph_signature(batch)
+        return graph, perf_counter() - started, False
+
+    def _release_cuda_backward(self):
+        graph, self._cuda_backward = self._cuda_backward, None
+        self._cuda_backward_key = None
+        if graph is not None:
+            graph.close()
 
     def _should_evaluate(self, epoch):
         """Evaluate at useful boundaries without doubling every training epoch."""
@@ -535,6 +584,7 @@ class PPOTrainer:
             self.close()
 
     def close(self):
+        self._release_cuda_backward()
         pool, self._simulator_pool = self._simulator_pool, None
         if pool is not None:
             pool.close()

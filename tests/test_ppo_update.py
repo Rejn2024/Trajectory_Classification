@@ -148,7 +148,9 @@ def test_fresh_training_conditions_are_matched_by_epoch_and_leave_validation_fix
         trainer = PPOTrainer(lambda *_: None, 1, config, "cpu")
         validation = list(trainer.evaluation_scenarios)
         calls = []
-        trainer._episodes = lambda scenarios, seeds: calls.append((list(scenarios), tuple(seeds))) or []
+        trainer._episodes = lambda scenarios, seeds, calls=calls: (
+            calls.append((list(scenarios), tuple(seeds))) or []
+        )
         for _ in range(3):
             trainer._training_episodes()
             assert trainer.evaluation_scenarios == validation
@@ -187,7 +189,7 @@ def test_graphed_ppo_preserves_updates_scaler_and_remainder_batches(
         initial = {key: value.clone() for key, value in eager.pilot.state_dict().items()}
         # Exercise partial batches, exact multiples, below-threshold batches, then
         # return to capture, all with persistent Adam/scaler state between updates.
-        for count in (19, 16, 5, 21):
+        for index, count in enumerate((19, 16, 5, 21)):
             rollout = _rollout(eager, count)
             torch.manual_seed(313)
             expected_loss = eager._update([rollout])
@@ -202,10 +204,19 @@ def test_graphed_ppo_preserves_updates_scaler_and_remainder_batches(
                     torch.testing.assert_close(value, right[key], rtol=0, atol=0)
             profile = graphed._last_update_profile
             assert profile["cuda_graph_updates"] == int(device == "cuda" and count >= 8)
+            assert profile["cuda_graph_cache_hit"] == int(device == "cuda" and index in (1, 3))
+            if device == "cuda" and index in (1, 3):
+                assert profile["cuda_graph_capture_seconds"] == 0
             assert profile["update_minibatches"] == 3 * ((count + 7) // 8)
+            if index == 0 and device == "cuda" and mixed_precision:
+                eager.grad_scaler.update(new_scale=1024.0)
+                graphed.grad_scaler.update(new_scale=1024.0)
         assert any(not torch.equal(initial[key], value)
                    for key, value in eager.pilot.state_dict().items())
     finally:
+        if "eager" in locals():
+            eager.close()
+            graphed.close()
         torch.set_num_threads(old_threads)
 
 

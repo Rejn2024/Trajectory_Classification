@@ -2,8 +2,12 @@
 
 import os
 import traceback
+import warnings
 from concurrent.futures import ThreadPoolExecutor
+from multiprocessing.shared_memory import SharedMemory
 from time import perf_counter, process_time, thread_time
+
+import numpy as np
 
 
 class SimulatorWorkerError(RuntimeError):
@@ -68,6 +72,7 @@ def _simulator_worker(connection, factory_bytes):
     import cloudpickle
 
     environments = {}
+    observation_memory = observation_array = None
     try:
         factory = cloudpickle.loads(factory_bytes)
         connection.send((True, os.getpid()))
@@ -81,11 +86,30 @@ def _simulator_worker(connection, factory_bytes):
                     observations.append((index, environments[index].reset(seed)))
                 connection.send((True, observations))
             elif operation == "step":
-                results = [
-                    (index, _step(environments[index], name, parameters, process_time))
-                    for index, name, parameters in payload
-                ]
+                results = []
+                for index, name, parameters in payload:
+                    step, wall, cpu = _step(environments[index], name, parameters, process_time)
+                    if observation_array is not None:
+                        observation = np.asarray(step[0])
+                        if (observation.shape != observation_array.shape[1:]
+                                or observation.dtype != observation_array.dtype):
+                            raise ValueError("Shared observation shape/dtype changed during a flight")
+                        np.copyto(observation_array[index], observation, casting="no")
+                        step = (None, *step[1:])
+                    results.append((index, (step, wall, cpu)))
                 connection.send((True, results))
+            elif operation == "observations":
+                observation_array = None
+                if observation_memory is not None:
+                    observation_memory.close()
+                    observation_memory = None
+                if payload is not None:
+                    name, shape, dtype = payload
+                    observation_memory = SharedMemory(name=name)
+                    observation_array = np.ndarray(
+                        shape, dtype=np.dtype(dtype), buffer=observation_memory.buf,
+                    )
+                connection.send((True, None))
             elif operation in ("release", "close"):
                 _close_environments(environments)
                 connection.send((True, None))
@@ -104,7 +128,12 @@ def _simulator_worker(connection, factory_bytes):
         try:
             _close_environments(environments)
         finally:
-            connection.close()
+            observation_array = None
+            try:
+                if observation_memory is not None:
+                    observation_memory.close()
+            finally:
+                connection.close()
 
 
 class ProcessSimulatorPool:
@@ -112,16 +141,23 @@ class ProcessSimulatorPool:
 
     Processes live across a pilot's training epochs; environments are reconstructed
     for each batch, matching the original collector's reset and cleanup behaviour.
-    Only observations/actions cross pipes. Notebook closures are serialized once.
+    Actions and step metadata cross pipes. Numeric observations use a shared
+    buffer when available; the parent copies snapshots before the next command.
+    Notebook closures are serialized once. Only the parent unlinks shared memory.
     """
 
-    def __init__(self, factory, workers, timeout=120):
+    def __init__(self, factory, workers, timeout=120, *, transport="auto"):
         import cloudpickle
         from loky.backend.context import get_context
 
         self.workers = []
         self.timeout = timeout
         self.closed = False
+        if transport not in ("auto", "shared_memory", "pipe"):
+            raise ValueError("Unknown simulator observation transport")
+        self.transport = transport
+        self._observation_memory = self._observation_array = None
+        self._shared_memory_failed = False
         factory_bytes = cloudpickle.dumps(factory)
         context = get_context("loky")
         worker_env = {
@@ -200,7 +236,71 @@ class ProcessSimulatorPool:
             groups[index % len(groups)].append((index, scenario, seed))
         batches = self._request("reset", list(zip(self.workers, groups)))
         observations = dict(item for batch in batches for item in batch)
-        return [observations[index] for index in range(len(scenarios))]
+        ordered = [observations[index] for index in range(len(scenarios))]
+        try:
+            self._configure_observations(ordered)
+        except BaseException:
+            self.close(force=True)
+            raise
+        return ordered
+
+    @property
+    def observation_transport(self):
+        return "shared_memory" if self._observation_memory is not None else "pipe"
+
+    @property
+    def shared_memory_name(self):
+        return self._observation_memory.name if self._observation_memory is not None else None
+
+    def _dispose_observations(self):
+        self._observation_array = None
+        memory, self._observation_memory = self._observation_memory, None
+        if memory is not None:
+            try:
+                memory.close()
+            finally:
+                try:
+                    memory.unlink()
+                except FileNotFoundError:
+                    pass
+
+    def _configure_observations(self, observations):
+        supported = bool(observations) and all(
+            isinstance(obs, np.ndarray) and obs.dtype.kind in "biuf" and obs.size > 0 and obs.ndim > 0
+            and obs.shape == observations[0].shape and obs.dtype == observations[0].dtype
+            for obs in observations
+        )
+        enabled = self.transport != "pipe" and not self._shared_memory_failed and supported
+        if not supported and self.transport == "shared_memory":
+            raise ValueError("Shared observations require matching nonempty numeric array histories")
+        shape = (len(observations), *observations[0].shape) if enabled else None
+        dtype = observations[0].dtype if enabled else None
+        if self._observation_array is not None and (
+            not enabled or shape != self._observation_array.shape
+            or dtype != self._observation_array.dtype
+        ):
+            self._request("observations", [(worker, None) for worker in self.workers])
+            self._dispose_observations()
+        if not enabled:
+            return
+        if self._observation_memory is None:
+            try:
+                self._observation_memory = SharedMemory(
+                    create=True, size=int(np.prod(shape)) * dtype.itemsize,
+                )
+            except OSError:
+                if self.transport == "shared_memory":
+                    raise
+                self._shared_memory_failed = True
+                warnings.warn("Shared observation memory unavailable; using pipes", RuntimeWarning)
+                return
+            self._observation_array = np.ndarray(
+                shape, dtype=dtype, buffer=self._observation_memory.buf,
+            )
+            specification = (self._observation_memory.name, shape, dtype.str)
+            self._request("observations", [(worker, specification) for worker in self.workers])
+        for index, observation in enumerate(observations):
+            np.copyto(self._observation_array[index], observation, casting="no")
 
     def step(self, actions):
         groups = [[] for _ in self.workers]
@@ -210,7 +310,14 @@ class ProcessSimulatorPool:
             (worker, group) for worker, group in zip(self.workers, groups) if group
         ])
         results = dict(item for batch in batches for item in batch)
-        return [results[action[0]] for action in actions]
+        ordered = []
+        for index, *_ in actions:
+            step, wall, cpu = results[index]
+            if self._observation_array is not None:
+                # Rollouts must never retain a view into mutable shared storage.
+                step = (self._observation_array[index].copy(), *step[1:])
+            ordered.append((step, wall, cpu))
+        return ordered
 
     def release(self):
         if not self.closed:
@@ -226,12 +333,15 @@ class ProcessSimulatorPool:
                     connection.send(("close", None))
             except (BrokenPipeError, EOFError, OSError):
                 force = True
-        for process, connection in self.workers:
-            try:
-                if not force:
-                    process.join(timeout=2)
-                if process.is_alive():
-                    process.terminate()
-                    process.join(timeout=2)
-            finally:
-                connection.close()
+        try:
+            for process, connection in self.workers:
+                try:
+                    if not force:
+                        process.join(timeout=2)
+                    if process.is_alive():
+                        process.terminate()
+                        process.join(timeout=2)
+                finally:
+                    connection.close()
+        finally:
+            self._dispose_observations()
