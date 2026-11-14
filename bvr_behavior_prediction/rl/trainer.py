@@ -44,6 +44,7 @@ class PPOTrainer:
         self._simulator_pool = None
         self._training_active = False
         self._last_update_profile = {}
+        self.score_only_evaluation = False
         # Reinitialize every pilot independently of the previous run's RNG state.
         random.seed(config.seed)
         np.random.seed(config.seed)
@@ -123,9 +124,10 @@ class PPOTrainer:
 
     def _evaluate(self):
         """Evaluate deterministically on the fixed scenario and episode seeds."""
-        return np.asarray([item[1] for item in self.evaluate_episodes()], dtype=np.float64)
+        options = {"retain_rollouts": False} if getattr(self, "score_only_evaluation", False) else {}
+        return np.asarray([item[1] for item in self.evaluate_episodes(**options)], dtype=np.float64)
 
-    def evaluate_episodes(self, reward_definition=None):
+    def evaluate_episodes(self, reward_definition=None, *, retain_rollouts=True):
         """Return deterministic rollouts, optionally scored by a common benchmark."""
         was_training = self.pilot.training
         self.pilot.eval()
@@ -133,6 +135,8 @@ class PPOTrainer:
             options = {"deterministic": True}
             if reward_definition is not None:
                 options["reward_definition"] = reward_definition
+            if not retain_rollouts:
+                options["retain_rollouts"] = False
             return self._episodes(
                 self.evaluation_scenarios,
                 tuple(
@@ -168,7 +172,8 @@ class PPOTrainer:
         finally:
             self.pilot.train(was_training)
 
-    def _episodes(self, scenarios, seeds, deterministic=False, reward_definition=None):
+    def _episodes(self, scenarios, seeds, deterministic=False, reward_definition=None,
+                  *, retain_rollouts=True):
         """Replay a lost process batch before any PPO update, at most twice.
 
         Discard ALL partial trajectories and restore the parent's RNGs. Reusing
@@ -176,15 +181,16 @@ class PPOTrainer:
         mixing samples from different policy versions. Python simulator errors
         and user interrupts propagate immediately; only transport failures retry.
         """
+        options = {} if retain_rollouts else {"retain_rollouts": False}
         if self.config.simulator_executor != "process":
-            return self._episodes_once(scenarios, seeds, deterministic, reward_definition)
+            return self._episodes_once(scenarios, seeds, deterministic, reward_definition, **options)
         rng = (random.getstate(), np.random.get_state(), torch.get_rng_state(),
                torch.cuda.get_rng_state_all() if self.device.type == "cuda" else None)
         retry_seconds = 0.0
         for attempt in range(3):
             started = perf_counter()
             try:
-                episodes = self._episodes_once(scenarios, seeds, deterministic, reward_definition)
+                episodes = self._episodes_once(scenarios, seeds, deterministic, reward_definition, **options)
             except SimulatorWorkerError as error:
                 pool, self._simulator_pool = self._simulator_pool, None
                 if pool is not None:
@@ -215,8 +221,11 @@ class PPOTrainer:
                 )
                 return episodes
 
-    def _episodes_once(self, scenarios, seeds, deterministic=False, reward_definition=None):
+    def _episodes_once(self, scenarios, seeds, deterministic=False, reward_definition=None,
+                       *, retain_rollouts=True):
         """Run independent simulators concurrently and batch policy work on the GPU."""
+        if not retain_rollouts and not deterministic:
+            raise ValueError("Score-only collection requires deterministic actions")
         collection_started = perf_counter()
         policy_seconds = 0.0
         simulator_wall_seconds = 0.0
@@ -239,7 +248,8 @@ class PPOTrainer:
 
         try:
             observations = pool.reset(scenarios, seeds)
-            rollouts = [Rollout([], [], [], [], [], [], []) for _ in scenarios]
+            rollouts = ([Rollout([], [], [], [], [], [], []) for _ in scenarios]
+                        if retain_rollouts else [None] * len(scenarios))
             totals = [0.0] * len(scenarios)
             component_totals = [{} for _ in scenarios]
             final_info = [{} for _ in scenarios]
@@ -250,10 +260,9 @@ class PPOTrainer:
                 if not active:
                     break
                 policy_started = perf_counter()
-                actions = self.pilot.act_batch(
-                    np.stack([observations[index] for index in active]),
-                    deterministic=deterministic,
-                )
+                inputs = np.stack([observations[index] for index in active])
+                actions = (self.pilot.act_batch(inputs, deterministic=deterministic)
+                           if retain_rollouts else self.pilot.act_deterministic_batch(inputs))
                 policy_seconds += perf_counter() - policy_started
                 simulator_started = perf_counter()
                 timed_steps = pool.step([
@@ -265,7 +274,6 @@ class PPOTrainer:
                 next_active = []
                 for index, action, timed_step_result in zip(active, actions, timed_steps):
                     step, _, _ = timed_step_result
-                    name, _, logp, value, raw = action
                     next_obs, terminated, truncated, info = step
                     info = {**info, "episode_ended": bool(terminated or truncated)}
                     reward, components = rewards[index](info)
@@ -273,14 +281,16 @@ class PPOTrainer:
                         component_totals[index][key] = (
                             component_totals[index].get(key, 0.0) + float(component_value)
                         )
-                    rollout = rollouts[index]
-                    rollout.observations.append(observations[index])
-                    rollout.skills.append(self.pilot._skill_indices[name])
-                    rollout.parameters.append(raw)
-                    rollout.log_probs.append(logp)
-                    rollout.values.append(value)
-                    rollout.rewards.append(reward)
-                    rollout.dones.append(terminated or truncated)
+                    if retain_rollouts:
+                        name, _, logp, value, raw = action
+                        rollout = rollouts[index]
+                        rollout.observations.append(observations[index])
+                        rollout.skills.append(self.pilot._skill_indices[name])
+                        rollout.parameters.append(raw)
+                        rollout.log_probs.append(logp)
+                        rollout.values.append(value)
+                        rollout.rewards.append(reward)
+                        rollout.dones.append(terminated or truncated)
                     totals[index] += reward
                     observations[index] = next_obs
                     final_info[index] = {

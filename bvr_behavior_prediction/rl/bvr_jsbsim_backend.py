@@ -8,6 +8,8 @@ import numpy as np
 from bvr_sim.agents.skill_manager import SkillManager
 from torch._C import NoneType
 
+from .config import MAX_EPISODE_DURATION_S
+
 
 class BVRJSBSimBackend:
     """Adapt the Python BVR environment to :class:`BluePilotEnvironment`.
@@ -33,11 +35,16 @@ class BVRJSBSimBackend:
     )
 
     def __init__(self, scenario: dict, recording_path=None, env_factory=None, log_dir=None,
-                 opponent_type="simple", include_hostile_missiles=False):
+                 opponent_type="simple", include_hostile_missiles=False,
+                 episode_duration_s=120.0):
         if opponent_type not in ("simple", "tactical"):
             raise ValueError("opponent_type must be simple or tactical")
         if type(include_hostile_missiles) is not bool:
             raise ValueError("include_hostile_missiles must be a boolean")
+        if (not np.isfinite(episode_duration_s) or not 0 < episode_duration_s <= MAX_EPISODE_DURATION_S
+                or not np.isclose(episode_duration_s / .1, round(episode_duration_s / .1))):
+            raise ValueError("episode_duration_s must be a multiple of 0.1 in (0, 300]")
+        self.episode_duration_s = float(episode_duration_s)
         self.include_hostile_missiles = include_hostile_missiles
         self.observation_size = (
             self.HOSTILE_MISSILE_OBSERVATION_SIZE if include_hostile_missiles
@@ -67,12 +74,12 @@ class BVRJSBSimBackend:
             self.env.enable_render(str(self.recording_path))
 
     def _sim_config(self) -> dict:
-        duration = 120.0
+        duration = self.episode_duration_s
         dt = 0.1
         altitudes = (self.scenario["blue_altitude_m"], self.scenario["red_altitude_m"])
         return {
             "dt": dt,
-            "max_steps": int(duration / dt),
+            "max_steps": round(duration / dt),
             "red_fighters": {
                 self.CONTROLLED_ID: {"model": "F16", "record": False},
             },

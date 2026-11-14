@@ -123,6 +123,17 @@ def test_tactical_selection_reaches_simulator_and_episode_metadata(tmp_path):
     assert backend.reset(7)[1]["red_policy"] == "tactical"
     assert _step(backend)["red_policy"] == "tactical"
     backend.close()
+
+
+@pytest.mark.parametrize("opponent", ["simple", "tactical"])
+def test_three_hundred_second_limit_reaches_native_simulator(tmp_path, opponent):
+    backend = BVRJSBSimBackend(
+        {"range_m": 30_000, "blue_altitude_m": 6000, "red_altitude_m": 7000},
+        env_factory=_Environment, log_dir=tmp_path, opponent_type=opponent,
+        episode_duration_s=300,
+    )
+    assert backend.env.config["max_steps"] == 3000
+    backend.close()
     with pytest.raises(ValueError, match="opponent_type"):
         BVRJSBSimBackend({}, opponent_type="misspelled")
 

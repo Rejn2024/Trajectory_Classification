@@ -92,7 +92,7 @@ class HybridSkillPilot(nn.Module):
             self.parameter_mean.out_features *= count
             self.parameter_log_std = nn.Parameter(self.parameter_log_std.detach().repeat(count, 1))
 
-    def distributions(self, observations, *, validate_args=True):
+    def _encode(self, observations):
         if observations.ndim == 2:
             observations = observations.unsqueeze(1)
         if observations.ndim != 3:
@@ -108,6 +108,10 @@ class HybridSkillPilot(nn.Module):
         tokens = tokens + self.position_embedding[:, -tokens.shape[1] :]
         # The newest token attends to the complete chronological energy/flight history.
         hidden = self.encoder_norm(self.encoder(tokens)[:, -1])
+        return hidden
+
+    def distributions(self, observations, *, validate_args=True):
+        hidden = self._encode(observations)
         skill = Categorical(logits=self.skill_head(hidden), validate_args=validate_args)
         mean = self.parameter_mean(hidden)
         if self.skill_conditioned_parameters:
@@ -134,10 +138,17 @@ class HybridSkillPilot(nn.Module):
             selected_params = self._selected_parameter_distribution(param_dist, skill_index)
             raw = selected_params.mean if deterministic else selected_params.sample()
             log_prob = self._action_log_prob(skill_dist, param_dist, skill_index, raw)
-        indices = skill_index.cpu().tolist()
-        raw_cpu = raw.cpu().numpy()
-        log_prob_cpu = log_prob.cpu().tolist()
-        value_cpu = value.cpu().tolist()
+        if device.type == "cuda":
+            # One device-to-host transfer for the entire batch rather than four
+            # small synchronous transfers at every rollout decision.
+            indices, raw_cpu, log_prob_cpu, value_cpu = self._rollout_outputs_to_cpu(
+                skill_index, raw, log_prob, value
+            )
+        else:
+            indices = skill_index.cpu().tolist()
+            raw_cpu = raw.cpu().numpy()
+            log_prob_cpu = log_prob.cpu().tolist()
+            value_cpu = value.cpu().tolist()
         return tuple(
             (
                 self.skill_names[index],
@@ -150,6 +161,33 @@ class HybridSkillPilot(nn.Module):
                 indices, raw_cpu, log_prob_cpu, value_cpu
             )
         )
+
+    @staticmethod
+    def _rollout_outputs_to_cpu(indices, raw, log_probs, values):
+        packed = torch.cat((indices[:, None], raw, log_probs[:, None], values[:, None]), dim=1)
+        packed = packed.cpu().numpy()
+        return (packed[:, 0].astype(np.int64).tolist(), packed[:, 1:-2],
+                packed[:, -2].tolist(), packed[:, -1].tolist())
+
+    def act_deterministic_batch(self, observations):
+        """Exact greedy actions for scoring, without critic/log-probability work."""
+        device = next(self.parameters()).device
+        obs = torch.as_tensor(observations, dtype=torch.float32, device=device)
+        with torch.inference_mode():
+            hidden = self._encode(obs)
+            # Match act_batch's normalized categorical probabilities, including
+            # tie-breaking; no sampling consumes the training RNG state.
+            indices = Categorical(logits=self.skill_head(hidden)).probs.argmax(-1)
+            means = self.parameter_mean(hidden)
+            if not torch.isfinite(means).all():
+                raise ValueError("Nonfinite deterministic policy parameters")
+            if self.skill_conditioned_parameters:
+                means = means.reshape(-1, len(self.skill_names), len(self.parameter_names))
+                gather = indices[:, None, None].expand(-1, 1, len(self.parameter_names))
+                means = means.gather(1, gather).squeeze(1)
+            packed = torch.cat((indices[:, None], means), dim=1).cpu().numpy()
+        return tuple((self.skill_names[int(row[0])], self.decode_parameters(int(row[0]), row[1:]))
+                     for row in packed)
 
     def decode_parameters(self, skill_index: int, raw_values) -> dict:
         schemas = self._skill_contracts[skill_index]

@@ -183,7 +183,7 @@ def test_interrupted_epoch_restores_optimizer_rng_selection_and_metrics(tmp_path
         episode_duration_s=2,
         scenarios_per_epoch=3,
         evaluation_scenarios_per_epoch=3,
-        evaluation_interval=3,
+        evaluation_interval=1,
         resample_training_scenarios=True,
         update_epochs=1,
         minibatch_size=4,
@@ -246,7 +246,7 @@ def test_interrupted_epoch_restores_optimizer_rng_selection_and_metrics(tmp_path
         for line in (interrupted / "training_metrics.jsonl").read_text().splitlines()
     ]
     assert [row["epoch"] for row in rows] == [1, 2, 3, 4]
-    assert [row["evaluation_performed"] for row in rows] == [1, 0, 1, 1]
+    assert [row["evaluation_performed"] for row in rows] == [1, 1, 1, 1]
 
 
 def test_stage_seeds_and_varied_objectives_survive_both_transitions(tmp_path):
@@ -269,6 +269,8 @@ def test_stage_seeds_and_varied_objectives_survive_both_transitions(tmp_path):
     assert continued.seed == config.seed + 1_000_000
     assert tactical.seed == config.seed + 2_000_000
     assert continued.epochs == 200 and tactical.epochs == 300
+    assert continued.episode_duration_s == tactical.episode_duration_s == 300
+    assert continued.evaluation_interval == tactical.evaluation_interval == 1
     for key in (
         "hidden_size",
         "transformer_heads",
@@ -280,6 +282,119 @@ def test_stage_seeds_and_varied_objectives_survive_both_transitions(tmp_path):
         "update_epochs",
     ):
         assert getattr(continued, key) == getattr(tactical, key) == getattr(config, key)
+
+
+@pytest.mark.parametrize("opponent", ["simple", "tactical"])
+def test_every_epoch_validates_and_only_improvements_write_selected_weights(
+    tmp_path, monkeypatch, opponent
+):
+    monkeypatch.setattr(weekend, "make_environment", lambda *_: lambda *_: ToyEnvironment())
+    source, output = tmp_path / "source", tmp_path / "trained"
+    config = PilotTrainingConfig(
+        hidden_size=8,
+        transformer_heads=2,
+        transformer_layers=1,
+        epochs=4,
+        episode_duration_s=2,
+        scenarios_per_epoch=3,
+        evaluation_scenarios_per_epoch=3,
+        update_epochs=1,
+        evaluation_interval=1,
+        minibatch_size=4,
+        simulator_workers=1,
+        simulator_executor="thread",
+        output_dir=source,
+    )
+    reward = hybrid_dogfight_reward_definition()
+    trainer = weekend.PPOTrainer(lambda *_: ToyEnvironment(), 91, config, "cpu", reward)
+    weekend.write(
+        source / "config.json",
+        {
+            "training": config.as_dict(),
+            "observation_size": 91,
+            "reward": reward.as_dict(),
+            "skill_catalogue": trainer.pilot.manager.get_catalogue(),
+            "skill_names": trainer.pilot.skill_names,
+            "parameter_names": trainer.pilot.parameter_names,
+        },
+    )
+    torch.save(trainer.pilot.state_dict(), source / "best_model.pt")
+    weekend.write(
+        source / "manifest.json", {"checkpoint_sha256": weekend.sha256(source / "best_model.pt")}
+    )
+    trainer.close()
+    scores = iter([10.0, 11.0, 11.0, 9.0, 12.0])  # Initialization, then every epoch.
+    monkeypatch.setattr(weekend.PPOTrainer, "_evaluate", lambda _: np.repeat(next(scores), 3))
+    writes, epochs = [], []
+    original = weekend.save_best_weights
+
+    def save_best(trainer):
+        writes.append(trainer.weekend_best_epoch)
+        original(trainer)
+
+    def progress(phase, epoch, metrics):
+        if phase == "epoch complete":
+            epochs.append((epoch, weekend.sha256(output / "best_model.pt")))
+
+    monkeypatch.setattr(weekend, "save_best_weights", save_best)
+    weekend.train_one(source, output, replace(config, output_dir=output), opponent, "cpu", progress)
+    assert writes == [1, 4]
+    assert epochs[0][1] == epochs[1][1] == epochs[2][1] != epochs[3][1]
+    state = torch.load(output / "resume.pt", weights_only=False)
+    assert state["epoch"] == state["best_epoch"] == 4
+    assert [row["evaluation_performed"] for row in state["metrics"]] == [1] * 4
+    assert [row["best_model_improved"] for row in state["metrics"]] == [1, 0, 0, 1]
+
+
+@pytest.mark.parametrize("conditioned", [False, True])
+def test_score_only_actions_and_returns_match_full_validation_without_critic(tmp_path, conditioned):
+    config = PilotTrainingConfig(
+        hidden_size=8,
+        transformer_heads=2,
+        transformer_layers=1,
+        episode_duration_s=2,
+        scenarios_per_epoch=3,
+        evaluation_scenarios_per_epoch=3,
+        simulator_workers=1,
+        simulator_executor="thread",
+        skill_conditioned_parameters=conditioned,
+        output_dir=tmp_path,
+    )
+    trainer = weekend.PPOTrainer(
+        lambda *_: ToyEnvironment(), 91, config, "cpu", hybrid_dogfight_reward_definition()
+    )
+    trainer._training_active = True
+    try:
+        expected = trainer.evaluate_episodes()
+        x = np.random.default_rng(29).normal(0.0, 0.2, (5, 20, 91)).astype(np.float32)
+        trainer.pilot.eval()
+        expected_actions = [(a[0], a[1]) for a in trainer.pilot.act_batch(x, deterministic=True)]
+        rng = torch.get_rng_state()
+
+        def unused_critic(*_):
+            raise AssertionError("score-only validation evaluated the critic")
+
+        trainer.pilot.value_head.register_forward_pre_hook(unused_critic)
+        actual_actions = trainer.pilot.act_deterministic_batch(x)
+        assert list(actual_actions) == expected_actions
+        actual = trainer.evaluate_episodes(retain_rollouts=False)
+        assert all(row[0] is None for row in actual)
+        assert [row[1:] for row in actual] == [row[1:] for row in expected]
+        assert torch.equal(rng, torch.get_rng_state())
+    finally:
+        trainer.close()
+
+
+def test_combined_rollout_transfer_preserves_all_action_fields():
+    indices = torch.tensor([0, 1, 0])
+    raw = torch.arange(9, dtype=torch.float32).reshape(3, 3) * 0.123
+    log_probs = torch.tensor([-1.2, -0.3, -4.5])
+    values = torch.tensor([17.1, -34.0, 0.123])
+    got = HybridSkillPilot._rollout_outputs_to_cpu(indices, raw, log_probs, values)
+    assert got[0] == indices.tolist()
+    np.testing.assert_array_equal(got[1], raw.numpy())
+    assert got[2] == log_probs.tolist()
+    assert got[3] == values.tolist()
 
 
 def test_campaign_lock_recovers_after_process_is_killed(tmp_path):

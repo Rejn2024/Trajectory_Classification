@@ -18,7 +18,8 @@ def test_config_enforces_episode_and_scenario_requirements():
     assert config.evaluation_interval == 5
     assert 1 <= config.resolved_simulator_workers <= 10
     with pytest.raises(ValueError):
-        PilotTrainingConfig(episode_duration_s=121)
+        PilotTrainingConfig(episode_duration_s=301)
+    assert PilotTrainingConfig(episode_duration_s=300).decisions_per_episode == 300
     with pytest.raises(ValueError):
         PilotTrainingConfig(scenarios_per_epoch=2)
     with pytest.raises(ValueError):

@@ -13,6 +13,11 @@ runs the full sequence through
 6. Freeze the exact adapted checkpoints, source and simulator assets; choose an
    inference backend; collect **10,000 NN-versus-NN flights** and fully verify them.
 
+Both training stages and their validation flights now run for **up to 300 in-game
+seconds**, retaining earlier simulator termination on defeat. Validation runs
+**after every epoch** against the corresponding opponent, using the fixed stage
+validation scenarios. Improved selected weights are saved after each improvement.
+
 Install the repository's `ml,video` extras in the selected notebook kernel before
 Run All. The notebook sets `BVR_WEEKEND_SOURCE` to
 `<checkout>/artifacts/rl_pilot_simplified/varied_transformers/20261112T232045_249258Z`,
@@ -26,7 +31,10 @@ the saved notebook results do not include the weight files. No old 51-input
 checkpoints or freshly initialized pilots are substituted for missing weights.
 
 The default campaign directory is
-`artifacts/rl_pilot_simplified/varied_weekend_v1/`. The default corpus directory is
+`artifacts/rl_pilot_simplified/varied_weekend_v2/`. This separates the new duration
+and validation schedule from earlier campaigns. Use a fresh JOB/OUTPUT for this
+version; 120-second validation scores must not select 300-second checkpoints.
+The default corpus directory is
 `shared/corpora/nn-duels-varied-v1/<job-directory-name>/`. Use `BVR_WEEKEND_JOB` and
 `BVR_WEEKEND_OUTPUT` to choose other locations. Notebook 31 does not commit or push
 data. Back up these directories using your normal storage workflow.
@@ -40,6 +48,13 @@ The existing `PPOTrainer._update` implements the unchanged notebook-30 objective
 `policy_loss + value_coefficient * value_loss - entropy_coefficient * entropy`.
 The roster is never resampled. The notebook displays the effective per-pilot
 architecture, coefficients and source scenario budgets before training.
+
+The continuation explicitly sets `episode_duration_s=300` and
+`evaluation_interval=1`; `BVR_WEEKEND_EPISODE_SECONDS` supports short installation
+checks. The simulator's own maximum step count receives the same duration, so
+raising the wrapper limit cannot leave an unnoticed 120-second native cutoff.
+Source reward parameters remain unchanged, including the reward recipe's saved
+threat-exposure normalization time (120 seconds for the recorded source batch).
 
 Each stage starts from the previous stage's validation-selected policy **and
 critic**, using fresh Adam because notebook 30 saved inference weights. This
@@ -63,8 +78,23 @@ losses have different meanings between pilots with different objectives.
 ## Unattended operation and restart
 
 Keep the machine awake. Run All uses a child process, records full logs under
-`JOB/logs/`, and reports progress every 30 seconds without retaining thousands of
-epoch messages in the notebook. CPU simulator processes remain warm across
+`JOB/logs/`, and displays tqdm-style notebook bars for the current pilot, overall
+training epochs and final NN collection. The bars refresh every two seconds and
+show elapsed time, rate, current phase, loss/return and ETA forecasts. They count
+committed epochs and resume at saved counts. `JOB/training_progress.json` supplies
+the live phase and measurements; `status.json` identifies the overall stage.
+
+Pilot forecasts use the most recent five completed epoch timings. Overall
+training forecasts use observed averages for each stage; an unmeasured tactical
+stage initially uses the simple-stage average. The first epoch reports
+"estimating" until measurements exist, and an expired forecast is labelled
+"re-estimating". These are approximate training-computation forecasts, excluding
+setup, assessments and final collection; architecture differences, checkpoint I/O
+and variable flight lengths can change actual wall time. Collection has its own
+ETA based on measured flights/hour. Widget support comes from the `ipywidgets`
+video extra, with tqdm's standard text fallback where needed.
+
+CPU simulator processes remain warm across
 epochs; policy inference and PPO use CUDA when available. The worker default is
 80% of logical CPUs, capped at 32, with configurable Torch CPU threads. These are
 concurrency limits, not reserved CPU capacity.
@@ -74,7 +104,21 @@ gradient scaler, Python/NumPy/Torch/CUDA RNGs, training-scenario schedule positi
 validation scores and metrics. An interruption restores this state and repairs
 derived metrics/selected-weight files. It does not count a partial epoch as
 complete. The new runner records JSONL metrics locally rather than starting
-MLflow runs. `best_model.pt` remains separate from the current training state.
+MLflow runs. `best_model.pt` remains separate from the current training state and
+is rewritten on validation improvement, plus recovery if a crash left it stale.
+`best_epoch` and `best_model_improved` identify selection events in the JSONL
+metrics; `evaluation_performed` is one for every epoch. Initialization still
+preserves `initial_model.pt` and evaluates it as a selection candidate.
+
+Score-only validation uses the exact deterministic actor choices but skips
+critic values, Gaussian log probabilities and stored training trajectories.
+Training histories are released after PPO, before validation. CUDA training
+rollout outputs use one combined device-to-host transfer instead of four per
+decision. The existing batched policy, fused CUDA Adam, mixed precision and CUDA
+graph update settings remain available. Epoch/scenario counts, PPO update passes,
+minibatch size and loss/reward coefficients are not reduced by these changes.
+`rollout_seconds`, `update_seconds`, `evaluation_seconds` and the recorded training
+collection profile expose the remaining costs.
 
 Completed pilots and assessments are reused. Each completed flight writes
 checksummed files before its completion marker. Transport failures retry the
@@ -153,17 +197,35 @@ a weekend depending on hardware; the saved epoch timings show actual throughput.
 
 ## Validation
 
-The focused backend, collection, inference, runtime, speed-control and continuation
-suite passed **103 tests**, with **one CUDA test skipped** on the CPU environment.
+The focused backend, PPO, process-worker, collection, inference, runtime,
+speed-control, continuation and progress suite passed **151 tests**, with
+**12 CUDA checks skipped** on the CPU environment.
 Recovery tests inject a failure after an epoch commit and reproduce the
 uninterrupted policy, selected weights and Adam state exactly; a killed-process
 test also verifies automatic lock recovery.
 
-Every notebook cell ran against real JSBSim using all ten varied pilots, one
-additional epoch per stage, three one-second training/validation cases and three
-three-second NN flights through central CPU inference. The six resulting
-perspectives contained all 91 inputs and passed full history/geometry/checksum
-verification. Running every cell again preserved all 38 selected-checkpoint and
-raw-flight Parquet hashes, with no repeated training epochs. Notebook schema,
-cell compilation, Ruff and `git diff --check` also passed. Full production
-training/collection and execution on CUDA hardware were not run.
+Selection tests cover both opponents, validation at every epoch, saving only
+strict improvements and recovery after a committed epoch. Score-only validation
+matches complete validation actions and returns, including skill-conditioned
+parameter heads. Progress tests cover resumed counts, phase changes, ETA aging,
+unknown/expired estimates and collection progress.
+
+A paired CPU benchmark used three 30-second JSBSim validation scenarios and
+three repetitions per path. Parent Python allocation peaks fell from about
+0.83 MB to 0.15 MB (82%) with identical returns. Median wall times were both about
+2.9 seconds; this check does not establish an overall CPU speedup. CUDA transfer
+latency improvements require measurement on CUDA hardware. Separate real-JSBSim
+level-flight duration checks, with combat suppressed to avoid early defeats,
+reached exactly 300 seconds, 300 decisions and 3,000 simulator steps through both
+backend opponent configurations.
+
+Every notebook cell also ran against real JSBSim with all ten 4/8-head pilots,
+two additional epochs per stage, three one-second training/validation cases and
+three three-second NN flights. All 40 epochs recorded fresh validation. The
+executed tqdm widgets reached 40/40 training epochs and 3/3 collection flights;
+the six perspectives passed full 91-feature/history/geometry verification.
+Running every cell again preserved all 38 selected-checkpoint/raw-flight Parquet
+hashes and retained exactly two epochs per pilot per stage. Notebook schema,
+cell compilation, Ruff and `git diff --check` passed.
+
+Full production training/collection and execution on CUDA hardware were not run.

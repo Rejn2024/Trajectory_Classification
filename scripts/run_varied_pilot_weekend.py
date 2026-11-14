@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "bvr_sim_source")]
 
 import generate_nn_duel_corpus as duel
+from weekend_training_progress import EpochProgressReporter, metric_rows
 
 from bvr_behavior_prediction.rl.config import PilotTrainingConfig, RewardWeights
 from bvr_behavior_prediction.rl.dogfight_reward import (
@@ -68,6 +69,7 @@ def source_inventory():
         ROOT / "scripts" / name
         for name in (
             "run_varied_pilot_weekend.py",
+            "weekend_training_progress.py",
             "generate_nn_duel_corpus.py",
             "tactical_corpus_schema.py",
             "nn_duel_inference.py",
@@ -161,6 +163,7 @@ def make_environment(config, opponent):
             log_dir=config.output_dir / "simulator_logs",
             opponent_type=opponent,
             include_hostile_missiles=True,
+            episode_duration_s=config.episode_duration_s,
         )
 
     def factory(scenario, recording_path=None):
@@ -183,6 +186,8 @@ def stage_config(source, output, settings, stage):
     known = {f.name for f in fields(PilotTrainingConfig)}
     config = {k: v for k, v in saved.items() if k in known}
     config["reward"] = RewardWeights(**config["reward"])
+    if settings.get("evaluation_interval") not in (None, 1):
+        raise ValueError("Notebook 31 validates every epoch; evaluation_interval must be 1")
     # Per-pilot architecture, PPO coefficients and reward scales come from disk.
     config.update(
         output_dir=output,
@@ -194,6 +199,8 @@ def stage_config(source, output, settings, stage):
         simulator_executor="process",
         test_scenarios_per_pilot=0,
         test_seed=None,
+        episode_duration_s=300.0,
+        evaluation_interval=1,
     )
     # Explicit small-run overrides; absent values preserve notebook 30's settings.
     for name in (
@@ -201,7 +208,6 @@ def stage_config(source, output, settings, stage):
         "scenarios_per_epoch",
         "evaluation_scenarios_per_epoch",
         "update_epochs",
-        "evaluation_interval",
     ):
         if settings.get(name) is not None:
             config[name] = settings[name]
@@ -216,6 +222,7 @@ def save_state(trainer, epoch, metrics):
         "scaler": trainer.grad_scaler.state_dict(),
         "best_score": trainer.best_score,
         "best_pilot": trainer.best_pilot,
+        "best_epoch": trainer.weekend_best_epoch,
         "metrics": metrics,
         "training_batch_index": trainer._training_batch_index,
         "evaluation_scores": trainer.weekend_evaluation_scores,
@@ -230,12 +237,20 @@ def save_state(trainer, epoch, metrics):
     duel.durable_replace(temporary, path)
 
 
-def train_one(source, output, config, opponent, device):
+def save_best_weights(trainer):
+    temporary = trainer.output / "best_model.pt.tmp"
+    torch.save(trainer.best_pilot, temporary)
+    duel.durable_replace(temporary, trainer.output / "best_model.pt")
+
+
+def train_one(source, output, config, opponent, device, progress=None):
     """Use the existing PPO implementation; commit a full state each epoch."""
     metadata = read(source / "config.json")
     reward = reward_definition(metadata["reward"])
     trainer = PPOTrainer(make_environment(config, opponent), 91, config, device, reward)
     trainer._training_active = True  # Reuse CPU simulation workers across epochs.
+    trainer.score_only_evaluation = True
+    report = progress or (lambda phase, epoch, metrics: None)
     try:
         metadata.setdefault("continuation_origin_seed", metadata["training"]["seed"])
         metadata.update(training=config.as_dict(), torch_version=str(torch.__version__))
@@ -247,7 +262,9 @@ def train_one(source, output, config, opponent, device):
             trainer.pilot.load_state_dict(state["pilot"])
             trainer.optimizer.load_state_dict(state["optimizer"])
             trainer.grad_scaler.load_state_dict(state["scaler"])
-            trainer.best_score, trainer.best_pilot = state["best_score"], state["best_pilot"]
+            trainer.best_score = state["best_score"]
+            trainer.best_pilot = {k: v.cpu() for k, v in state["best_pilot"].items()}
+            trainer.weekend_best_epoch = state.get("best_epoch", 0)
             trainer._training_batch_index = state["training_batch_index"]
             random.setstate(state["python_rng"])
             np.random.set_state(state["numpy_rng"])
@@ -256,13 +273,18 @@ def train_one(source, output, config, opponent, device):
                 torch.cuda.set_rng_state_all([s.cpu() for s in state["cuda_rng"]])
             start, metrics = state["epoch"], state["metrics"]
             trainer.weekend_evaluation_scores = state["evaluation_scores"]
+            del state  # Release duplicate loaded model tensors, especially on CUDA.
+            # Repair a selected-weight file left stale by a crash after resume.pt.
+            save_best_weights(trainer)
         else:
+            report("initial validation", 0, [])
             initialize_pilot_from_checkpoint(trainer, source)
             trainer.best_pilot = {
                 k: v.detach().cpu().clone() for k, v in trainer.pilot.state_dict().items()
             }
             start, metrics = 0, []
             trainer.weekend_evaluation_scores = None
+            trainer.weekend_best_epoch = 0
             save_state(trainer, start, metrics)
         print(
             json.dumps(
@@ -282,47 +304,58 @@ def train_one(source, output, config, opponent, device):
         last_scores = trainer.weekend_evaluation_scores
         for epoch in range(start + 1, config.epochs + 1):
             started = time.perf_counter()
+            report("collecting flights", epoch - 1, metrics)
             episodes = trainer._training_episodes()
             rollout_seconds = time.perf_counter() - started
+            collection_profile = dict(trainer._last_collection_profile)
+            report("PPO update", epoch - 1, metrics)
             update_start = time.perf_counter()
             loss = trainer._update([e[0] for e in episodes])
             update_seconds = time.perf_counter() - update_start
-            evaluate = last_scores is None or trainer._should_evaluate(epoch)
-            if evaluate:
-                last_scores = trainer._evaluate()
-                trainer.weekend_evaluation_scores = last_scores
-                score = float(np.mean(last_scores))
-                if not np.isfinite(last_scores).all():
-                    raise ValueError("Nonfinite validation returns")
-                if score > trainer.best_score:
-                    trainer.best_score = score
-                    trainer.best_pilot = {
-                        k: v.detach().cpu().clone() for k, v in trainer.pilot.state_dict().items()
-                    }
+            training_mean_return = float(np.mean([e[1] for e in episodes]))
+            del episodes  # Training histories are no longer needed during validation.
+            report("validation flights", epoch - 1, metrics)
+            evaluation_start = time.perf_counter()
+            last_scores = trainer._evaluate()
+            evaluation_seconds = time.perf_counter() - evaluation_start
+            trainer.weekend_evaluation_scores = last_scores
+            score = float(np.mean(last_scores))
+            if not np.isfinite(last_scores).all():
+                raise ValueError("Nonfinite validation returns")
+            improved = score > trainer.best_score
+            if improved:
+                trainer.best_score = score
+                trainer.weekend_best_epoch = epoch
+                trainer.best_pilot = {
+                    k: v.detach().cpu().clone() for k, v in trainer.pilot.state_dict().items()
+                }
             row = {
                 "epoch": epoch,
                 "loss": float(loss),
-                "training_mean_return": float(np.mean([e[1] for e in episodes])),
+                "training_mean_return": training_mean_return,
                 "mean_return": float(np.mean(last_scores)),
                 "best_return": trainer.best_score,
-                "evaluation_performed": int(evaluate),
+                "evaluation_performed": 1,
+                "best_model_improved": int(improved),
+                "best_epoch": trainer.weekend_best_epoch,
                 "rollout_seconds": rollout_seconds,
                 "update_seconds": update_seconds,
+                "evaluation_seconds": evaluation_seconds,
                 "epoch_seconds": time.perf_counter() - started,
                 **trainer._last_update_profile,
+                **{f"training_{k}": v for k, v in collection_profile.items()},
             }
             if not all(np.isfinite(v) for v in row.values()):
                 raise ValueError("Nonfinite training metrics")
             metrics.append(row)
+            report("saving checkpoint", epoch - 1, metrics[:-1])
             save_state(trainer, epoch, metrics)
+            if improved:
+                save_best_weights(trainer)
             with trainer.diagnostics_path.open("a", encoding="utf8") as stream:
                 stream.write(json.dumps(row) + "\n")
-            torch.save(trainer.best_pilot, output / "best_model.pt.tmp")
-            duel.durable_replace(output / "best_model.pt.tmp", output / "best_model.pt")
+            report("epoch complete", epoch, metrics)
             print(json.dumps({"pilot": output.name, "opponent": opponent, **row}), flush=True)
-        # A restart after the final epoch still materializes the selected weights.
-        torch.save(trainer.best_pilot, output / "best_model.pt.tmp")
-        duel.durable_replace(output / "best_model.pt.tmp", output / "best_model.pt")
         manifest = {
             "pilot_id": output.name,
             "status": "completed",
@@ -331,6 +364,7 @@ def train_one(source, output, config, opponent, device):
             "checkpoint_sha256": sha256(output / "best_model.pt"),
             "reward": reward.as_dict(),
             "selection_return": trainer.best_score,
+            "best_epoch": trainer.weekend_best_epoch,
             "additional_epochs": config.epochs,
             "opponent_type": opponent,
             "parent_run": str(source),
@@ -362,11 +396,17 @@ def train_population(job, stage, settings):
         parent = source / source_records[pid]["output_dir"]
         directory = output / pid
         config = stage_config(parent, directory, settings, stage)
+        progress = EpochProgressReporter(job, settings, stage, pid, write)
         if (directory / "manifest.json").exists():
             result = read(directory / "manifest.json")
             load_trained_pilot(directory)
+            progress(
+                "pilot complete", config.epochs, metric_rows(directory / "training_metrics.jsonl")
+            )
         else:
-            result = train_one(parent, directory, config, stage, settings["device"])
+            result = train_one(
+                parent, directory, config, stage, settings["device"], progress=progress
+            )
         records.append(result)
         write(
             output / "pilots.json",
@@ -709,14 +749,20 @@ def parser():
         choices=("auto", "local_cpu", "central_cpu", "central_cuda"),
         default="auto",
     )
+    p.add_argument(
+        "--evaluation-interval",
+        type=int,
+        choices=(1,),
+        default=1,
+        help="Notebook 31 validates after every epoch",
+    )
     for option in (
         "scenarios-per-epoch",
         "evaluation-scenarios-per-epoch",
         "update-epochs",
-        "evaluation-interval",
     ):
         p.add_argument("--" + option, type=int)
-    p.add_argument("--episode-duration-s", type=float)
+    p.add_argument("--episode-duration-s", type=float, default=300)
     return p
 
 

@@ -7,6 +7,8 @@ observation layout and checkpoint compatibility.
 **Continue and collect:** [31_continue_varied_pilots_and_generate_corpus.ipynb](31_continue_varied_pilots_and_generate_corpus.ipynb)
 loads those ten saved pilots, adds 200 simple-opponent epochs and 300 tactical-opponent
 epochs per pilot, then collects 10,000 NN-versus-NN flights with all 91 policy features.
+Both stages use 300-second flights and validation after every epoch, saving selected
+weights on improvement. Inline tqdm bars show phase, elapsed time and ETA forecasts.
 Run All performs preflight, training, tactical assessments, collection and verification;
 the same job directory resumes committed epochs and flights. See the
 [weekend campaign guide](../docs/varied_pilot_weekend.md).

@@ -5,6 +5,8 @@ from collections.abc import Callable, Mapping
 
 import numpy as np
 
+from .config import MAX_EPISODE_DURATION_S
+
 ENERGY_FEATURE_NAMES = (
     "blue_kinetic_energy",
     "blue_potential_energy",
@@ -47,8 +49,8 @@ class BluePilotEnvironment:
         speed_scale_mps=400.0,
         altitude_scale_m=12_000.0,
     ):
-        if episode_duration_s > 120:
-            raise ValueError("episodes may not exceed 120 in-game seconds")
+        if not np.isfinite(episode_duration_s) or not 0 < episode_duration_s <= MAX_EPISODE_DURATION_S:
+            raise ValueError("episode_duration_s must be in (0, 300] in-game seconds")
         if min(planning_horizon_s, history_duration_s, sample_interval_s) <= 0:
             raise ValueError(
                 "planning horizon, history duration, and sample interval must be positive"
@@ -72,6 +74,7 @@ class BluePilotEnvironment:
         self.history = deque(maxlen=self.history_steps)
         self._energy_measurements = {name: 0.0 for name in ENERGY_FEATURE_NAMES}
         self.elapsed = 0.0
+        self._sample_count = 0
         self._previous_events = {}
         self._threatened_time_s = 0.0
         self._missile_support_time_s = 0.0
@@ -108,6 +111,7 @@ class BluePilotEnvironment:
 
     def reset(self, seed):
         self.elapsed = 0.0
+        self._sample_count = 0
         self.history.clear()
         self._energy_measurements = {name: 0.0 for name in ENERGY_FEATURE_NAMES}
         result = self.backend.reset(seed)
@@ -154,7 +158,8 @@ class BluePilotEnvironment:
                 self._missile_support_time_s += self.sample_interval_s
             info.update(step_info)
             self.history.append(self._frame(observation, step_info))
-            self.elapsed += self.sample_interval_s
+            self._sample_count += 1
+            self.elapsed = self._sample_count * self.sample_interval_s
             if terminated or self.elapsed >= self.limit:
                 break
         truncated = self.elapsed >= self.limit
