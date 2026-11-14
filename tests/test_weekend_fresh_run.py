@@ -70,3 +70,17 @@ def test_invalid_resume_selection_fails_before_launch(checkout, monkeypatch, mod
     monkeypatch.delenv("BVR_WEEKEND_JOB", raising=False)
     with pytest.raises(ValueError):
         exec(compile(SETUP, str(NOTEBOOK), "exec"), {})
+
+
+@pytest.mark.parametrize("cpus,expected", [(16, 14), (8, 6), (3, 2), (64, 14)])
+def test_paired_defaults_reserve_driver_capacity(checkout, monkeypatch, cpus, expected):
+    import os
+
+    monkeypatch.setattr(os, "cpu_count", lambda: cpus)
+    for key in ("BVR_WEEKEND_WORKERS", "BVR_WEEKEND_TORCH_THREADS", "BVR_WEEKEND_PILOT_SCHEDULE"):
+        monkeypatch.delenv(key, raising=False)
+    namespace = {}
+    exec(compile(SETUP, str(NOTEBOOK), "exec"), namespace)
+    assert namespace["WORKERS"] == expected
+    assert namespace["TORCH_THREADS"] == 2
+    assert namespace["PILOT_SCHEDULE"] == "paired"

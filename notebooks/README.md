@@ -13,6 +13,9 @@ Without widget support, progress uses plain text events and suppresses unchanged
 polls. A timing table compares epoch costs with flight decisions and PPO minibatches;
 simulator workers release native engines and avoid importing PyTorch.
 Shared observation memory and cached CUDA minibatch graphs reduce repeated work.
+Both stages now train fixed pairs (1&2, then 3&4, through 9&10) concurrently.
+The worker setting is a total pair budget: 14 gives seven per pilot; the notebook
+defaults to this on 16-logical-CPU hosts and scales down on smaller machines.
 For new experiments, `BVR_WEEKEND_MINIBATCH_SIZE` and `BVR_WEEKEND_TARGET_KL`
 control PPO workload; epoch timing now includes durable checkpoint writes.
 Run All performs preflight, training, tactical assessments, collection and verification;

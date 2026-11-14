@@ -46,6 +46,74 @@ no manifest is deleted or weakened to make an incompatible resumption succeed.
 Notebook 31 does not commit or push data. Back up campaign/output directories
 using your normal storage workflow.
 
+## Paired training schedule
+
+Notebook 31 and the campaign CLI now default to `paired` scheduling. Within
+**each** simple and tactical stage, pilots run in the fixed order **1&2, 3&4,
+5&6, 7&8, 9&10**. Both members must finish before the next pair starts. The
+existing stage boundaries remain: all simple training, the first matched tactical
+assessment, all tactical training, the second assessment, then corpus collection.
+
+Each pilot runs in a separate interpreter with its own policy, critic, optimizer,
+RNG state, CUDA context, cached graphs and simulator pool. A start rendezvous lets
+both interpreters initialize before releasing the pair. Each pilot remains
+on-policy: its next training batch follows its own completed PPO update. Processes
+can overlap simulation, validation and GPU updates; this does not guarantee GPU
+kernels in different contexts will execute simultaneously on every platform.
+
+`--workers` / `BVR_WEEKEND_WORKERS` is a **total** simulator budget for the active
+pair. Fourteen means **seven per pilot**; twelve means six each. Odd totals give
+the first pilot one extra worker. Paired mode requires at least two workers.
+Notebook defaults cap this budget at fourteen while reserving two logical CPUs
+when possible: a 16-logical-CPU machine gets 14, an 8-CPU machine gets 6. Notebook
+Torch defaults to two threads in the coordinator, giving one Torch CPU thread to
+each pilot process. `--pilot-schedule serial` or
+`BVR_WEEKEND_PILOT_SCHEDULE=serial` selects the sequential reference behavior.
+
+Children write only their own pilot checkpoints, metrics, execution records,
+phase records and failures. Only the coordinator writes population manifests and
+global progress. The pair bar reports both phases and combined committed epochs;
+ETA uses observed wall-time throughput rather than adding overlapping epoch times.
+Per-pilot stdout/stderr logs live under `JOB/logs/`. `pair_events.jsonl` records
+ordering, PIDs, worker allocation and pair wall time. Pair failure interrupts the
+peer and closes its nested simulator processes. Completed pilots and committed
+epochs are retained for a restart with the same paired settings.
+
+Use a **fresh campaign** for this scheduling change. The older performance-repair
+migration described below does not authorize converting serial jobs to this new
+schedule or changing worker allocations. New-kernel Run All already selects fresh
+directories. Seven workers per pilot is a reasonable trial on a 16-logical-CPU
+host, not a guarantee of higher throughput or sufficient RAM/VRAM; measure 12 versus
+14 total workers on the target machine.
+
+### All-up execution test
+
+`tests/test_paired_campaign.py` exercised the complete campaign on Linux CPU with
+real JSBSim and a generated ten-pilot **test population**, not the unavailable
+production weights. It used two epochs per pilot per stage, three three-second
+training/validation cases per epoch, three matched assessment cases per pilot,
+and three three-second NN corpus flights. Two total simulator workers were used
+to fit the test environment. The test verified:
+
+- All ten pairs (five per stage) ran in order, with actual execution intervals
+  overlapping within each pair and no overlap between successive pairs.
+- All **40 epochs** validated, both assessment passes completed, and the final
+  **three flights/six perspectives** passed the corpus verification pipeline.
+- Rerunning the completed campaign preserved selected-model and Parquet hashes
+  and did not add training epochs.
+
+The initial all-up test plus budget/progress checks passed in **203 seconds**.
+The final build's all-up, budget, progress and peer-failure tests passed
+**4 tests in 249 seconds**; separate notebook/progress checks passed 17 tests and
+the broader affected regression run passed 61 tests (three CUDA checks skipped).
+A separate serial reference for pilots 1 and 2, using the same one-worker-per-pilot
+allocation, produced **bit-identical current/selected policy tensors, Adam state,
+Torch RNG state and selection scores in both simple and tactical stages**.
+Additional checks cover peer cancellation and aggregate progress counts. These
+tests establish execution/restart correctness; they do not establish training
+quality or an epoch/campaign speedup on Windows/CUDA. The 14-worker production
+configuration has not been load-tested on that hardware.
+
 ## Preserved training recipe and selection
 
 Each pilot's saved width, layer/head counts, selected-skill parameter contract,
@@ -108,8 +176,8 @@ Widget displays still refresh in place every two seconds. Rendering is controlle
 in one place, so a count update cannot first draw a second line with an old postfix.
 
 CPU simulator processes remain warm across
-epochs; policy inference and PPO use CUDA when available. The worker default is
-80% of logical CPUs, capped at 32, with configurable Torch CPU threads. These are
+epochs; policy inference and PPO use CUDA when available. The CLI worker default is
+80% of logical CPUs, capped at 32; notebook paired defaults are described above. These are
 concurrency limits, not reserved CPU capacity.
 
 Every epoch atomically commits `resume.pt`: current model, best model, Adam,
@@ -207,7 +275,9 @@ and software versions. Restore the recorded environment to resume it, or choose
 new JOB and OUTPUT directories for a changed experiment. The final archive also
 rejects code changes made during a running campaign.
 
-To resume a campaign pinned to `bc01bf4` or `26b3446` after these repairs, stop its old process
+**Historical serial repair only:** the following source-upgrade procedure applied
+before paired scheduling was introduced; paired mode needs a fresh campaign.
+To resume a campaign pinned to `bc01bf4` or `26b3446` with that earlier repair revision, stop its old process
 and restart the kernel before Run All. Notebook setup enables this known
 operational repair by default (`ACCEPT_PERFORMANCE_FIX=True`); set
 `BVR_WEEKEND_ACCEPT_PERFORMANCE_FIX=0` to retain strict source rejection. The CLI equivalent is

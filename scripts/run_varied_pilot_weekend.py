@@ -11,6 +11,7 @@ import gc
 import json
 import os
 import random
+import signal
 import sys
 import time
 import traceback
@@ -129,6 +130,7 @@ def source_inventory():
         for name in (
             "run_varied_pilot_weekend.py",
             "weekend_training_progress.py",
+            "paired_pilot_training.py",
             "generate_nn_duel_corpus.py",
             "tactical_corpus_schema.py",
             "nn_duel_inference.py",
@@ -570,7 +572,70 @@ def train_one(source, output, config, opponent, device, progress=None):
         trainer.close()
 
 
+def train_pair_member(job, stage, pilot, token=None):
+    """A fresh interpreter owns this pilot's RNGs, CUDA context and simulators."""
+    from paired_pilot_training import worker_budgets
+
+    job = Path(job).resolve()
+    settings = read(job / "campaign.json")
+    settings["workers"] = worker_budgets(settings["workers"])[PILOTS.index(pilot) % 2]
+    torch.set_num_threads(max(1, settings["torch_threads"] // 2))
+    source = Path(settings["source"]) if stage == "simple" else job / "simple"
+    records = {p["pilot_id"]: p for p in read(source / "pilots.json")["pilots"]}
+    parent = source / records[pilot]["output_dir"]
+    directory = job / stage / pilot
+
+    def local_progress(path, value):
+        write(directory / "progress.json", value)
+
+    progress = EpochProgressReporter(job, settings, stage, pilot, local_progress)
+    if token is not None:
+        write(directory / "ready.json", {"token": token, "pid": os.getpid()})
+        while not (job / "pair_release.json").exists() or read(
+            job / "pair_release.json"
+        ).get("token") != token:
+            time.sleep(.05)
+    execution = {"pid": os.getpid(), "started_at": time.time(),
+                 "workers": settings["workers"], "stage": stage}
+    write(directory / "execution.json", execution)
+    try:
+        result = train_one(parent, directory, stage_config(parent, directory, settings, stage),
+                           stage, settings["device"], progress)
+        progress("pilot complete", settings[f"{stage}_epochs"],
+                 metric_rows(directory / "training_metrics.jsonl"))
+        return result
+    except BaseException:
+        write(directory / "failure.json", {"updated_utc": now(),
+                                            "traceback": traceback.format_exc()})
+        raise
+    finally:
+        write(directory / "execution.json", {**execution, "finished_at": time.time()})
+
+
 def train_population(job, stage, settings):
+    if settings.get("pilot_schedule", "serial") == "serial":
+        return _train_population_serial(job, stage, settings)
+    from paired_pilot_training import run_pair
+
+    output = job / stage
+    output.mkdir(parents=True, exist_ok=True)
+    records = []
+    for offset in range(0, len(PILOTS), 2):
+        pair = PILOTS[offset:offset + 2]
+        run_pair(job, stage, settings, pair, PILOTS, write)
+        for pilot in pair:
+            result = read(output / pilot / "manifest.json")
+            if result["status"] != "completed":
+                raise ValueError(f"Pair member did not finish: {stage}/{pilot}")
+            load_trained_pilot(output / pilot)
+            records.append(result)
+        write(output / "pilots.json", {"pilots": records,
+              "population_metadata": read(Path(settings["source"]) / "pilots.json")[
+                  "population_metadata"]})
+    return output
+
+
+def _train_population_serial(job, stage, settings):
     source = Path(settings["source"]) if stage == "simple" else job / "simple"
     source_records = {p["pilot_id"]: p for p in read(source / "pilots.json")["pilots"]}
     output = job / stage
@@ -809,6 +874,10 @@ def check_seeds(source, settings):
 
 
 def run(args):
+    if args.pilot_schedule == "paired":
+        from paired_pilot_training import worker_budgets
+
+        worker_budgets(args.workers)  # Fail before writing a plan or starting training.
     job = args.job.resolve()
     plan = job / "campaign.json"
     source = (
@@ -824,6 +893,9 @@ def run(args):
     settings.pop("job")
     settings.pop("preflight_only")
     settings.pop("accept_performance_fix")
+    settings.pop("pilot_worker")
+    settings.pop("worker_stage")
+    settings.pop("pair_token")
     for option in ("target_kl", "minibatch_size", "simulator_transport"):
         if settings[option] is None:
             settings.pop(option)  # Keep otherwise identical old campaign plans compatible.
@@ -916,6 +988,11 @@ def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--source", type=Path)
     p.add_argument("--preflight-only", action="store_true")
+    p.add_argument("--pilot-schedule", choices=("paired", "serial"), default="paired",
+                   help="Train 1&2, then 3&4, etc.; workers is a shared total budget")
+    p.add_argument("--pilot-worker", choices=PILOTS, help=argparse.SUPPRESS)
+    p.add_argument("--worker-stage", choices=("simple", "tactical"), help=argparse.SUPPRESS)
+    p.add_argument("--pair-token", help=argparse.SUPPRESS)
     p.add_argument(
         "--accept-performance-fix", action="store_true",
         help="After stopping the old process, accept only known operational acceleration repairs "
@@ -969,6 +1046,17 @@ def parser():
 
 if __name__ == "__main__":
     arguments = parser().parse_args()
+    if arguments.pilot_worker:
+        if arguments.worker_stage is None:
+            raise ValueError("A pilot worker requires --worker-stage")
+
+        def interrupted(signum, frame):
+            raise KeyboardInterrupt("Pilot worker interrupted")
+
+        signal.signal(signal.SIGTERM, interrupted)
+        train_pair_member(arguments.job, arguments.worker_stage, arguments.pilot_worker,
+                          arguments.pair_token)
+        raise SystemExit(0)
     if arguments.target_kl is not None and (
         not np.isfinite(arguments.target_kl) or arguments.target_kl <= 0
     ):
