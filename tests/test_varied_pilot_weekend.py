@@ -466,6 +466,31 @@ def repair_settings(new=False, windows=False):
 
 
 @pytest.mark.parametrize("windows", [False, True])
+def test_progress_lock_repair_resumes_paired_campaign_with_saved_state(tmp_path, windows):
+    previous = repair_settings()
+    previous["pilot_schedule"] = "paired"
+    for name, hashes in weekend.PROGRESS_FIX_BASE_HASHES.items():
+        previous["source_hashes"][name] = hashes[int(windows)]
+    current = json.loads(json.dumps(previous))
+    for name in weekend.PROGRESS_FIX_BASE_HASHES:
+        current["source_hashes"][name] = weekend.sha256(weekend.ROOT / name)
+    weekend.prepare_campaign(tmp_path, previous)
+    checkpoint = tmp_path / "resume.pt"
+    checkpoint.write_bytes(b"paired optimizer, scaler, RNG and completed epochs")
+    checksum = weekend.sha256(checkpoint)
+    with pytest.raises(ValueError, match="accept-performance-fix"):
+        weekend.prepare_campaign(tmp_path, current)
+    weekend.prepare_campaign(tmp_path, current, accept_performance_fix=True)
+    receipt = weekend.read(tmp_path / "performance_fix.json")
+    assert receipt["base_commit"] == weekend.PROGRESS_FIX_BASE_COMMIT
+    assert receipt["original_campaign"] == previous
+    assert weekend.read(tmp_path / "campaign.json") == current
+    assert weekend.sha256(checkpoint) == checksum
+    weekend.prepare_campaign(tmp_path, current, accept_performance_fix=True)
+    assert weekend.read(tmp_path / "performance_fix.json") == receipt
+
+
+@pytest.mark.parametrize("windows", [False, True])
 def test_explicit_performance_repair_keeps_original_plan_and_saved_state(tmp_path, windows):
     previous, current = repair_settings(windows=windows), repair_settings(new=True)
     weekend.prepare_campaign(tmp_path, previous)

@@ -7,9 +7,12 @@ from pathlib import Path
 
 
 def read_json(path):
+    """Read optional live progress; retry an unreadable snapshot on the next poll."""
     try:
         return json.loads(Path(path).read_text(encoding="utf8"))
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError):
+        # Atomic replacement can still meet a temporary Windows sharing lock.
+        # Progress display I/O must not stop the campaign or mask its exit error.
         return {}
 
 

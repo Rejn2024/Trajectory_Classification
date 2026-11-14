@@ -159,6 +159,12 @@ show elapsed time, rate, current phase, loss/return and ETA forecasts. They coun
 committed epochs and resume at saved counts. `JOB/training_progress.json` supplies
 the live phase and measurements; `status.json` identifies the overall stage.
 
+On Windows, an atomic JSON replacement can briefly deny a progress read. The
+notebook skips unreadable or incomplete progress snapshots and retries on the
+next poll, including its final refresh. This keeps a display-file lock from
+terminating the campaign or hiding the child process's actual error and log.
+Required checkpoint and campaign-manifest validation retains its strict reads.
+
 Pilot forecasts use the most recent five completed epoch timings. Overall
 training forecasts use observed averages for each stage; an unmeasured tactical
 stage initially uses the simple-stage average. The first epoch reports
@@ -274,6 +280,15 @@ newer batch. The campaign checks source/assets, parent checkpoints, configuratio
 and software versions. Restore the recorded environment to resume it, or choose
 new JOB and OUTPUT directories for a changed experiment. The final archive also
 rejects code changes made during a running campaign.
+
+For the progress-file permission repair of paired jobs created at `7b3916f`,
+restart the kernel and set `BVR_WEEKEND_MODE=resume` and `BVR_WEEKEND_JOB` to the
+saved job before setup. Retain the same OUTPUT, source and experiment settings.
+Resume setup already enables `--accept-performance-fix` unless
+`BVR_WEEKEND_ACCEPT_PERFORMANCE_FIX=0` is set. This repair accepts the known
+LF/CRLF hashes of only the runner and progress module from that revision,
+records the upgrade in `JOB/performance_fix.json`, and preserves saved training
+state. Fresh mode starts a new campaign instead.
 
 **Historical serial repair only:** the following source-upgrade procedure applied
 before paired scheduling was introduced; paired mode needs a fresh campaign.

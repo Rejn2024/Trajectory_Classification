@@ -110,6 +110,21 @@ PERFORMANCE_FIX_BASE_HASHES = {
 }
 
 
+# The progress-reader repair also supports paired jobs from this branch tip.
+# Keep these hashes separate from the historical serial acceleration repairs.
+PROGRESS_FIX_BASE_COMMIT = "7b3916fcdcba935db97292267117f093c9b9833e"
+PROGRESS_FIX_BASE_HASHES = {
+    "scripts/run_varied_pilot_weekend.py": (
+        "8ea42bfb12093323b8876f858a00698e15b5258bc9c4de51fecaca89c90d4b02",
+        "eaca0324069a080f2946bdfc5b3f4fd47457e4592661d38d1b7b66cc720c6365",
+    ),
+    "scripts/weekend_training_progress.py": (
+        "520ad10ecab6ab33d77ba2dae984a878d4094fabaf7bc4c43b8c0340b0353786",
+        "0721cf752f22b284790a07e4475eb2d9bf0c21e0707427d177ca97ca5c220e2e",
+    ),
+}
+
+
 def now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -175,14 +190,19 @@ def prepare_campaign(job, settings, accept_performance_fix=False):
         changes = {name for name in before.keys() | after.keys()
                    if before.get(name) != after.get(name)}
         if not changes <= PERFORMANCE_FIX_BASE_HASHES.keys() or any(
-            before.get(name) not in PERFORMANCE_FIX_BASE_HASHES[name] or name not in after
+            before.get(name) not in (
+                *PERFORMANCE_FIX_BASE_HASHES[name], *PROGRESS_FIX_BASE_HASHES.get(name, ())
+            ) or name not in after
             for name in changes
         ):
             raise ValueError("Performance repair cannot accept unrelated or unknown source changes")
         runner = "scripts/run_varied_pilot_weekend.py"
-        base_commit = (PERFORMANCE_FIX_ORIGINAL_COMMIT
-                       if before.get(runner) in PERFORMANCE_FIX_BASE_HASHES[runner][:2]
-                       else PERFORMANCE_FIX_BASE_COMMIT)
+        if before.get(runner) in PROGRESS_FIX_BASE_HASHES[runner]:
+            base_commit = PROGRESS_FIX_BASE_COMMIT
+        else:
+            base_commit = (PERFORMANCE_FIX_ORIGINAL_COMMIT
+                           if before.get(runner) in PERFORMANCE_FIX_BASE_HASHES[runner][:2]
+                           else PERFORMANCE_FIX_BASE_COMMIT)
         receipt = job / "performance_fix.json"
         # Commit provenance first. A crash between receipt and plan replacement
         # can be retried, and a later repair appends to the original history.

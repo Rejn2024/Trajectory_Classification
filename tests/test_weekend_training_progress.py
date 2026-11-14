@@ -1,8 +1,12 @@
 """Committed epoch counts and measured-time forecasts drive notebook bars."""
 
+import ast
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from weekend_training_progress import (
@@ -10,6 +14,7 @@ from weekend_training_progress import (
     EpochProgressReporter,
     TextProgress,
     duration,
+    read_json,
     timing_windows,
 )
 
@@ -38,6 +43,114 @@ class FakeBar:
 
     def close(self):
         self.closed = True
+
+
+def test_progress_json_skips_a_windows_sharing_lock_and_recovers(tmp_path, monkeypatch):
+    path = tmp_path / "training_progress.json"
+    write(path, {"completed_epochs": 2})
+    native_read = Path.read_text
+
+    def locked_read(self, *args, **kwargs):
+        if self == path:
+            raise PermissionError(13, "Permission denied", str(self))
+        return native_read(self, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "read_text", locked_read)
+        assert read_json(path) == {}
+    assert read_json(path) == {"completed_epochs": 2}
+
+
+@pytest.mark.parametrize("locked_file", [
+    "status.json", "training_progress.json", "collection/progress.json",
+])
+def test_progress_refresh_and_close_tolerate_locked_snapshots(tmp_path, monkeypatch, locked_file):
+    stage = "corpus" if locked_file.startswith("collection/") else "simple"
+    write(tmp_path / "status.json", {"stage": stage})
+    reporter = EpochProgressReporter(
+        tmp_path, {"simple_epochs": 3, "tactical_epochs": 3},
+        "simple", "pilot_001", write,
+    )
+    row = {"epoch": 1, "epoch_seconds": 10, "loss": 0.25, "mean_return": 15}
+    reporter("PPO update", 1, [row])
+    write(tmp_path / "collection/progress.json", {"completed": 1, "flights_per_hour": 3600})
+    progress = CampaignProgress(tmp_path, 10, FakeBar)
+    progress.refresh()
+    bars = [bar for bar in (progress.overall, progress.pilot, progress.collection) if bar]
+    native_read = Path.read_text
+
+    def locked_read(self, *args, **kwargs):
+        if self == tmp_path / locked_file:
+            raise PermissionError(13, "Permission denied", str(self))
+        return native_read(self, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "read_text", locked_read)
+        progress.refresh()
+        progress.close()
+    assert all(bar.closed for bar in bars)
+
+    # A later poll sees new committed work once the sharing lock disappears.
+    reporter("PPO update", 2, [row, {**row, "epoch": 2}])
+    write(tmp_path / "collection/progress.json", {"completed": 2, "flights_per_hour": 3600})
+    recovered = CampaignProgress(tmp_path, 10, FakeBar)
+    recovered.refresh()
+    assert recovered.overall.n == 2
+    assert (recovered.collection if stage == "corpus" else recovered.pilot).n == 2
+    recovered.close()
+
+
+@pytest.mark.parametrize("returncode", [0, 7])
+def test_notebook_progress_lock_does_not_kill_child_or_mask_its_exit(tmp_path, monkeypatch, returncode):
+    notebook = Path(__file__).parents[1] / "notebooks/31_continue_varied_pilots_and_generate_corpus.ipynb"
+    cells = json.loads(notebook.read_text())["cells"]
+    source = next("".join(cell["source"]) for cell in cells
+                  if cell["cell_type"] == "code" and "def run_logged(" in "".join(cell["source"]))
+    function = next(node for node in ast.parse(source).body
+                    if isinstance(node, ast.FunctionDef) and node.name == "run_logged")
+    polls = iter([None, returncode])
+    child = SimpleNamespace(returncode=None, pid=123)
+
+    def poll():
+        child.returncode = next(polls)
+        return child.returncode
+
+    def start_child(*args, **kwargs):
+        kwargs["stdout"].write("worker diagnostic\n")
+        return child
+
+    def unexpected_stop(*args, **kwargs):
+        pytest.fail("An optional progress read must not terminate the campaign")
+
+    child.poll = poll
+    namespace = {
+        "JOB": tmp_path, "ROOT": tmp_path, "FLIGHTS": 10,
+        "CampaignProgress": lambda *args: CampaignProgress(*args, bar_factory=FakeBar),
+        "os": SimpleNamespace(name="posix", environ={}, killpg=unexpected_stop),
+        "signal": SimpleNamespace(SIGTERM=15),
+        "subprocess": SimpleNamespace(Popen=start_child, STDOUT=-2),
+        "time": SimpleNamespace(time_ns=lambda: 1, monotonic=lambda: 0, sleep=lambda _: None),
+    }
+    # Execute only the trusted notebook's runner, without setup or training cells.
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(notebook), "exec"), namespace)  # noqa: S102
+    native_read = Path.read_text
+    reads = []
+
+    def locked_read(self, *args, **kwargs):
+        if self == tmp_path / "training_progress.json":
+            reads.append(self)
+            raise PermissionError(13, "Permission denied", str(self))
+        return native_read(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", locked_read)
+    run = namespace["run_logged"]
+    if returncode:
+        with pytest.raises(RuntimeError, match="campaign exited with 7") as error:
+            run(["child"], "campaign")
+        assert "worker diagnostic" in str(error.value)
+    else:
+        assert run(["child"], "campaign") == tmp_path / "logs/campaign_1.log"
+    assert len(reads) == 2  # Normal polling and the final refresh in close().
 
 
 def test_epoch_forecasts_resume_counts_and_collection_bar(tmp_path):
