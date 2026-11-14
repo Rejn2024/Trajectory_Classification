@@ -30,14 +30,21 @@ These trained artifacts are Git-ignored and must exist on the execution machine;
 the saved notebook results do not include the weight files. No old 51-input
 checkpoints or freshly initialized pilots are substituted for missing weights.
 
-The default campaign directory is
-`artifacts/rl_pilot_simplified/varied_weekend_v2/`. This separates the new duration
-and validation schedule from earlier campaigns. Use a fresh JOB/OUTPUT for this
-version; 120-second validation scores must not select 300-second checkpoints.
-The default corpus directory is
-`shared/corpora/nn-duels-varied-v1/<job-directory-name>/`. Use `BVR_WEEKEND_JOB` and
-`BVR_WEEKEND_OUTPUT` to choose other locations. Notebook 31 does not commit or push
-data. Back up these directories using your normal storage workflow.
+Notebook setup now defaults to `BVR_WEEKEND_MODE=new`: each new kernel allocates
+unique timestamped `varied_weekend_v3_...` directories under
+`artifacts/rl_pilot_simplified/` and `shared/corpora/nn-duels-varied-v1/`.
+It ignores old `BVR_WEEKEND_JOB`/`BVR_WEEKEND_OUTPUT` environment pins in this mode,
+so a stale campaign manifest cannot block a whole new run. Old jobs and corpora
+remain intact. New training starts from the notebook-30 source checkpoints.
+Rerunning setup in the same kernel retains the newly allocated paths; restarting
+the kernel starts another fresh campaign. The paths are printed before preflight.
+
+To select explicit paths or resume after a kernel restart, set
+`BVR_WEEKEND_MODE=resume`, `BVR_WEEKEND_JOB`, and `BVR_WEEKEND_OUTPUT` if customized,
+before setup. All pinned source/settings checks still apply to an existing job;
+no manifest is deleted or weakened to make an incompatible resumption succeed.
+Notebook 31 does not commit or push data. Back up campaign/output directories
+using your normal storage workflow.
 
 ## Preserved training recipe and selection
 
@@ -192,7 +199,8 @@ at most twice per invocation. Persistent errors stop with `failure.json` and a
 traceback. Advisory locks are released by the OS when a process exits, including
 after a crash. A still-running process retains its lock.
 
-Restart the kernel and Run All using the **same JOB and settings**. The source
+For resumption after a kernel restart, select `BVR_WEEKEND_MODE=resume` and the
+**same JOB, OUTPUT and settings** before Run All. The source
 batch is pinned after the first preflight; later runs do not silently select a
 newer batch. The campaign checks source/assets, parent checkpoints, configuration
 and software versions. Restore the recorded environment to resume it, or choose

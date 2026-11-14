@@ -16,7 +16,9 @@ Shared observation memory and cached CUDA minibatch graphs reduce repeated work.
 For new experiments, `BVR_WEEKEND_MINIBATCH_SIZE` and `BVR_WEEKEND_TARGET_KL`
 control PPO workload; epoch timing now includes durable checkpoint writes.
 Run All performs preflight, training, tactical assessments, collection and verification;
-the same job directory resumes committed epochs and flights. See the
+each new kernel now selects fresh timestamped training/corpus directories. To
+resume a saved run, set `BVR_WEEKEND_MODE=resume` and `BVR_WEEKEND_JOB` explicitly
+(plus `BVR_WEEKEND_OUTPUT` for a custom corpus path). See the
 [weekend campaign guide](../docs/varied_pilot_weekend.md).
 
 **Current workflow:** train catalogue-v4 pilots with notebooks 04–06, then use
