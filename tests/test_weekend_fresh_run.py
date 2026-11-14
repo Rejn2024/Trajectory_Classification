@@ -20,6 +20,7 @@ def checkout(tmp_path, monkeypatch):
     monkeypatch.setenv("BVR_WEEKEND_ROOT", str(root))
     monkeypatch.delenv("BVR_WEEKEND_MODE", raising=False)
     monkeypatch.delenv("BVR_WEEKEND_SOURCE", raising=False)
+    monkeypatch.delenv("BVR_WEEKEND_ACCEPT_PERFORMANCE_FIX", raising=False)
     return root
 
 
@@ -62,6 +63,25 @@ def test_resume_uses_explicit_paths(checkout, monkeypatch):
     exec(compile(SETUP, str(NOTEBOOK), "exec"), namespace)
     assert namespace["JOB"] == job
     assert namespace["OUTPUT"] == output
+    assert namespace["ACCEPT_PERFORMANCE_FIX"]
+    assert "--accept-performance-fix" in namespace["ARGS"]
+
+
+@pytest.mark.parametrize("mode", ["new", "resume"])
+def test_existing_plan_respects_explicit_repair_opt_out(checkout, monkeypatch, mode):
+    monkeypatch.setenv("BVR_WEEKEND_MODE", mode)
+    monkeypatch.setenv("BVR_WEEKEND_JOB", str(checkout / "saved-job"))
+    monkeypatch.setenv("BVR_WEEKEND_ACCEPT_PERFORMANCE_FIX", "0")
+    namespace = {}
+    exec(compile(SETUP, str(NOTEBOOK), "exec"), namespace)
+    job = namespace["JOB"]
+    plan = job / "campaign.json"
+    plan.write_bytes(b'{"source_hashes": "saved source"}')
+    exec(compile(SETUP, str(NOTEBOOK), "exec"), namespace)
+    assert namespace["JOB"] == job
+    assert not namespace["ACCEPT_PERFORMANCE_FIX"]
+    assert "--accept-performance-fix" not in namespace["ARGS"]
+    assert plan.read_bytes() == b'{"source_hashes": "saved source"}'
 
 
 @pytest.mark.parametrize("mode", ["resume", "invalid"])

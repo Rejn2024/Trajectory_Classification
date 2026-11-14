@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -463,6 +464,43 @@ def repair_settings(new=False, windows=False):
         "parent_hashes": {"best_model.pt": "selected-parent"},
         "software": {"torch": "saved-version"},
     }
+
+
+def test_new_mode_rerun_passes_known_repair_to_preflight(tmp_path, monkeypatch):
+    for key in list(os.environ):
+        if key.startswith("BVR_WEEKEND_"):
+            monkeypatch.delenv(key)
+    root = tmp_path / "checkout"
+    (root / "scripts").mkdir(parents=True)
+    (root / "scripts/run_varied_pilot_weekend.py").touch()
+    monkeypatch.setenv("BVR_WEEKEND_ROOT", str(root))
+    notebook = weekend.ROOT / "notebooks/31_continue_varied_pilots_and_generate_corpus.ipynb"
+    setup = "".join(json.loads(notebook.read_text())["cells"][2]["source"])
+    namespace = {}
+    exec(compile(setup, str(notebook), "exec"), namespace)  # noqa: S102
+    job = namespace["JOB"]
+    previous = repair_settings()
+    previous["pilot_schedule"] = "paired"
+    for name, hashes in weekend.PROGRESS_FIX_BASE_HASHES.items():
+        previous["source_hashes"][name] = hashes[0]
+    weekend.prepare_campaign(job, previous)
+    checkpoint = job / "resume.pt"
+    checkpoint.write_bytes(b"saved model, optimizer, RNG and completed epochs")
+    current = json.loads(json.dumps(previous))
+    for name in weekend.PROGRESS_FIX_BASE_HASHES:
+        current["source_hashes"][name] = weekend.sha256(weekend.ROOT / name)
+
+    # Run All reuses this kernel's existing job, while RUN_MODE remains "new".
+    exec(compile(setup, str(notebook), "exec"), namespace)  # noqa: S102
+    arguments = weekend.parser().parse_args(namespace["ARGS"][3:] + ["--preflight-only"])
+    assert namespace["RUN_MODE"] == "new" and arguments.job == job
+    assert arguments.preflight_only
+    weekend.prepare_campaign(job, current, arguments.accept_performance_fix)
+    receipt = weekend.read(job / "performance_fix.json")
+    assert receipt["original_campaign"] == previous
+    assert receipt["base_commit"] == weekend.PROGRESS_FIX_BASE_COMMIT
+    assert weekend.read(job / "campaign.json") == current
+    assert checkpoint.read_bytes() == b"saved model, optimizer, RNG and completed epochs"
 
 
 @pytest.mark.parametrize("windows", [False, True])

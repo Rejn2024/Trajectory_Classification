@@ -284,11 +284,21 @@ rejects code changes made during a running campaign.
 For the progress-file permission repair of paired jobs created at `7b3916f`,
 restart the kernel and set `BVR_WEEKEND_MODE=resume` and `BVR_WEEKEND_JOB` to the
 saved job before setup. Retain the same OUTPUT, source and experiment settings.
-Resume setup already enables `--accept-performance-fix` unless
+Setup enables `--accept-performance-fix` whenever it reuses an existing campaign,
+including Run All in the same kernel with `RUN_MODE=new`, unless
 `BVR_WEEKEND_ACCEPT_PERFORMANCE_FIX=0` is set. This repair accepts the known
 LF/CRLF hashes of only the runner and progress module from that revision,
 records the upgrade in `JOB/performance_fix.json`, and preserves saved training
-state. Fresh mode starts a new campaign instead.
+state. Fresh mode in a new kernel starts a new campaign instead.
+
+An existing kernel can still hold `ARGS` built before this correction. If
+preflight fails at `if not accept_performance_fix`, run this before rerunning
+the preflight cell, keeping the current JOB and OUTPUT:
+
+```python
+if "--accept-performance-fix" not in ARGS:
+    ARGS.append("--accept-performance-fix")
+```
 
 **Historical serial repair only:** the following source-upgrade procedure applied
 before paired scheduling was introduced; paired mode needs a fresh campaign.
