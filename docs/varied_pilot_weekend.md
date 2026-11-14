@@ -79,7 +79,7 @@ losses have different meanings between pilots with different objectives.
 
 Keep the machine awake. Run All uses a child process, records full logs under
 `JOB/logs/`, and displays tqdm-style notebook bars for the current pilot, overall
-training epochs and final NN collection. The bars refresh every two seconds and
+training epochs and final NN collection. Widgets refresh every two seconds and
 show elapsed time, rate, current phase, loss/return and ETA forecasts. They count
 committed epochs and resume at saved counts. `JOB/training_progress.json` supplies
 the live phase and measurements; `status.json` identifies the overall stage.
@@ -92,7 +92,13 @@ stage initially uses the simple-stage average. The first epoch reports
 setup, assessments and final collection; architecture differences, checkpoint I/O
 and variable flight lengths can change actual wall time. Collection has its own
 ETA based on measured flights/hour. Widget support comes from the `ipywidgets`
-video extra, with tqdm's standard text fallback where needed.
+video extra, with a plain text event fallback where needed.
+
+The fallback now prints plain progress events instead of terminal animation.
+Unchanged two-second polls emit nothing; a phase change updates the pilot line,
+and the overall line updates only when its committed epoch count or stage changes.
+Widget displays still refresh in place every two seconds. Rendering is controlled
+in one place, so a count update cannot first draw a second line with an old postfix.
 
 CPU simulator processes remain warm across
 epochs; policy inference and PPO use CUDA when available. The worker default is
@@ -120,6 +126,65 @@ minibatch size and loss/reward coefficients are not reduced by these changes.
 `rollout_seconds`, `update_seconds`, `evaluation_seconds` and the recorded training
 collection profile expose the remaining costs.
 
+### Investigating the notebook-31 slowdown
+
+At branch revision `bc01bf4`, the saved campaign cell contained **20,018 overall
+bar redraws for only 394 distinct completed-epoch counts**, in 3.16 million text
+characters. The output reports `IProgress not found`; `tqdm.auto` therefore used
+terminal animation. `CampaignProgress.refresh()` forcibly redrew both bars every
+two seconds even when nothing changed. These were display updates, not repeated
+training epochs. Cursor-up/carriage-return operations also explain stale loss
+and ETA fragments appended to the overall line. The event fallback removes this
+growing notebook/browser/serialization workload. The old retained campaign output
+has been cleared from the edited notebook; the original evidence remains in Git.
+
+The slowdown is not monotonic: differences between saved completed-epoch elapsed
+times put pilot 001 at about **250 seconds/epoch during epochs 11–100**, then
+**43 seconds/epoch during epochs 116–200**. Pilot 002 averages about **58
+seconds/epoch during epochs 11–100**. Polling gives approximately two-second
+resolution and the first interval includes initialization. The corrupted bar
+postfixes cannot reliably attribute this time to individual training phases.
+
+Two simulator resource issues are repaired:
+
+- A `NoneType` type annotation imported `torch._C` into every simulator worker,
+  despite policy inference taking place in the parent. Using `str | None` removes
+  that dependency. A real fresh-process simulator test checks that stepping a
+  flight does not load Torch.
+- `BVR3DEnv.close()` was empty. Aircraft/enemy/sensor reference cycles retained
+  their native JSBSim engines until cyclic GC. `JSBSimFDM.close()` now releases
+  both references to its native engine; environment close and reset call it.
+  Reset also clears completed missiles from the previous flight. With cyclic GC
+  disabled, repeated close/reset tests verify immediate native-handle release
+  and unchanged seeded initial observations.
+
+An isolated Linux CPU probe creating 100 two-aircraft environments reduced final
+process RSS from about **316 MB to 64 MB** after both repairs. With GC disabled,
+20 closed environments previously retained 40 FDMs with live native engines;
+the repaired path retains zero native handles even while Python cycles remain.
+RSS includes loaded libraries and allocator caching. This establishes resource
+cleanup and lower per-process memory here, not a measured speedup of the original
+Windows/CUDA training campaign.
+
+An epoch is also a variable amount of computation. The source recipe uses **60
+PPO passes and minibatches of 64**, processing every collected decision. If all
+60 flights survive for 300 one-second decisions, PPO performs
+`60 * ceil(18,000 / 64) = 16,920` minibatches in one epoch. Longer survival can
+increase simulation and update time substantially without a throughput regression.
+The existing saved `rollout_transitions` and `update_minibatches` distinguish that
+case; it cannot be decided from the bar output alone. No production checkpoints
+or raw JSONL metrics from the Windows machine are included in this checkout.
+
+The notebook now has a read-only timing table, grouped into ten-epoch median
+windows. Compare decision/minibatch counts against milliseconds per decision and
+per minibatch. New rows also record validation decision/game-time counts,
+validation policy/simulator timings, PPO KL and CUDA allocated/reserved/peak
+memory. KL diagnostics do not change the optimizer updates. For a **new JOB and
+OUTPUT**, optional `BVR_WEEKEND_TARGET_KL=0.02` / `--target-kl 0.02` enables the
+trainer's existing KL early stopping (threshold `1.5 * target`) instead of always
+using all inherited passes. It changes the training recipe and is not enabled
+automatically for the existing campaign. Validate its flight quality separately.
+
 Completed pilots and assessments are reused. Each completed flight writes
 checksummed files before its completion marker. Transport failures retry the
 original batch; collection retains successful flights and retries pending cases
@@ -133,6 +198,19 @@ newer batch. The campaign checks source/assets, parent checkpoints, configuratio
 and software versions. Restore the recorded environment to resume it, or choose
 new JOB and OUTPUT directories for a changed experiment. The final archive also
 rejects code changes made during a running campaign.
+
+To resume a campaign pinned to `bc01bf4` after this repair, stop its old process
+and restart the kernel before Run All. Notebook setup enables this known
+operational repair by default (`ACCEPT_PERFORMANCE_FIX=True`); set
+`BVR_WEEKEND_ACCEPT_PERFORMANCE_FIX=0` to retain strict source rejection. The CLI equivalent is
+`--accept-performance-fix`. Preflight takes the campaign lock and checks the
+original LF/CRLF hashes of the six repair files. All other source/assets,
+parent checkpoints, software and experiment settings must still match exactly.
+The original plan and changed hashes are retained in `JOB/performance_fix.json`
+and included in the final reproduction archive. Committed model, optimizer,
+scaler, RNG and epoch state are preserved. The flag may remain set after migration;
+repeated preflight is idempotent. Changing KL or other budgets still needs a new
+experiment directory.
 
 On a CUDA machine, `auto` benchmarks local CPU inference and central CUDA
 inference on separate flights. The central inference owner groups pilots by
@@ -229,3 +307,24 @@ hashes and retained exactly two epochs per pilot per stage. Notebook schema,
 cell compilation, Ruff and `git diff --check` passed.
 
 Full production training/collection and execution on CUDA hardware were not run.
+
+### Performance repair verification
+
+The repair/backend/PPO/process/progress suite passed **94 tests**, with **11 CUDA
+checks skipped**. In particular, 1,000 unchanged progress polls redraw each text
+view once, phase changes do not redraw the overall view, widget polling remains
+live, and text events contain no terminal cursor-control codes. LF/CRLF campaign
+upgrade tests preserve saved state and provenance, reject changes to budgets,
+KL, checkpoints and unrelated source, and refuse a locked campaign.
+
+A two-epoch real-JSBSim/process-worker/PPO execution recorded all new phase/workload
+and KL fields, validated every epoch, and preserved model tensors and epoch counts
+when rerun from its completed restart checkpoint. Notebook cells compile; Ruff
+on the changed training/progress/test files and `git diff --check` pass.
+
+Related pilot/notebook checks passed another **106 tests**. Three existing notebook
+checks fail on both this checkout and an unmodified `bc01bf4` worktree: the training
+notebook CPU-default and batch-size assertions, and notebook 30's assertion that
+executed cells have no saved execution count. Those notebooks were not changed.
+The original Windows/CUDA campaign and its raw metrics/checkpoints remain
+unavailable here; its end-to-end speedup has not been measured.

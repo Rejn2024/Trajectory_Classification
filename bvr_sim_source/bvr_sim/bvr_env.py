@@ -174,12 +174,14 @@ class BVR3DEnv(gymnasium.Env):
 
     def reset(self, seed=None):
         """Reset environment to initial state"""
+        self.close()
         if seed is not None:
             np.random.seed(seed)
 
         self.current_step = 0
         self.agents.clear()
         self.missiles.clear()
+        self.done_missiles.clear()
         self.baseline_opponents.clear()
         self.ground_units.clear()
         self.sam_launchers.clear()
@@ -813,7 +815,13 @@ class BVR3DEnv(gymnasium.Env):
 
     def close(self):
         """Close the environment and cleanup"""
-        pass
+        # Aircraft reference each other and their sensors reference their parent.
+        # A dropped environment can therefore retain native JSBSim engines until
+        # a full cyclic GC, which is especially costly in persistent workers.
+        for aircraft in self.agents.values():
+            close = getattr(getattr(aircraft, 'fdm', None), 'close', None)
+            if close is not None:
+                close()
 
 
 def make_bvr3d_env(config: dict = None) -> BVR3DEnv:

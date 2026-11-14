@@ -70,6 +70,14 @@ class JSBSimFDM(BaseFDM):
 
         self._clear_default_condition()
 
+    def close(self) -> None:
+        """Release native engines even while aircraft/sensor cycles still exist."""
+        # Both attributes own a reference to the same Cython/native object.
+        # Python's cyclic GC does not account for its native allocation size.
+        self.jsbsim_exec = None
+        self._jsbsim_exec = None
+        self._initialized = False
+
     def _clear_default_condition(self) -> None:
         default_condition = {
             Catalog.ic_long_gc_deg: 120.0,

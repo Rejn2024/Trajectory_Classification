@@ -231,6 +231,8 @@ class PPOTrainer:
         simulator_wall_seconds = 0.0
         simulator_work_seconds = 0.0
         simulator_cpu_seconds = 0.0
+        transitions = 0
+        policy_batches = 0
         if len(scenarios) != len(seeds) or not scenarios:
             raise ValueError("provide matching nonempty scenarios and seeds")
         pool = self._simulator_pool
@@ -259,6 +261,8 @@ class PPOTrainer:
             for _ in range(self.config.decisions_per_episode):
                 if not active:
                     break
+                transitions += len(active)
+                policy_batches += 1
                 policy_started = perf_counter()
                 inputs = np.stack([observations[index] for index in active])
                 actions = (self.pilot.act_batch(inputs, deterministic=deterministic)
@@ -310,6 +314,10 @@ class PPOTrainer:
                 pool.release()
         self._last_collection_profile = {
             "collection_seconds": perf_counter() - collection_started,
+            "episodes": len(scenarios),
+            "transitions": transitions,
+            "policy_batches": policy_batches,
+            "game_seconds": sum(info.get("elapsed_game_s", 0.0) for info in final_info),
             "policy_seconds": policy_seconds,
             "simulator_wall_seconds": simulator_wall_seconds,
             "simulator_work_seconds": simulator_work_seconds,
@@ -322,6 +330,9 @@ class PPOTrainer:
                 if simulator_wall_seconds else 0.0
             ),
         }
+        self._last_collection_profile["transitions_per_second"] = (
+            transitions / self._last_collection_profile["collection_seconds"]
+        )
         return list(zip(rollouts, totals, final_info))
 
     def _advantages(self, rollout):

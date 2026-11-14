@@ -423,3 +423,66 @@ def test_campaign_lock_recovers_after_process_is_killed(tmp_path):
         if child.poll() is None:
             child.kill()
             child.wait(timeout=10)
+
+
+def repair_settings(new=False, windows=False):
+    return {
+        "simple_epochs": 200, "tactical_epochs": 300, "workers": 12,
+        "source_hashes": {
+            **{name: "repaired-" + name if new else hashes[int(windows)]
+               for name, hashes in weekend.PERFORMANCE_FIX_BASE_HASHES.items()},
+            "assets/unchanged.xml": "unchanged",
+        },
+        "parent_hashes": {"best_model.pt": "selected-parent"},
+        "software": {"torch": "saved-version"},
+    }
+
+
+@pytest.mark.parametrize("windows", [False, True])
+def test_explicit_performance_repair_keeps_original_plan_and_saved_state(tmp_path, windows):
+    previous, current = repair_settings(windows=windows), repair_settings(new=True)
+    weekend.prepare_campaign(tmp_path, previous)
+    checkpoint = tmp_path / "resume.pt"
+    checkpoint.write_bytes(b"unchanged optimizer and RNG state")
+    checksum = weekend.sha256(checkpoint)
+    with pytest.raises(ValueError, match="accept-performance-fix"):
+        weekend.prepare_campaign(tmp_path, current)
+    assert weekend.read(tmp_path / "campaign.json") == previous
+    weekend.prepare_campaign(tmp_path, current, accept_performance_fix=True)
+    receipt = weekend.read(tmp_path / "performance_fix.json")
+    assert receipt["original_campaign"] == previous
+    assert receipt["updated_source_hashes"] == current["source_hashes"]
+    assert weekend.read(tmp_path / "campaign.json") == current
+    assert weekend.sha256(checkpoint) == checksum
+    weekend.prepare_campaign(tmp_path, current, accept_performance_fix=True)
+    assert weekend.read(tmp_path / "performance_fix.json") == receipt
+
+
+@pytest.mark.parametrize("mutation", ["budget", "kl", "parent", "asset", "unknown", "deleted"])
+def test_performance_repair_rejects_experiment_changes(tmp_path, mutation):
+    previous, current = repair_settings(), repair_settings(new=True)
+    if mutation == "budget":
+        current["simple_epochs"] = 201
+    elif mutation == "kl":
+        current["target_kl"] = .02
+    elif mutation == "parent":
+        current["parent_hashes"]["best_model.pt"] = "different"
+    elif mutation == "asset":
+        current["source_hashes"]["assets/unchanged.xml"] = "different"
+    elif mutation == "unknown":
+        previous["source_hashes"]["scripts/weekend_training_progress.py"] = "unrecognized"
+    elif mutation == "deleted":
+        current["source_hashes"].pop("scripts/weekend_training_progress.py")
+    weekend.prepare_campaign(tmp_path, previous)
+    with pytest.raises(ValueError):
+        weekend.prepare_campaign(tmp_path, current, accept_performance_fix=True)
+    assert weekend.read(tmp_path / "campaign.json") == previous
+    assert not (tmp_path / "performance_fix.json").exists()
+
+
+def test_performance_repair_refuses_an_active_campaign(tmp_path):
+    previous, current = repair_settings(), repair_settings(new=True)
+    weekend.prepare_campaign(tmp_path, previous)
+    with weekend.duel.campaign_lock(tmp_path), pytest.raises(RuntimeError, match="locked"):
+        weekend.prepare_campaign(tmp_path, current, accept_performance_fix=True)
+    assert weekend.read(tmp_path / "campaign.json") == previous

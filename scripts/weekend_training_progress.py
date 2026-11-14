@@ -1,6 +1,7 @@
 """Small JSON progress records and notebook tqdm views; no simulator imports."""
 
 import json
+import statistics
 import time
 from pathlib import Path
 
@@ -31,6 +32,48 @@ def duration(seconds):
     hours, seconds = divmod(seconds, 3600)
     minutes, seconds = divmod(seconds, 60)
     return f"{hours:d}:{minutes:02d}:{seconds:02d}"
+
+
+def timing_windows(path, size=10):
+    """Separate growing flight/update work from slower execution of the same work.
+
+    Old campaign rows already have rollout/minibatch counts. Missing newer
+    validation and memory measurements stay absent rather than becoming zeros.
+    """
+    if size < 1:
+        raise ValueError("Timing window size must be positive")
+    rows = metric_rows(Path(path))
+    result = []
+    fields = {
+        "epoch_s": "epoch_seconds",
+        "rollout_s": "rollout_seconds",
+        "PPO_s": "update_seconds",
+        "validation_s": "evaluation_seconds",
+        "decisions": "rollout_transitions",
+        "minibatches": "update_minibatches",
+        "PPO_passes": "update_passes_completed",
+        "validation_decisions": "evaluation_transitions",
+        "KL": "approx_kl",
+        "CUDA_peak_MB": "cuda_peak_allocated_mb",
+    }
+    for left in range(0, len(rows), size):
+        window = rows[left:left + size]
+        summary = {"first_epoch": window[0]["epoch"], "last_epoch": window[-1]["epoch"]}
+        for label, key in fields.items():
+            values = [row[key] for row in window if key in row]
+            if values:
+                summary[label] = statistics.median(values)
+        for label, seconds, count in (
+            ("rollout_ms/decision", "rollout_seconds", "rollout_transitions"),
+            ("PPO_ms/minibatch", "update_seconds", "update_minibatches"),
+            ("validation_ms/decision", "evaluation_seconds", "evaluation_transitions"),
+        ):
+            values = [1000 * row[seconds] / row[count] for row in window
+                      if seconds in row and row.get(count, 0) > 0]
+            if values:
+                summary[label] = statistics.median(values)
+        result.append(summary)
+    return result
 
 
 class EpochProgressReporter:
@@ -101,6 +144,29 @@ class EpochProgressReporter:
         )
 
 
+class TextProgress:
+    """Append readable progress events when notebook widgets are unavailable."""
+
+    def __init__(self, *, total, desc, unit, initial=0, **options):
+        self.total, self.description, self.unit = total, desc, unit
+        self.n, self.postfix = initial, ""
+        self.started = time.monotonic()
+
+    def update(self, delta):
+        self.n += delta
+
+    def set_postfix_str(self, value, refresh=False):
+        self.postfix = value
+
+    def refresh(self):
+        elapsed = duration(time.monotonic() - self.started)
+        print(f"{self.description}: {self.n}/{self.total} {self.unit} "
+              f"[elapsed {elapsed}, {self.postfix}]", flush=True)
+
+    def close(self):
+        pass
+
+
 class CampaignProgress:
     """Display current-pilot, overall-training and collection bars in Jupyter."""
 
@@ -108,7 +174,8 @@ class CampaignProgress:
         if bar_factory is None:
             from tqdm.auto import tqdm
 
-            bar_factory = tqdm
+            widget = any(cls.__module__ == "tqdm.notebook" for cls in tqdm.__mro__)
+            bar_factory = tqdm if widget else TextProgress
         self.job, self.flights, self.bar_factory, self.clock = (
             Path(job),
             flights,
@@ -117,6 +184,11 @@ class CampaignProgress:
         )
         self.overall = self.pilot = self.collection = None
         self.pilot_key = None
+        self.last_state = None
+        self.bar_states = {}
+        self.widget = any(
+            cls.__module__ == "tqdm.notebook" for cls in getattr(bar_factory, "__mro__", ())
+        )
 
     def new_bar(self, description, total, unit, leave=True, initial=0):
         return self.bar_factory(
@@ -126,19 +198,36 @@ class CampaignProgress:
             unit=unit,
             leave=leave,
             dynamic_ncols=True,
+            # refresh() below owns rendering; update() must not draw an extra
+            # line with the previous postfix before we explicitly refresh it.
+            mininterval=float("inf"),
             bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} {unit} "
             "[elapsed {elapsed}, {rate_fmt}{postfix}]",
         )
 
-    @staticmethod
-    def update_bar(bar, count, postfix):
-        bar.update(max(0, count - bar.n))
+    def update_bar(self, bar, count, postfix, state):
+        key = (count, state)
+        if not self.widget and self.bar_states.get(id(bar)) == key:
+            return
         bar.set_postfix_str(postfix, refresh=False)
+        bar.update(max(0, count - bar.n))
         bar.refresh()
+        self.bar_states[id(bar)] = key
 
     def refresh(self):
         stage = read_json(self.job / "status.json").get("stage", "starting")
         record = read_json(self.job / "training_progress.json")
+        collection = read_json(self.job / "collection/progress.json") if stage in (
+            "corpus", "completed"
+        ) else {}
+        state = (stage, record.get("pilot"), record.get("phase"),
+                 record.get("overall_completed_epochs"), collection.get("completed"))
+        # Forced terminal redraws every two seconds become permanent notebook
+        # output when ipywidgets is unavailable (megabytes in the saved run).
+        # Widgets still refresh every poll; text only renders changed progress.
+        if not self.widget and state == self.last_state:
+            return
+        self.last_state = state
         if record:
             if self.overall is None:
                 self.overall = self.new_bar(
@@ -164,11 +253,13 @@ class CampaignProgress:
                 self.overall,
                 record["overall_completed_epochs"],
                 f"{stage}, training ETA≈{eta('training_eta_seconds')}",
+                stage,
             )
             if active:
                 key = record["stage"], record["pilot"]
                 if key != self.pilot_key:
                     if self.pilot is not None:
+                        self.bar_states.pop(id(self.pilot), None)
                         self.pilot.close()
                     self.pilot = self.new_bar(
                         f"{key[0]} · {key[1]}",
@@ -187,12 +278,14 @@ class CampaignProgress:
                     self.pilot,
                     record["completed_epochs"],
                     f"{record['phase']}, pilot ETA≈{eta('pilot_eta_seconds')}{score}",
+                    (record["phase"], record.get("loss"), record.get("validation_return")),
                 )
             elif self.pilot is not None:
+                self.bar_states.pop(id(self.pilot), None)
                 self.pilot.close()
                 self.pilot, self.pilot_key = None, None
         if stage in ("corpus", "completed"):
-            record = read_json(self.job / "collection/progress.json")
+            record = collection
             if record:
                 if self.collection is None:
                     self.collection = self.new_bar(
@@ -203,9 +296,10 @@ class CampaignProgress:
                     )
                 count, rate = record.get("completed", 0), record.get("flights_per_hour", 0.0)
                 eta = duration((self.flights - count) * 3600 / rate if rate else None)
-                self.update_bar(self.collection, count, f"{stage}, collection ETA≈{eta}")
+                self.update_bar(self.collection, count, f"{stage}, collection ETA≈{eta}", stage)
 
     def close(self):
+        self.last_state = None
         self.refresh()
         for bar in (self.pilot, self.overall, self.collection):
             if bar is not None:

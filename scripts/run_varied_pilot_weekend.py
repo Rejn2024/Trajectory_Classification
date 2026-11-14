@@ -48,6 +48,36 @@ from bvr_behavior_prediction.rl.trainer import PPOTrainer
 
 read, write, sha256 = duel.read, duel.write, duel.sha256
 PILOTS = [f"pilot_{i:03d}" for i in range(1, 11)]
+# Only the operational repair from this known notebook-31 revision may upgrade
+# an existing campaign. Hyperparameters, assets, parents and software stay pinned.
+PERFORMANCE_FIX_BASE_COMMIT = "bc01bf41798d9858df739ec2e0bfefb4000fe3a9"
+PERFORMANCE_FIX_BASE_HASHES = {
+    # Known LF and CRLF checkouts of each original file (the saved run is Windows).
+    "scripts/run_varied_pilot_weekend.py": (
+        "ebe16ca6eeb58b64a4753355ed2a13b76456e4d2ff340ea34104abb1e7ae927b",
+        "078518d1ff5aa4506bd92383f67bc362673b2961d4ab82423dbe2094a5a5111d",
+    ),
+    "scripts/weekend_training_progress.py": (
+        "d2e885ed5eaaf56fcc0fa2e22339ccd51ec0c830bf14ba5d1a270a2cb0e21e6c",
+        "9ea08795c666c64289bc00d8a408defb0c26338934a943045ef78d4934497f81",
+    ),
+    "bvr_behavior_prediction/rl/trainer.py": (
+        "35ceffd912541a1a70d3b108977e50fd10d810b139de3951f8b9bdd51d5b78f2",
+        "87e552c94dd91676df3e4086ccfb0006c7e0bdefc9106435941c0fdd95fb8c3b",
+    ),
+    "bvr_behavior_prediction/rl/bvr_jsbsim_backend.py": (
+        "0b69bcc1854ec0c468b10157e256a3fa0082652a6adca315130a387a2fc7c8af",
+        "bb738123e87c442f32ccdef3eae9e6e7070c6b33f9be9dd32b4ea01549c251fe",
+    ),
+    "bvr_sim_source/bvr_sim/bvr_env.py": (
+        "9333c2ab18b033ad804736e095787afead1da2e73d0db607ac3837083f8e8a57",
+        "2ce5e4d2b75f6e8b2a8b37f8d4e6c8789b05be66767f8b52115f2aef24c51661",
+    ),
+    "bvr_sim_source/bvr_sim/src_py/simulator/aircraft/fdm/jsbsim_fdm.py": (
+        "a8c0e76c02bee9257cf8a14d3a574d1e5231c159da06e1763c91ff0aa2b0a014",
+        "ad248e52361a6dd39a6b00b32721ee490ee440771d48b783915052fae4a87bf5",
+    ),
+}
 
 
 def now():
@@ -86,6 +116,53 @@ def source_inventory():
             and p.suffix not in {".pyc", ".pyo"}
         )
     return {p.relative_to(ROOT).as_posix(): sha256(p) for p in sorted(paths)}
+
+
+def prepare_campaign(job, settings, accept_performance_fix=False):
+    """Pin a new plan or record a narrowly scoped repair of an interrupted run."""
+    plan = job / "campaign.json"
+    # Preflight may upgrade provenance, so it must also exclude an active runner.
+    with duel.campaign_lock(job):
+        if not plan.exists():
+            write(plan, settings)
+            return
+        previous = read(plan)
+        if previous == settings:
+            return
+        error = (
+            "Campaign settings/source/checkpoints/software changed; choose a new JOB directory. "
+            "For this revision's cleanup/progress repair only, stop the old process and use "
+            "--accept-performance-fix with otherwise identical settings."
+        )
+        if not accept_performance_fix:
+            raise ValueError(error)
+        if {k: v for k, v in previous.items() if k != "source_hashes"} != {
+            k: v for k, v in settings.items() if k != "source_hashes"
+        }:
+            raise ValueError(error)
+        before, after = previous["source_hashes"], settings["source_hashes"]
+        changes = {name for name in before.keys() | after.keys()
+                   if before.get(name) != after.get(name)}
+        if not changes <= PERFORMANCE_FIX_BASE_HASHES.keys() or any(
+            before.get(name) not in PERFORMANCE_FIX_BASE_HASHES[name] or name not in after
+            for name in changes
+        ):
+            raise ValueError("Performance repair cannot accept unrelated or unknown source changes")
+        receipt = job / "performance_fix.json"
+        # Write the original plan first; retrying a crash between these atomic
+        # replacements is safe and never loses the original provenance.
+        if receipt.exists() and read(receipt)["original_campaign"] != previous:
+            raise ValueError("An existing performance repair has different original provenance")
+        write(receipt, {
+            "updated_utc": now(),
+            "base_commit": PERFORMANCE_FIX_BASE_COMMIT,
+            "original_campaign": previous,
+            "updated_source_hashes": after,
+            "changed_files": sorted(changes),
+            "note": "Operational cleanup, progress and diagnostics repair; "
+                    "saved model/optimizer/RNG/epochs and training budgets are retained.",
+        })
+        write(plan, settings)
 
 
 def population_inventory(source):
@@ -208,9 +285,12 @@ def stage_config(source, output, settings, stage):
         "scenarios_per_epoch",
         "evaluation_scenarios_per_epoch",
         "update_epochs",
+        "target_kl",
     ):
         if settings.get(name) is not None:
             config[name] = settings[name]
+    # Measure policy movement even when the inherited recipe has no KL limit.
+    config["log_ppo_diagnostics"] = True
     return PilotTrainingConfig(**config)
 
 
@@ -304,6 +384,8 @@ def train_one(source, output, config, opponent, device, progress=None):
         last_scores = trainer.weekend_evaluation_scores
         for epoch in range(start + 1, config.epochs + 1):
             started = time.perf_counter()
+            if trainer.device.type == "cuda":
+                torch.cuda.reset_peak_memory_stats(trainer.device)
             report("collecting flights", epoch - 1, metrics)
             episodes = trainer._training_episodes()
             rollout_seconds = time.perf_counter() - started
@@ -318,6 +400,7 @@ def train_one(source, output, config, opponent, device, progress=None):
             evaluation_start = time.perf_counter()
             last_scores = trainer._evaluate()
             evaluation_seconds = time.perf_counter() - evaluation_start
+            evaluation_profile = dict(trainer._last_collection_profile)
             trainer.weekend_evaluation_scores = last_scores
             score = float(np.mean(last_scores))
             if not np.isfinite(last_scores).all():
@@ -344,7 +427,17 @@ def train_one(source, output, config, opponent, device, progress=None):
                 "epoch_seconds": time.perf_counter() - started,
                 **trainer._last_update_profile,
                 **{f"training_{k}": v for k, v in collection_profile.items()},
+                **{f"evaluation_{k}": v for k, v in evaluation_profile.items()},
             }
+            row["update_seconds_per_minibatch"] = (
+                update_seconds / row["update_minibatches"]
+            )
+            if trainer.device.type == "cuda":
+                row.update(
+                    cuda_allocated_mb=torch.cuda.memory_allocated(trainer.device) / 2**20,
+                    cuda_reserved_mb=torch.cuda.memory_reserved(trainer.device) / 2**20,
+                    cuda_peak_allocated_mb=torch.cuda.max_memory_allocated(trainer.device) / 2**20,
+                )
             if not all(np.isfinite(v) for v in row.values()):
                 raise ValueError("Nonfinite training metrics")
             metrics.append(row)
@@ -484,6 +577,8 @@ def freeze_population(job, settings):
         source_hashes = settings["source_hashes"]
         for relative in source_hashes:
             z.write(ROOT / relative, f"source/{relative}")
+        if (job / "performance_fix.json").exists():
+            z.write(job / "performance_fix.json", "provenance/performance_fix.json")
         for pid in PILOTS:
             for filename in ("config.json", "manifest.json", "best_model.pt"):
                 z.write(job / "tactical" / pid / filename, f"training/{pid}/{filename}")
@@ -637,6 +732,9 @@ def run(args):
     settings = vars(args).copy()
     settings.pop("job")
     settings.pop("preflight_only")
+    settings.pop("accept_performance_fix")
+    if settings["target_kl"] is None:
+        settings.pop("target_kl")  # Keep old, otherwise identical campaign plans compatible.
     settings.update(
         source=str(source),
         output=str(args.output.resolve()),
@@ -649,12 +747,7 @@ def run(args):
         python=sys.version.split()[0],
     )
     check_seeds(source, settings)
-    if plan.exists() and read(plan) != settings:
-        raise ValueError(
-            "Campaign settings/source/checkpoints/software changed; choose a new JOB directory"
-        )
-    if not plan.exists():
-        write(plan, settings)
+    prepare_campaign(job, settings, args.accept_performance_fix)
     if (args.output / "config.json").exists() and read(args.output / "config.json")[
         "source_experiment"
     ] != str(job):
@@ -731,6 +824,11 @@ def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--source", type=Path)
     p.add_argument("--preflight-only", action="store_true")
+    p.add_argument(
+        "--accept-performance-fix", action="store_true",
+        help="After stopping the old process, accept only this known cleanup/progress repair "
+        "for the existing JOB and preserve its original campaign provenance",
+    )
     p.add_argument("--job", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--simple-epochs", type=int, default=200)
@@ -762,12 +860,21 @@ def parser():
         "update-epochs",
     ):
         p.add_argument("--" + option, type=int)
+    p.add_argument(
+        "--target-kl", type=float,
+        help="Stop PPO passes once approximate KL exceeds 1.5 times this target; "
+        "omit to inherit the saved pilot's setting (a changed recipe needs a new JOB)",
+    )
     p.add_argument("--episode-duration-s", type=float, default=300)
     return p
 
 
 if __name__ == "__main__":
     arguments = parser().parse_args()
+    if arguments.target_kl is not None and (
+        not np.isfinite(arguments.target_kl) or arguments.target_kl <= 0
+    ):
+        raise ValueError("target-kl must be finite and positive")
     if (
         min(
             arguments.workers,

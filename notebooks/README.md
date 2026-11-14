@@ -9,6 +9,9 @@ loads those ten saved pilots, adds 200 simple-opponent epochs and 300 tactical-o
 epochs per pilot, then collects 10,000 NN-versus-NN flights with all 91 policy features.
 Both stages use 300-second flights and validation after every epoch, saving selected
 weights on improvement. Inline tqdm bars show phase, elapsed time and ETA forecasts.
+Without widget support, progress uses plain text events and suppresses unchanged
+polls. A timing table compares epoch costs with flight decisions and PPO minibatches;
+simulator workers release native engines and avoid importing PyTorch.
 Run All performs preflight, training, tactical assessments, collection and verification;
 the same job directory resumes committed epochs and flights. See the
 [weekend campaign guide](../docs/varied_pilot_weekend.md).
