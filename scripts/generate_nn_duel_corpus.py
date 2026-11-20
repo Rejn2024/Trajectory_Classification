@@ -26,14 +26,14 @@ from multiprocessing import get_context
 from pathlib import Path
 from unittest.mock import patch
 
-from nn_duel_runtime import bootstrap_native_runtime
+from scripts.nn_duel_runtime import bootstrap_native_runtime
 
 bootstrap_native_runtime()  # Before NumPy, Pandas, Arrow or simulator imports, including spawn.
 
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-from tactical_corpus_schema import (
+from scripts.tactical_corpus_schema import (
     DT,
     KEYS,
     OBSERVATION_COLUMNS,  # noqa: F401 -- legacy public schema constant
