@@ -27,7 +27,7 @@ import subprocess
 import sys
 import types
 sys.path[:0] = sys.argv[1:3]
-import nn_duel_runtime
+from scripts import nn_duel_runtime
 nn_duel_runtime.sys = types.SimpleNamespace(platform="win32" if sys.argv[3] == "1" else "linux")
 builtins.native_events = []
 exec(sys.argv[4])
@@ -36,6 +36,52 @@ assert "numpy" not in sys.modules
 """
     result = subprocess.run(
         [sys.executable, "-c", driver, str(tmp_path), str(SCRIPTS), str(int(windows)), prefix],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_notebook_32_launcher_resolves_runtime_in_spawned_worker(tmp_path):
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    for name in ("__init__.py", "nn_duel_runtime.py"):
+        (scripts / name).write_bytes((SCRIPTS / name).read_bytes())
+
+    simulator_scripts = tmp_path / "bvr_sim_source" / "scripts"
+    simulator_scripts.mkdir(parents=True)
+    (simulator_scripts / "__init__.py").touch()
+    # Exercise the launcher through its native bootstrap without loading Torch.
+    (scripts / "torch.py").write_text("def set_num_threads(n): pass\n", encoding="utf-8")
+    launcher = "run_corpus_post_weekend.py"
+    header = (SCRIPTS / launcher).read_text(encoding="utf-8").split("# isort: off")[0]
+    (scripts / launcher).write_text(
+        header
+        + """
+from multiprocessing import get_context
+
+def check_runtime():
+    import scripts.nn_duel_runtime as runtime
+    assert Path(runtime.__file__).resolve().parent == ROOT / "scripts"
+
+if __name__ == "__main__":
+    worker = get_context("spawn").Process(target=check_runtime)
+    worker.start()
+    worker.join(timeout=20)
+    if worker.is_alive():
+        worker.terminate()
+        worker.join()
+        raise RuntimeError("Worker did not start")
+    raise SystemExit(worker.exitcode)
+""",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-I", "-S", str(scripts / launcher)],
+        cwd=tmp_path.parent,
         capture_output=True,
         text=True,
         check=False,

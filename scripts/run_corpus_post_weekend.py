@@ -20,6 +20,10 @@ from dataclasses import fields
 from datetime import datetime, timezone
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+# Spawned workers re-execute this file with the simulator also on their import path.
+sys.path[:0] = [str(ROOT), str(ROOT / "scripts"), str(ROOT / "bvr_sim_source")]
+
 from scripts.nn_duel_runtime import bootstrap_native_runtime
 
 bootstrap_native_runtime()
@@ -27,9 +31,6 @@ bootstrap_native_runtime()
 import torch  # Torch must initialize before the other native libraries on Windows.
 import numpy as np
 # isort: on
-
-ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT), str(ROOT / "bvr_sim_source")]
 
 import scripts.generate_nn_duel_corpus as duel
 from scripts.weekend_training_progress import EpochProgressReporter, metric_rows
