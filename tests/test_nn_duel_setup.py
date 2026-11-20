@@ -151,12 +151,32 @@ def test_resume_updates_only_the_approved_collector_pin(setup_environment):
     with pytest.raises(ValueError, match="Resume configuration/source/software differs"):
         duel.prepare(work, flights=3, seed=42, seconds=2.0)
     with pytest.raises(ValueError, match="Resume configuration/source/software differs"):
-        duel.prepare(work, flights=3, seed=43, seconds=2.0, previous_collector_sha256=previous_hash)
+        duel.prepare(work, flights=3, seed=43, seconds=2.0, compatible_collector_hashes=(previous_hash,))
     assert duel.read(work / "config.json") == previous
     assert duel.prepare(
-        work, flights=3, seed=42, seconds=2.0, previous_collector_sha256=previous_hash
+        work, flights=3, seed=42, seconds=2.0, compatible_collector_hashes=(previous_hash,)
     ) == config
     assert duel.read(work / "config.json") == config
+
+
+def test_pyarrow_change_requires_opt_in_and_records_resume_history(setup_environment):
+    namespace, versions = setup_environment
+    work = namespace["WORK"]
+    original = duel.prepare(work, flights=3, seed=42, seconds=2.0)
+    versions["pyarrow"] = "2.0"
+
+    with pytest.raises(ValueError, match=r"software\.pyarrow: saved='1.0', current='2.0'"):
+        duel.prepare(work, flights=3, seed=42, seconds=2.0)
+    with pytest.raises(ValueError, match="seed: saved=42, current=43"):
+        duel.prepare(work, flights=3, seed=43, seconds=2.0, accept_pyarrow_version_change=True)
+    assert duel.read(work / "config.json") == original
+
+    current = duel.prepare(work, flights=3, seed=42, seconds=2.0, accept_pyarrow_version_change=True)
+    assert current["software"]["pyarrow"] == "2.0"
+    assert duel.prepare(work, flights=3, seed=42, seconds=2.0) == current
+    assert duel.read(work / "resume_migrations.json") == [
+        {"software.pyarrow": {"saved": "1.0", "current": "2.0"}}
+    ]
 
 
 @pytest.mark.parametrize("invalid", ["false", 0, 1, None])

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import hashlib
 import json
 import os
 import random
@@ -778,14 +779,26 @@ def freeze_population(job, settings):
     return archive
 
 
-def collect_corpus(job, settings):
+def collect_corpus(job, settings, *, accept_pyarrow_version_change=False):
     archive = freeze_population(job, settings)
     work, output = job / "collection", Path(settings["output"])
-    # Only this reviewed scheduler-only revision may replace the previous source pin.
-    previous_collector_sha256 = {
-        "32a484335659bc5db6cb4bcf4023199bbf6d6b51afd2122bfc6b9f3a0a25abb4":
-            "b976a5980b90d94265a891c673dac72d39ff5200bf3ae3b29f18e4687ef14d9f",
-    }.get(sha256(Path(duel.__file__)))
+    # These revisions differ in imports, scheduling and resume handling for this launch path.
+    collector = Path(duel.__file__).read_bytes().replace(b"\r\n", b"\n")
+    reviewed_hash = "28044a3cc536f0dbbc64bad5d8213925c6e83f3d5502898fd69559cb18082b49"
+    compatible_collector_hashes = ()
+    if hashlib.sha256(collector).hexdigest() == reviewed_hash:
+        compatible_collector_hashes = (
+            "0d3ee2700d09c711d0cddcd02882fd1acbef98c1bbbf806ba95c715f50a41433",  # 7a4f468 LF
+            "b27abf2b9bc10bf0f70800fb3911438d10c3966f142cfa6460592487da864cca",  # 7a4f468 CRLF
+            "b976a5980b90d94265a891c673dac72d39ff5200bf3ae3b29f18e4687ef14d9f",  # 7a6cb96 LF
+            "9286e0e386c757c3f631b7f9488be8058c82ed304edd06d7dcc451b4c67c54b2",  # 7a6cb96 CRLF
+            "32a484335659bc5db6cb4bcf4023199bbf6d6b51afd2122bfc6b9f3a0a25abb4",  # fcdf94b LF
+            "012f590ac1a8ceb1b49db9b41b8ab221395a1db1ae29c6d52c26599e3cfa433e",  # fcdf94b CRLF
+        )
+    resume_options = {
+        "compatible_collector_hashes": compatible_collector_hashes,
+        "accept_pyarrow_version_change": accept_pyarrow_version_change,
+    }
     backend = settings["inference_backend"]
     candidates = (
         [backend]
@@ -809,7 +822,7 @@ def collect_corpus(job, settings):
                 seconds=settings["flight_seconds"],
                 inference_backend=candidate,
                 population_archive=archive,
-                previous_collector_sha256=previous_collector_sha256,
+                **resume_options,
             )
             try:
                 duel.collect(bench_work, config, workers=settings["workers"], retain_results=False)
@@ -830,7 +843,7 @@ def collect_corpus(job, settings):
         seconds=settings["flight_seconds"],
         inference_backend=backend,
         population_archive=archive,
-        previous_collector_sha256=previous_collector_sha256,
+        **resume_options,
     )
     # Keep simulator/inference processes warm across the campaign. Each flight
     # commits its own checksummed files before its completion marker. Package
@@ -847,7 +860,7 @@ def collect_corpus(job, settings):
             print(f"Retrying saved pending flights ({retries}/2)", flush=True)
     duel.package(
         work, output, config, shard_flights=settings["shard_flights"],
-        previous_collector_sha256=previous_collector_sha256,
+        **resume_options,
     )
     duel.verify(output, require_complete=True)
 
@@ -924,6 +937,7 @@ def run(args):
     settings.pop("job")
     settings.pop("preflight_only")
     settings.pop("accept_performance_fix")
+    settings.pop("accept_pyarrow_version_change")
     settings.pop("pilot_worker")
     settings.pop("worker_stage")
     settings.pop("pair_token")
@@ -1008,7 +1022,7 @@ def run(args):
             #     elif stage == "after_tactical":
             #         assess(job, job / "tactical", stage, settings)
             #     else:
-            collect_corpus(job, settings)
+            collect_corpus(job, settings, accept_pyarrow_version_change=args.accept_pyarrow_version_change)
             write(job / "status.json", {"stage": "completed", "updated_utc": now()})
         except BaseException:
             write(job / "failure.json", {"updated_utc": now(), "traceback": traceback.format_exc()})
@@ -1019,6 +1033,8 @@ def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--source", type=Path)
     p.add_argument("--preflight-only", action="store_true")
+    p.add_argument("--accept-pyarrow-version-change", action="store_true",
+                   help="Allow the existing corpus to resume with a different PyArrow version")
     p.add_argument("--pilot-schedule", choices=("paired", "serial"), default="paired",
                    help="Train 1&2, then 3&4, etc.; workers is a shared total budget")
     p.add_argument("--pilot-worker", choices=PILOTS, help=argparse.SUPPRESS)

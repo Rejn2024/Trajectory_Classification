@@ -235,18 +235,47 @@ def verify_snapshot(job):
     return pilots
 
 
-def same_campaign_after_collector_update(previous, current, previous_collector_sha256):
-    """Permit a caller-approved collector revision while enforcing every other pin."""
+def check_resume_configuration(
+    path, current, *, compatible_collector_hashes=(), accept_pyarrow_version_change=False,
+    message,
+):
+    """Report mismatches and return the explicitly allowed changes, if any."""
+    previous = read(path)
+    changes = {}
+    for key in sorted(previous.keys() | current.keys()):
+        old, new = previous.get(key), current.get(key)
+        if key in ("software", "collector_hashes") and isinstance(old, dict) and isinstance(new, dict):
+            for name in sorted(old.keys() | new.keys()):
+                if name not in old or name not in new or old[name] != new[name]:
+                    changes[f"{key}.{name}"] = [old.get(name), new.get(name)]
+        elif key not in previous or key not in current or old != new:
+            changes[key] = [old, new]
+
     filename = Path(__file__).name
-    old_hashes = previous.get("collector_hashes", {})
-    new_hashes = current.get("collector_hashes", {})
-    return (
-        previous_collector_sha256 is not None
-        and old_hashes.get(filename) == previous_collector_sha256
-        and new_hashes.get(filename) == sha256(Path(__file__))
-        and {**previous, "collector_hashes": {**old_hashes, filename: new_hashes[filename]}}
-        == current
-    )
+    remaining = changes.copy()
+    collector_key = f"collector_hashes.{filename}"
+    if collector_key in remaining:
+        saved_hash, current_hash = remaining[collector_key]
+        if saved_hash in compatible_collector_hashes and current_hash == sha256(Path(__file__)):
+            del remaining[collector_key]
+
+    pyarrow_key = "software.pyarrow"
+    if accept_pyarrow_version_change and pyarrow_key in remaining:
+        saved_version, current_version = remaining[pyarrow_key]
+        if all(isinstance(version, str) and version for version in (saved_version, current_version)):
+            del remaining[pyarrow_key]
+
+    if remaining:
+        details = [
+            f"  {key}: saved={old!r}, current={new!r}"
+            if all(not isinstance(value, (list, dict)) for value in (old, new))
+            else f"  {key}: saved and current values differ"
+            for key, (old, new) in remaining.items()
+        ]
+        if remaining.keys() == {pyarrow_key} and not accept_pyarrow_version_change:
+            details.append("  Restore the saved PyArrow version or set ACCEPT_PYARROW_VERSION_CHANGE = True in Notebook 32.")
+        raise ValueError(f"{message}\nSaved configuration: {path}\n" + "\n".join(details))
+    return changes
 
 
 def prepare(
@@ -261,7 +290,8 @@ def prepare(
     native_throttle_override=False,
     population_archive=None,
     *,
-    previous_collector_sha256=None,
+    compatible_collector_hashes=(),
+    accept_pyarrow_version_change=False,
 ):
     work = Path(work).resolve()
     if not isinstance(native_throttle_override, bool):
@@ -329,15 +359,19 @@ def prepare(
     config_path = work / "config.json"
     with campaign_lock(work):
         if config_path.exists():
-            previous = read(config_path)
-            if previous == config:
+            changes = check_resume_configuration(
+                config_path, config, compatible_collector_hashes=compatible_collector_hashes,
+                accept_pyarrow_version_change=accept_pyarrow_version_change,
+                message="Resume configuration/source/software differs; use a new work directory for a different campaign",
+            )
+            if not changes:
                 return config
-            if not same_campaign_after_collector_update(
-                previous, config, previous_collector_sha256
-            ):
-                raise ValueError(
-                    "Resume configuration/source/software differs; use a new work directory"
-                )
+            migration_path = work / "resume_migrations.json"
+            migrations = read(migration_path) if migration_path.exists() else []
+            migration = {key: {"saved": old, "current": new} for key, (old, new) in changes.items()}
+            if not migrations or migrations[-1] != migration:
+                write(migration_path, [*migrations, migration])
+            print(f"Resuming with recorded configuration changes: {json.dumps(migration)}", flush=True)
         write(config_path, config)
     return config
 
@@ -923,7 +957,10 @@ def estimate_campaign(
     }
 
 
-def package(work, output, config, shard_flights=100, *, previous_collector_sha256=None):
+def package(
+    work, output, config, shard_flights=100, *, compatible_collector_hashes=(),
+    accept_pyarrow_version_change=False,
+):
     """Publish only closed immutable shards. A partial manifest never claims completion."""
     work, output = Path(work), Path(output)
     observation_size = config.get("observation_size", 51)
@@ -934,11 +971,11 @@ def package(work, output, config, shard_flights=100, *, previous_collector_sha25
         output.mkdir(parents=True, exist_ok=True)
         config_path = output / "config.json"
         if config_path.exists():
-            previous = read(config_path)
-            if previous != config and not same_campaign_after_collector_update(
-                previous, config, previous_collector_sha256
-            ):
-                raise ValueError("Publication belongs to a different campaign")
+            check_resume_configuration(
+                config_path, config, compatible_collector_hashes=compatible_collector_hashes,
+                accept_pyarrow_version_change=accept_pyarrow_version_change,
+                message="Publication belongs to a different campaign",
+            )
         previous_files = (
             read(output / "manifest.json")["files"] if (output / "manifest.json").exists() else {}
         )
@@ -1124,6 +1161,8 @@ def package(work, output, config, shard_flights=100, *, previous_collector_sha25
             "See notebooks/11_nn_vs_nn_training_data.ipynb for collection, verification, skill gaps and publication.\n"
         )
         (output / "README.md").write_text(readme, encoding="utf-8", newline="\n")
+        if (work / "resume_migrations.json").exists():
+            write(output / "resume_migrations.json", read(work / "resume_migrations.json"))
         for path in output.rglob("*"):
             if path.is_file() and path.name != "manifest.json" and path.suffix != ".tmp":
                 relative = path.relative_to(output).as_posix()

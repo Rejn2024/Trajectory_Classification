@@ -182,6 +182,7 @@ def test_partial_then_complete_shards_and_canonical_target(campaign, upgrade_col
     previous_hash = "previous-collector" if upgrade_collector else None
     if upgrade_collector:
         config["collector_hashes"] = {filename: previous_hash}
+        config["software"] = {"pyarrow": "old"}
     for case in config["cases"][:2]:
         save_episode(work, case)
     manifest = duel.package(work, output, config, shard_flights=2)
@@ -194,12 +195,22 @@ def test_partial_then_complete_shards_and_canonical_target(campaign, upgrade_col
     save_episode(work, config["cases"][2], defeated=True)
     if upgrade_collector:
         config["collector_hashes"] = {filename: duel.sha256(Path(duel.__file__))}
-        with pytest.raises(ValueError, match="Publication belongs to a different campaign"):
-            duel.package(work, output, config, shard_flights=2)
+        config["software"] = {"pyarrow": "new"}
+        with pytest.raises(ValueError, match=r"software\.pyarrow"):
+            duel.package(
+                work, output, config, shard_flights=2, compatible_collector_hashes=(previous_hash,)
+            )
+        migration = {"software.pyarrow": {"saved": "old", "current": "new"}}
+        duel.write(work / "resume_migrations.json", [migration])
     manifest = duel.package(
-        work, output, config, shard_flights=2, previous_collector_sha256=previous_hash
+        work, output, config, shard_flights=2,
+        compatible_collector_hashes=(previous_hash,) if upgrade_collector else (),
+        accept_pyarrow_version_change=upgrade_collector,
     )
     assert manifest["complete"] and manifest["physical_flights"] == 3
+    if upgrade_collector:
+        assert duel.read(output / "resume_migrations.json") == [migration]
+        assert "resume_migrations.json" in manifest["files"]
     duel.verify(output, require_complete=True)
     assert duel.sha256(output / "A01/observations/part-00000.parquet") == first_shard
     obs, tracks, decisions = duel.load_forecasting_view(
