@@ -136,7 +136,7 @@ def _corpus(tmp_path):
         "cases": cases,
     }
     schema = {
-        "schema_version": "nn-duels-v1",
+        "schema_version": "nn-duels-varied-v1",
         "observation_columns": list(motion.OBSERVATION_COLUMNS),
         "features": observation_feature_schema(91),
     }
@@ -157,7 +157,7 @@ def _corpus(tmp_path):
         if path.is_file()
     }
     manifest = {
-        "name": "nn-duels-v1",
+        "name": "nn-duels-varied-v1",
         "complete": True,
         "requested_flights": len(cases),
         "physical_flights": len(cases),
@@ -177,6 +177,7 @@ def test_prepare_grouped_91_feature_dataset_and_reload(tmp_path):
     data = motion.RelativeMotionData(output)
 
     assert manifest["data_contract"] == motion.DATA_CONTRACT
+    assert manifest["source_schema_version"] == "nn-duels-varied-v1"
     assert len(manifest["features"]) == data.features.shape[1] == 91
     assert manifest["history_steps"] == motion.HISTORY_STEPS == 20
     assert data.targets.shape[1:] == (3, 6)

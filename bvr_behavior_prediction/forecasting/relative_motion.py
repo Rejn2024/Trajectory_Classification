@@ -29,6 +29,7 @@ TARGET_FIELDS = tuple(
     for field in ("north_m", "west_m", "up_m", "vn_mps", "vw_mps", "vu_mps")
 )
 DATA_CONTRACT = "nn-duel-relative-position-velocity-91-v1"
+SOURCE_SCHEMA_VERSIONS = ("nn-duels-varied-v1", "nn-duels-v1")
 TARGET_CONTRACT = (
     "At each exact +1/+2/+5 second timestamp: opposing aircraft position minus observer "
     "position and opposing aircraft velocity minus observer velocity in world North/West/Up"
@@ -123,8 +124,27 @@ def source_index(source):
         raise ValueError("The completed corpus flight counts disagree")
     if manifest.get("config_sha256") != sha256(source / "config.json"):
         raise ValueError("Corpus configuration digest mismatch")
-    if config.get("sample_interval_s") != DT or schema.get("schema_version") != "nn-duels-v1":
-        raise ValueError("Expected notebook-32 NN duels sampled at 10 Hz")
+    sample_interval = config.get("sample_interval_s")
+    if (
+        isinstance(sample_interval, bool)
+        or not isinstance(sample_interval, (int, float))
+        or not np.isclose(sample_interval, DT, atol=1e-12, rtol=0)
+    ):
+        raise ValueError(
+            "Expected notebook-32 observations sampled at 10 Hz "
+            f"(sample_interval_s={DT}); corpus declares {sample_interval!r}"
+        )
+    schema_version = schema.get("schema_version")
+    if schema_version not in SOURCE_SCHEMA_VERSIONS:
+        raise ValueError(
+            "Expected a supported notebook-32 NN-duel schema "
+            f"{SOURCE_SCHEMA_VERSIONS}; corpus declares {schema_version!r}"
+        )
+    if manifest.get("name") != schema_version:
+        raise ValueError(
+            "Corpus manifest and schema versions differ: "
+            f"{manifest.get('name')!r} != {schema_version!r}"
+        )
     columns = schema.get("observation_columns")
     features = schema.get("features")
     if columns != list(OBSERVATION_COLUMNS) or not isinstance(features, list) or len(features) != 91:
@@ -582,6 +602,7 @@ def prepare_dataset(root, output, source, split_seed=1729, analysis=None):
         "source_manifest_sha256": analysis["source_manifest_sha256"],
         "source_physical_flights": int(manifest["physical_flights"]),
         "source_perspective_episodes": int(manifest["perspective_episodes"]),
+        "source_schema_version": schema["schema_version"],
         "source_schema_sha256": sha256(source / "schema.json"),
         "source_code_sha256": sha256(__file__),
         "features": [feature["name"] for feature in schema["features"]],
