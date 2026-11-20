@@ -24,6 +24,21 @@ resume a saved run, set `BVR_WEEKEND_MODE=resume` and `BVR_WEEKEND_JOB` explicit
 (plus `BVR_WEEKEND_OUTPUT` for a custom corpus path). See the
 [weekend campaign guide](../docs/varied_pilot_weekend.md).
 
+**Relative-motion training data:** after notebook 32 finishes its continued 1-v-1
+collection, run
+[33_prepare_relative_motion_forecasting.ipynb](33_prepare_relative_motion_forecasting.ipynb).
+It preserves the exact 91 per-frame policy features and 20-frame history used by
+notebooks 30/31, keeps both perspectives of every flight in one 40/30/30 split,
+and prepares opponent-minus-observer North/West/Up position and velocity targets
+at +1, +2 and +5 seconds. Physical targets, constant-relative-velocity baselines,
+residuals and independent horizon masks are stored with training-only scaling.
+Then run
+[34_train_relative_motion_hgt_tcn.ipynb](34_train_relative_motion_hgt_tcn.ipynb)
+to fit the notebook-28-style HGT-v2 spatial graph plus causal TCN as a masked
+six-vector regressor. It selects on normalized test RMSE, evaluates validation
+only after checkpoint selection, and compares physical position/velocity errors
+against the constant-relative-velocity baseline.
+
 **Current workflow:** train catalogue-v4 pilots with notebooks 04–06, then use
 [29_trajectory_state_forecasting.ipynb](29_trajectory_state_forecasting.ipynb) for
 future speed, heading and altitude regression. See the
