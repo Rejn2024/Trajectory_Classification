@@ -134,6 +134,31 @@ def test_speed_mode_is_recorded_and_cannot_change_on_resume(setup_environment):
     assert legacy["native_throttle_override"] is True
 
 
+def test_resume_updates_only_the_approved_collector_pin(setup_environment):
+    namespace, _ = setup_environment
+    work = namespace["WORK"]
+    config = duel.prepare(work, flights=3, seed=42, seconds=2.0)
+    previous_hash = "previous-collector"
+    previous = {
+        **config,
+        "collector_hashes": {
+            **config["collector_hashes"],
+            "generate_nn_duel_corpus.py": previous_hash,
+        },
+    }
+    duel.write(work / "config.json", previous)
+
+    with pytest.raises(ValueError, match="Resume configuration/source/software differs"):
+        duel.prepare(work, flights=3, seed=42, seconds=2.0)
+    with pytest.raises(ValueError, match="Resume configuration/source/software differs"):
+        duel.prepare(work, flights=3, seed=43, seconds=2.0, previous_collector_sha256=previous_hash)
+    assert duel.read(work / "config.json") == previous
+    assert duel.prepare(
+        work, flights=3, seed=42, seconds=2.0, previous_collector_sha256=previous_hash
+    ) == config
+    assert duel.read(work / "config.json") == config
+
+
 @pytest.mark.parametrize("invalid", ["false", 0, 1, None])
 def test_speed_mode_rejects_non_boolean_preparation(tmp_path, invalid):
     with pytest.raises(TypeError, match="native_throttle_override must be a boolean"):

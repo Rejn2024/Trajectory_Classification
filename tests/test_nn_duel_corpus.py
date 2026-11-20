@@ -3,6 +3,7 @@
 import hashlib
 import json
 import sys
+from concurrent.futures import Future
 from pathlib import Path
 
 import numpy as np
@@ -11,6 +12,45 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
 import generate_nn_duel_corpus as duel
+
+
+def test_collection_bounds_futures_and_counts_only_new_flights(tmp_path, monkeypatch):
+    cases = [{"episode_id": str(i)} for i in range(20)]
+    submitted = []
+    queue_sizes = []
+
+    class Pool:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            pass
+
+        def submit(self, function, case):
+            submitted.append(case)
+            future = Future()
+            future.set_result(case)
+            return future
+
+    wait = duel.wait
+
+    def observe_queue(futures, **kwargs):
+        queue_sizes.append(len(futures))
+        return wait(futures, **kwargs)
+
+    monkeypatch.setattr(duel, "ProcessPoolExecutor", Pool)
+    monkeypatch.setattr(duel, "wait", observe_queue)
+    monkeypatch.setattr(duel, "completed", lambda work, case: case if case == cases[0] else None)
+    config = {"cases": cases, "flights": len(cases)}
+
+    assert duel.collect(tmp_path, config, workers=2, limit=11, retain_results=False) == 11
+    assert submitted == cases[1:12]
+    assert max(queue_sizes) == 4
+    assert duel.read(tmp_path / "progress.json")["completed"] == 12
+    assert duel.collect(tmp_path, config, workers=2, limit=1) == [cases[1]]
 
 
 def test_scenarios_cover_pairs_families_and_exclude_old_geometry():
@@ -135,8 +175,13 @@ def test_resume_detects_damage_and_missing_completion_marker(campaign):
         duel.completed(work, case)
 
 
-def test_partial_then_complete_shards_and_canonical_target(campaign):
+@pytest.mark.parametrize("upgrade_collector", [False, True])
+def test_partial_then_complete_shards_and_canonical_target(campaign, upgrade_collector):
     work, output, config = campaign
+    filename = "generate_nn_duel_corpus.py"
+    previous_hash = "previous-collector" if upgrade_collector else None
+    if upgrade_collector:
+        config["collector_hashes"] = {filename: previous_hash}
     for case in config["cases"][:2]:
         save_episode(work, case)
     manifest = duel.package(work, output, config, shard_flights=2)
@@ -147,7 +192,13 @@ def test_partial_then_complete_shards_and_canonical_target(campaign):
         duel.verify(output, require_complete=True)
     first_shard = duel.sha256(output / "A01/observations/part-00000.parquet")
     save_episode(work, config["cases"][2], defeated=True)
-    manifest = duel.package(work, output, config, shard_flights=2)
+    if upgrade_collector:
+        config["collector_hashes"] = {filename: duel.sha256(Path(duel.__file__))}
+        with pytest.raises(ValueError, match="Publication belongs to a different campaign"):
+            duel.package(work, output, config, shard_flights=2)
+    manifest = duel.package(
+        work, output, config, shard_flights=2, previous_collector_sha256=previous_hash
+    )
     assert manifest["complete"] and manifest["physical_flights"] == 3
     duel.verify(output, require_complete=True)
     assert duel.sha256(output / "A01/observations/part-00000.parquet") == first_shard

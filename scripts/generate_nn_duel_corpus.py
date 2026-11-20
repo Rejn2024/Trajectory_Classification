@@ -20,8 +20,9 @@ import sys
 import time
 import zipfile
 from collections import deque
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from concurrent.futures.process import BrokenProcessPool
+from itertools import islice
 from multiprocessing import get_context
 from pathlib import Path
 from unittest.mock import patch
@@ -234,6 +235,20 @@ def verify_snapshot(job):
     return pilots
 
 
+def same_campaign_after_collector_update(previous, current, previous_collector_sha256):
+    """Permit a caller-approved collector revision while enforcing every other pin."""
+    filename = Path(__file__).name
+    old_hashes = previous.get("collector_hashes", {})
+    new_hashes = current.get("collector_hashes", {})
+    return (
+        previous_collector_sha256 is not None
+        and old_hashes.get(filename) == previous_collector_sha256
+        and new_hashes.get(filename) == sha256(Path(__file__))
+        and {**previous, "collector_hashes": {**old_hashes, filename: new_hashes[filename]}}
+        == current
+    )
+
+
 def prepare(
     work,
     flights=10_000,
@@ -245,6 +260,8 @@ def prepare(
     batch_max_requests=32,
     native_throttle_override=False,
     population_archive=None,
+    *,
+    previous_collector_sha256=None,
 ):
     work = Path(work).resolve()
     if not isinstance(native_throttle_override, bool):
@@ -309,13 +326,19 @@ def prepare(
             raise ValueError("Custom archives must contain the notebook-30 continuation population")
         config.update(population_kind="varied_transformers_v1", observation_size=91,
                       schema_version="nn-duels-varied-v1", population_archive=str(archive))
-    if (work / "config.json").exists():
-        if read(work / "config.json") != config:
-            raise ValueError(
-                "Resume configuration/source/software differs; use a new work directory"
-            )
-    else:
-        write(work / "config.json", config)
+    config_path = work / "config.json"
+    with campaign_lock(work):
+        if config_path.exists():
+            previous = read(config_path)
+            if previous == config:
+                return config
+            if not same_campaign_after_collector_update(
+                previous, config, previous_collector_sha256
+            ):
+                raise ValueError(
+                    "Resume configuration/source/software differs; use a new work directory"
+                )
+        write(config_path, config)
     return config
 
 
@@ -731,15 +754,17 @@ def inference_service(work, config, workers):
             raise RuntimeError("Inference owner failed; inspect inference_metrics.json")
 
 
-def collect(work, config, workers=1, limit=None):
+def collect(work, config, workers=1, limit=None, *, retain_results=True):
+    """Collect missing flights and return summaries, or a count when opted out."""
     if workers < 1 or (limit is not None and limit < 1):
         raise ValueError("Positive workers/limit required")
     with campaign_lock(work):
-        done = [completed(work, c) for c in config["cases"]]
-        pending = [c for c, d in zip(config["cases"], done) if d is None]
-        pending = pending[:limit] if limit else pending
-        already = sum(d is not None for d in done)
+        pending = [c for c in config["cases"] if completed(work, c) is None]
+        already = len(config["cases"]) - len(pending)
+        if limit is not None:
+            pending = pending[:limit]
         failures, results = [], []
+        new_completed = 0
         start = time.perf_counter()
         prior_progress = (
             read(Path(work) / "progress.json") if (Path(work) / "progress.json").exists() else {}
@@ -765,40 +790,58 @@ def collect(work, config, workers=1, limit=None):
                 initargs=initializer_args,
             ) as pool,
         ):
-            futures = {pool.submit(collect_one, c): c for c in pending}
-            for future in as_completed(futures):
-                case = futures[future]
-                try:
-                    results.append(future.result())
-                except BrokenProcessPool as e:
-                    write(
-                        Path(work) / "failure.json",
-                        {"episode_id": case["episode_id"], "error": repr(e)},
-                    )
-                    raise RuntimeError(
-                        "Simulator process pool failed; inspect worker traceback and failure.json"
-                    ) from e
-                except Exception as e:  # noqa: BLE001 -- retain failed seeds and report the batch failure
-                    failures.append({"episode_id": case["episode_id"], "error": repr(e)})
-                elapsed = time.perf_counter() - start
-                progress = {
-                    "completed": already + len(results),
-                    "requested": config["flights"],
-                    "failed_this_invocation": failures,
-                    "new_completed": len(results),
-                    "wall_seconds": elapsed,
-                    "cumulative_wall_seconds": prior_wall + elapsed,
-                    "workers": workers,
-                    "flights_per_hour": len(results) * 3600 / max(elapsed, 0.001),
-                }
-                write(Path(work) / "progress.json", progress)
-                if failures or (len(results) % 10 == 0) or len(results) == len(pending):
-                    print(json.dumps(progress), flush=True)
+            cases = iter(pending)
+            capacity = 2 * workers
+            futures = {}
+            while True:
+                # Keep workers fed without retaining a Future for every flight in the corpus.
+                for case in islice(cases, capacity - len(futures)):
+                    try:
+                        futures[pool.submit(collect_one, case)] = case
+                    except BrokenProcessPool as e:
+                        raise collection_pool_failure(work, case, e) from e
+                if not futures:
+                    break
+                ready = wait(futures, return_when=FIRST_COMPLETED).done
+                while ready:
+                    future = ready.pop()
+                    case = futures.pop(future)
+                    try:
+                        summary = future.result()
+                    except BrokenProcessPool as e:
+                        raise collection_pool_failure(work, case, e) from e
+                    except Exception as e:  # noqa: BLE001 -- preserve failed seeds for resume
+                        failures.append({"episode_id": case["episode_id"], "error": repr(e)})
+                    else:
+                        new_completed += 1
+                        if retain_results:
+                            results.append(summary)
+                        del summary
+                    del future
+                    elapsed = time.perf_counter() - start
+                    progress = {
+                        "completed": already + new_completed,
+                        "requested": config["flights"],
+                        "failed_this_invocation": failures,
+                        "new_completed": new_completed,
+                        "wall_seconds": elapsed,
+                        "cumulative_wall_seconds": prior_wall + elapsed,
+                        "workers": workers,
+                        "flights_per_hour": new_completed * 3600 / max(elapsed, 0.001),
+                    }
+                    write(Path(work) / "progress.json", progress)
+                    if failures or new_completed % 10 == 0 or new_completed == len(pending):
+                        print(json.dumps(progress), flush=True)
         if failures:
             raise RuntimeError(
                 "Collection failures retained with original seeds; inspect progress.json and resume"
             )
-    return results
+    return results if retain_results else new_completed
+
+
+def collection_pool_failure(work, case, error):
+    write(Path(work) / "failure.json", {"episode_id": case["episode_id"], "error": repr(error)})
+    return RuntimeError("Simulator process pool failed; inspect worker traceback and failure.json")
 
 
 def forecast_counts(track, decisions, classes):
@@ -880,7 +923,7 @@ def estimate_campaign(
     }
 
 
-def package(work, output, config, shard_flights=100):
+def package(work, output, config, shard_flights=100, *, previous_collector_sha256=None):
     """Publish only closed immutable shards. A partial manifest never claims completion."""
     work, output = Path(work), Path(output)
     observation_size = config.get("observation_size", 51)
@@ -890,8 +933,12 @@ def package(work, output, config, shard_flights=100):
     with campaign_lock(work):
         output.mkdir(parents=True, exist_ok=True)
         config_path = output / "config.json"
-        if config_path.exists() and read(config_path) != config:
-            raise ValueError("Publication belongs to a different campaign")
+        if config_path.exists():
+            previous = read(config_path)
+            if previous != config and not same_campaign_after_collector_update(
+                previous, config, previous_collector_sha256
+            ):
+                raise ValueError("Publication belongs to a different campaign")
         previous_files = (
             read(output / "manifest.json")["files"] if (output / "manifest.json").exists() else {}
         )

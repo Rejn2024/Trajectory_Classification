@@ -781,6 +781,11 @@ def freeze_population(job, settings):
 def collect_corpus(job, settings):
     archive = freeze_population(job, settings)
     work, output = job / "collection", Path(settings["output"])
+    # Only this reviewed scheduler-only revision may replace the previous source pin.
+    previous_collector_sha256 = {
+        "32a484335659bc5db6cb4bcf4023199bbf6d6b51afd2122bfc6b9f3a0a25abb4":
+            "b976a5980b90d94265a891c673dac72d39ff5200bf3ae3b29f18e4687ef14d9f",
+    }.get(sha256(Path(duel.__file__)))
     backend = settings["inference_backend"]
     candidates = (
         [backend]
@@ -804,9 +809,10 @@ def collect_corpus(job, settings):
                 seconds=settings["flight_seconds"],
                 inference_backend=candidate,
                 population_archive=archive,
+                previous_collector_sha256=previous_collector_sha256,
             )
             try:
-                duel.collect(bench_work, config, workers=settings["workers"])
+                duel.collect(bench_work, config, workers=settings["workers"], retain_results=False)
                 progress = read(bench_work / "progress.json")
                 timings.append(
                     {"backend": candidate, "seconds": progress["cumulative_wall_seconds"]}
@@ -824,6 +830,7 @@ def collect_corpus(job, settings):
         seconds=settings["flight_seconds"],
         inference_backend=backend,
         population_archive=archive,
+        previous_collector_sha256=previous_collector_sha256,
     )
     # Keep simulator/inference processes warm across the campaign. Each flight
     # commits its own checksummed files before its completion marker. Package
@@ -831,14 +838,17 @@ def collect_corpus(job, settings):
     retries = 0
     while any(duel.completed(work, c, verify=False) is None for c in config["cases"]):
         try:
-            duel.collect(work, config, workers=settings["workers"])
+            duel.collect(work, config, workers=settings["workers"], retain_results=False)
             retries = 0
         except RuntimeError:
             retries += 1
             if retries > 2:
                 raise
             print(f"Retrying saved pending flights ({retries}/2)", flush=True)
-    duel.package(work, output, config, shard_flights=settings["shard_flights"])
+    duel.package(
+        work, output, config, shard_flights=settings["shard_flights"],
+        previous_collector_sha256=previous_collector_sha256,
+    )
     duel.verify(output, require_complete=True)
 
 
