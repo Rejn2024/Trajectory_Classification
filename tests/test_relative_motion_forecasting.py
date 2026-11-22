@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 import torch
 
 from bvr_behavior_prediction.forecasting import relative_motion as motion
@@ -214,19 +215,19 @@ def test_notebook_33_is_clean_and_compiles():
             assert not cell["outputs"]
 
 
-def test_hgt_tcn_regression_train_reload_and_final_metrics(tmp_path):
+@pytest.mark.parametrize("architecture", [gnn.ARCHITECTURE, gnn.TRANSFORMER_ARCHITECTURE])
+def test_hgt_regression_train_reload_and_final_metrics(tmp_path, architecture):
     torch.set_num_threads(1)
     corpus = _corpus(tmp_path)
     prepared = tmp_path / "prepared_gnn"
     motion.prepare_dataset(ROOT, prepared, corpus)
     data = motion.RelativeMotionData(prepared)
     config = {
-        **gnn.default_training_config(),
+        **gnn.default_training_config(architecture),
         "width": 12,
         "graph_width": 8,
         "graph_layers": 1,
         "graph_heads": 2,
-        "tcn_dilations": [1, 2, 4],
         "dropout": 0.0,
         "epochs": 1,
         "batch_size": 8,
@@ -235,6 +236,10 @@ def test_hgt_tcn_regression_train_reload_and_final_metrics(tmp_path):
         "precision": "fp32",
         "cpu_threads": 1,
     }
+    if architecture == gnn.ARCHITECTURE:
+        config["tcn_dilations"] = [1, 2, 4]
+    else:
+        config.update(transformer_layers=1, transformer_heads=2, transformer_ff_width=24)
     model = gnn.make_model(config, data)
     ids = data.indices["train"][:2]
     inputs = torch.from_numpy(data.history(ids).astype(np.float32))
@@ -244,14 +249,19 @@ def test_hgt_tcn_regression_train_reload_and_final_metrics(tmp_path):
     valid = torch.from_numpy(data.valid[ids])
     loss = gnn.masked_huber_loss(prediction, target, valid)
     loss.backward()
-    assert model.head[-1].weight.grad.abs().sum() > 0
+    if architecture == gnn.ARCHITECTURE:
+        assert model.head[-1].weight.grad.abs().sum() > 0
+    else:
+        # An unlabeled horizon contributes no data gradient.
+        for section, has_labels in zip(model.sections, valid.any(0)):
+            assert bool(section.head[-1].weight.grad.abs().sum() > 0) == bool(has_labels)
     assert model.messages[0].relation_message.grad.abs().sum() > 0
 
     run = tmp_path / "run"
     history = gnn.train_model(data, run, config, device="cpu")
     assert len(history) == 1 and (run / "best.pt").is_file()
     reloaded, checkpoint = gnn.load_selected_model(data, run)
-    assert checkpoint["model_contract"] == gnn.MODEL_CONTRACT
+    assert checkpoint["model_contract"] == gnn.MODEL_CONTRACTS[architecture]
     repeated, _ = gnn.load_selected_model(data, run)
     with torch.inference_mode():
         torch.testing.assert_close(reloaded(inputs), repeated(inputs), rtol=0, atol=0)
@@ -262,16 +272,42 @@ def test_hgt_tcn_regression_train_reload_and_final_metrics(tmp_path):
     assert all((run / f"predictions_{split}.npz").is_file() for split in motion.SPLITS)
 
 
-def test_notebook_34_is_clean_and_compiles():
-    notebook = json.loads(
-        (ROOT / "notebooks/34_train_relative_motion_hgt_tcn.ipynb").read_text()
-    )
+def test_hgt_transformer_sections_are_independent_and_causal():
+    torch.set_num_threads(1)
+    model = gnn.RelativeMotionHGTTransformer(
+        width=8, graph_width=8, graph_heads=2, graph_layers=1,
+        transformer_heads=2, transformer_ff_width=16, dropout=0.0,
+    ).eval()
+    windows = torch.randn(2, motion.HISTORY_STEPS, 91)
+    with torch.inference_mode():
+        frames = model.encode_frames(windows)
+        changed = frames.clone()
+        changed[:, -1] += torch.randn_like(changed[:, -1])
+        for section in model.sections:
+            original = section.encode(frames, model.causal_mask)
+            updated = section.encode(changed, model.causal_mask)
+            torch.testing.assert_close(original[:, :-1], updated[:, :-1])
+            assert not torch.allclose(original[:, -1], updated[:, -1])
+
+        prediction = model(windows)
+        model.sections[1].head[-1].bias.add_(1)
+        expected = prediction.clone()
+        expected[:, 1] += 1
+        torch.testing.assert_close(model(windows), expected)
+
+
+@pytest.mark.parametrize(("filename", "architecture_symbol"), [
+    ("34_train_relative_motion_hgt_tcn.ipynb", "RelativeMotionHGTTCN"),
+    ("35_train_relative_motion_hgt_transformer.ipynb", "TRANSFORMER_ARCHITECTURE"),
+])
+def test_hgt_training_notebook_is_clean_and_compiles(filename, architecture_symbol):
+    notebook = json.loads((ROOT / "notebooks" / filename).read_text())
     source = "\n".join(
         "".join(cell.get("source", []))
         for cell in notebook["cells"]
         if cell["cell_type"] == "code"
     )
-    assert "RelativeMotionHGTTCN" in source
+    assert architecture_symbol in source
     assert "train_model" in source and "final_evaluation" in source
     assert "BVR_RELATIVE_MOTION_DATA" in source
     for cell in notebook["cells"]:

@@ -1,4 +1,4 @@
-"""HGT-v2 + causal TCN regression for notebook-33 relative-motion data."""
+"""HGT-v2 with causal temporal encoders for notebook-33 relative-motion data."""
 
 import math
 import shutil
@@ -31,18 +31,24 @@ from .relative_motion import (
 
 MODEL_CONTRACT = "relative-motion-hgt-v2-tcn-v1"
 ARCHITECTURE = "hgt_v2_tcn_relative_motion"
+TRANSFORMER_MODEL_CONTRACT = "relative-motion-hgt-v2-horizon-transformer-v1"
+TRANSFORMER_ARCHITECTURE = "hgt_v2_horizon_transformer_relative_motion"
+MODEL_CONTRACTS = {
+    ARCHITECTURE: MODEL_CONTRACT,
+    TRANSFORMER_ARCHITECTURE: TRANSFORMER_MODEL_CONTRACT,
+}
 
 
-def default_training_config():
-    return {
-        "architecture": ARCHITECTURE,
+def default_training_config(architecture=ARCHITECTURE):
+    if architecture not in MODEL_CONTRACTS:
+        raise ValueError(f"Unknown relative-motion architecture: {architecture}")
+    config = {
+        "architecture": architecture,
         "seed": 42,
         "width": 96,
         "graph_width": 64,
         "graph_layers": 2,
         "graph_heads": 4,
-        "tcn_kernel_size": 3,
-        "tcn_dilations": [1, 2, 4, 8],
         "dropout": 0.25,
         "threat_cpa_horizon_s": 30.0,
         "threat_time_scale_s": 5.0,
@@ -67,10 +73,21 @@ def default_training_config():
         "precision": "bf16",
         "cpu_threads": 4,
     }
+    if architecture == ARCHITECTURE:
+        config.update(tcn_kernel_size=3, tcn_dilations=[1, 2, 4, 8])
+    else:
+        config.update(
+            transformer_layers=2,
+            transformer_heads=4,
+            transformer_ff_width=384,
+            batch_size=256,
+            evaluation_batch_size=256,
+        )
+    return config
 
 
-class RelativeMotionHGTTCN(nn.Module):
-    """Notebook-28 HGT-v2/TCN adapted to the exact 91-feature pilot frames."""
+class _RelativeMotionHGT(nn.Module):
+    """Shared per-frame HGT-v2 graph encoder for the 91 policy features."""
 
     def __init__(
         self,
@@ -79,8 +96,6 @@ class RelativeMotionHGTTCN(nn.Module):
         graph_width=64,
         graph_layers=2,
         graph_heads=4,
-        tcn_kernel_size=3,
-        tcn_dilations=(1, 2, 4, 8),
         dropout=0.25,
         threat_cpa_horizon_s=30.0,
         threat_time_scale_s=5.0,
@@ -187,18 +202,6 @@ class RelativeMotionHGTTCN(nn.Module):
         )
 
         self.projection = nn.Linear(6 * graph_width + 2, width)
-        self.temporal = CausalTemporalConvEncoder(
-            width, tcn_kernel_size, tcn_dilations, dropout
-        )
-        if self.temporal.receptive_field < HISTORY_STEPS:
-            raise ValueError("TCN receptive field must cover all 20 history frames")
-        self.norm = nn.LayerNorm(width)
-        self.head = nn.Sequential(
-            nn.Linear(width, width),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(width, len(HORIZONS) * len(TARGET_FIELDS)),
-        )
 
     def _decode_rows(self, frames):
         if frames.ndim != 2 or frames.shape[1] != 91:
@@ -364,13 +367,42 @@ class RelativeMotionHGTTCN(nn.Module):
         )
         return self.projection(readout)
 
-    def encode_history(self, windows):
+    def encode_frames(self, windows):
         if windows.ndim != 3 or tuple(windows.shape[1:]) != (HISTORY_STEPS, 91):
             raise ValueError(f"Expected (batch, {HISTORY_STEPS}, 91) histories")
-        frames = self.encode_frame_rows(windows.reshape(-1, 91)).reshape(
+        return self.encode_frame_rows(windows.reshape(-1, 91)).reshape(
             windows.shape[0], HISTORY_STEPS, -1
         )
-        return self.norm(self.temporal(frames)[:, -1])
+
+
+class RelativeMotionHGTTCN(_RelativeMotionHGT):
+    """Notebook-28 HGT-v2/TCN adapted to the exact 91-feature pilot frames."""
+
+    def __init__(
+        self,
+        *,
+        width=96,
+        tcn_kernel_size=3,
+        tcn_dilations=(1, 2, 4, 8),
+        dropout=0.25,
+        **graph_options,
+    ):
+        super().__init__(width=width, dropout=dropout, **graph_options)
+        self.temporal = CausalTemporalConvEncoder(
+            width, tcn_kernel_size, tcn_dilations, dropout
+        )
+        if self.temporal.receptive_field < HISTORY_STEPS:
+            raise ValueError("TCN receptive field must cover all 20 history frames")
+        self.norm = nn.LayerNorm(width)
+        self.head = nn.Sequential(
+            nn.Linear(width, width),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(width, len(HORIZONS) * len(TARGET_FIELDS)),
+        )
+
+    def encode_history(self, windows):
+        return self.norm(self.temporal(self.encode_frames(windows))[:, -1])
 
     def forward(self, windows):
         return self.head(self.encode_history(windows)).reshape(
@@ -378,16 +410,90 @@ class RelativeMotionHGTTCN(nn.Module):
         )
 
 
+class _TemporalTransformerSection(nn.Module):
+    def __init__(self, width, layers, heads, ff_width, dropout):
+        super().__init__()
+        self.position = nn.Parameter(torch.empty(HISTORY_STEPS, width))
+        nn.init.normal_(self.position, std=0.02)
+        self.layers = nn.ModuleList([
+            nn.TransformerEncoderLayer(
+                d_model=width,
+                nhead=heads,
+                dim_feedforward=ff_width,
+                dropout=dropout,
+                activation="gelu",
+                batch_first=True,
+                norm_first=True,
+            )
+            for _ in range(layers)
+        ])
+        self.head = nn.Sequential(
+            nn.LayerNorm(width),
+            nn.Linear(width, width),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(width, len(TARGET_FIELDS)),
+        )
+
+    def encode(self, frames, causal_mask):
+        tokens = frames + self.position.to(frames.dtype)
+        for layer in self.layers:
+            tokens = layer(tokens, src_mask=causal_mask)
+        return tokens
+
+    def forward(self, frames, causal_mask):
+        return self.head(self.encode(frames, causal_mask)[:, -1])
+
+
+class RelativeMotionHGTTransformer(_RelativeMotionHGT):
+    """Shared spatial graphs and one independent temporal section per horizon."""
+
+    def __init__(
+        self,
+        *,
+        width=96,
+        transformer_layers=2,
+        transformer_heads=4,
+        transformer_ff_width=384,
+        dropout=0.25,
+        **graph_options,
+    ):
+        for name, value in (
+            ("transformer_layers", transformer_layers),
+            ("transformer_heads", transformer_heads),
+            ("transformer_ff_width", transformer_ff_width),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        super().__init__(width=width, dropout=dropout, **graph_options)
+        if width % transformer_heads:
+            raise ValueError("width must be divisible by transformer_heads")
+        self.sections = nn.ModuleList([
+            _TemporalTransformerSection(
+                width, transformer_layers, transformer_heads, transformer_ff_width, dropout
+            )
+            for _ in HORIZONS
+        ])
+        self.register_buffer(
+            "causal_mask",
+            torch.ones(HISTORY_STEPS, HISTORY_STEPS, dtype=torch.bool).triu(diagonal=1),
+            persistent=False,
+        )
+
+    def forward(self, windows):
+        frames = self.encode_frames(windows)
+        return torch.stack([section(frames, self.causal_mask) for section in self.sections], dim=1)
+
+
 def model_configuration(config):
-    if config.get("architecture") != ARCHITECTURE:
-        raise ValueError(f"Expected architecture {ARCHITECTURE}")
+    architecture = config.get("architecture")
+    if architecture not in MODEL_CONTRACTS:
+        raise ValueError(f"Unknown relative-motion architecture: {architecture}")
     keys = (
         "width",
         "graph_width",
         "graph_layers",
         "graph_heads",
-        "tcn_kernel_size",
-        "tcn_dilations",
         "dropout",
         "threat_cpa_horizon_s",
         "threat_time_scale_s",
@@ -395,13 +501,20 @@ def model_configuration(config):
         "missile_distance_floor_m",
         "missile_distance_power",
     )
+    if architecture == ARCHITECTURE:
+        keys += ("tcn_kernel_size", "tcn_dilations")
+    else:
+        keys += ("transformer_layers", "transformer_heads", "transformer_ff_width")
     return {key: config[key] for key in keys}
 
 
 def make_model(config, data):
-    return RelativeMotionHGTTCN(
-        **model_configuration(config), mean=data.mean, std=data.std
+    options = model_configuration(config)
+    model_type = (
+        RelativeMotionHGTTCN if config["architecture"] == ARCHITECTURE
+        else RelativeMotionHGTTransformer
     )
+    return model_type(**options, mean=data.mean, std=data.std)
 
 
 def masked_huber_loss(prediction, target, valid, beta=1.0):
@@ -596,7 +709,7 @@ def _checkpoint_payload(
     run,
 ):
     return {
-        "model_contract": MODEL_CONTRACT,
+        "model_contract": run["model_contract"],
         "model_state": model.state_dict(),
         "model_config": model_configuration(config),
         "optimizer_state": optimizer.state_dict(),
@@ -623,7 +736,9 @@ def _checkpoint_payload(
 def train_model(data, output, config=None, device=None, resume=False, callback=None):
     if not isinstance(data, RelativeMotionData) or data.manifest["data_contract"] != DATA_CONTRACT:
         raise ValueError("Expected notebook-33 relative-motion data")
-    config = {**default_training_config(), **(config or {})}
+    overrides = config or {}
+    architecture = overrides.get("architecture", ARCHITECTURE)
+    config = {**default_training_config(architecture), **overrides}
     output = Path(output)
     device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
     if config["seed"] < 0 or config["epochs"] < 1 or config["batch_size"] < 1:
@@ -660,8 +775,8 @@ def train_model(data, output, config=None, device=None, resume=False, callback=N
     source_path = Path(__file__)
     architecture_path = source_path.parents[1] / "enemy_missile_models.py"
     run = {
-        "model_contract": MODEL_CONTRACT,
-        "architecture": ARCHITECTURE,
+        "model_contract": MODEL_CONTRACTS[architecture],
+        "architecture": architecture,
         "model": model_configuration(config),
         "training": config,
         "parameter_count": sum(parameter.numel() for parameter in model.parameters()),
@@ -833,16 +948,17 @@ def load_selected_model(data, run, device="cpu"):
     run = Path(run)
     device = torch.device(device)
     metadata = read_json(run / "run.json")
-    if metadata.get("model_contract") != MODEL_CONTRACT:
-        raise ValueError("Expected a relative-motion HGT-v2/TCN run")
+    architecture = metadata.get("architecture")
+    contract = MODEL_CONTRACTS.get(architecture)
+    if contract is None or metadata.get("model_contract") != contract:
+        raise ValueError("Unsupported relative-motion HGT-v2 run")
     if metadata["data_manifest_sha256"] != sha256(data.directory / "manifest.json"):
         raise ValueError("Run and prepared dataset differ")
     checkpoint = torch.load(run / "best.pt", map_location=device, weights_only=False)
-    if checkpoint.get("model_contract") != MODEL_CONTRACT:
+    if checkpoint.get("model_contract") != contract:
         raise ValueError("Checkpoint contract differs")
-    model = RelativeMotionHGTTCN(
-        **checkpoint["model_config"], mean=data.mean, std=data.std
-    ).to(device)
+    model = make_model({**checkpoint["model_config"], "architecture": architecture}, data)
+    model.to(device)
     model.load_state_dict(checkpoint["model_state"])
     return model.eval(), checkpoint
 
