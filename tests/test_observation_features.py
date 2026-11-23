@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from bvr_behavior_prediction.rl.observation_features import (
     HOSTILE_MISSILE_OBSERVATION_SIZE,
