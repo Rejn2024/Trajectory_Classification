@@ -10,9 +10,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 from collections import deque
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
+from time import perf_counter
 
 import numpy as np
 import pandas as pd
@@ -29,6 +32,11 @@ from tactical_corpus_schema import DT, KEYS, observer_frame, observation_columns
 from bvr_sim.agents.skill_manager import SkillManager
 
 SIDES = ("A01", "B01")
+
+_CORPUS_MODELS = None
+_CORPUS_OUTPUT = None
+_CORPUS_HISTORY_STEPS = 20
+_CORPUS_EPISODE_SECONDS = 120.0
 
 
 def sha256(path):
@@ -49,6 +57,54 @@ def write_parquet(path, frame):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_parquet(path, index=False, compression="zstd")
+
+
+def _load_models(population, records):
+    population = Path(population)
+    return {
+        record["pilot_id"]: load_trained_pilot(
+            population / record["output_dir"], device="cpu"
+        )
+        for record in records
+    }
+
+
+def _skill_metadata():
+    """Return the installed catalogue order without initializing Torch."""
+    manager = SkillManager()
+    classes = list(manager.list_skills())
+    properties = [manager.get_contract(name)["parameter_schema"]["properties"]
+                  for name in classes]
+    parameter_names = sorted({
+        key for contract in properties for key, schema in contract.items()
+        if schema["type"] == "number"
+    })
+    return classes, parameter_names
+
+
+def _initialize_corpus_worker(population, records, output, history_steps, episode_seconds):
+    """Load one CPU model cache per worker and prevent BLAS oversubscription."""
+    global _CORPUS_MODELS, _CORPUS_OUTPUT, _CORPUS_HISTORY_STEPS, _CORPUS_EPISODE_SECONDS
+    import torch
+
+    torch.set_num_threads(1)
+    try:
+        torch.set_num_interop_threads(1)
+    except RuntimeError:
+        # A spawned/forked worker may already have initialized Torch inter-op.
+        pass
+    _CORPUS_MODELS = _load_models(population, records)
+    _CORPUS_OUTPUT = Path(output)
+    _CORPUS_HISTORY_STEPS = history_steps
+    _CORPUS_EPISODE_SECONDS = episode_seconds
+
+
+def _collect_case_worker(case):
+    return collect_case(
+        case, _CORPUS_MODELS, _CORPUS_OUTPUT,
+        history_steps=_CORPUS_HISTORY_STEPS,
+        episode_seconds=_CORPUS_EPISODE_SECONDS,
+    )
 
 
 def skill_vector(model, name, parameters, raw):
@@ -236,7 +292,7 @@ def collect_case(case, models, output, history_steps=20, episode_seconds=120.0):
     }
 
 
-def generate(population, output, flights=100, seed=26110600, episode_seconds=120.0):
+def generate(population, output, flights=100, seed=26110600, episode_seconds=120.0, workers=0):
     population = Path(population).resolve()
     output = Path(output).resolve()
     if output.exists() and any(output.iterdir()):
@@ -245,10 +301,10 @@ def generate(population, output, flights=100, seed=26110600, episode_seconds=120
     records = [record for record in records if record.get("status") == "completed"]
     if len(records) != 10:
         raise ValueError("Expected exactly ten completed pilots")
-    models = {}
-    for record in records:
-        run = population / record["output_dir"]
-        models[record["pilot_id"]] = load_trained_pilot(run, device="cpu")
+    if type(workers) is not int or workers < 0:
+        raise ValueError("workers must be a nonnegative integer")
+    if workers == 0:
+        workers = max(1, min(4, os.cpu_count() or 1))
     sampler = ScenarioSampler(seed)
     scenarios = sampler.sample_batch(flights)
     cases = []
@@ -259,9 +315,26 @@ def generate(population, output, flights=100, seed=26110600, episode_seconds=120
         ))
     output.mkdir(parents=True, exist_ok=True)
     episode_records = []
-    for case in cases:
-        print(f"Collecting {case['episode_id']}", flush=True)
-        episode_records.append(collect_case(case, models, output, episode_seconds=episode_seconds))
+    classes, parameter_names = _skill_metadata()
+    collection_started = perf_counter()
+    if workers == 1:
+        models = _load_models(population, records)
+        for case in cases:
+            print(f"Collecting {case['episode_id']}", flush=True)
+            episode_records.append(collect_case(case, models, output, episode_seconds=episode_seconds))
+    else:
+        # Each worker owns its model cache and one simulator at a time.  Cases
+        # write disjoint episode paths, so no shared simulator or writer lock is
+        # needed and map() preserves the deterministic case order.
+        with ProcessPoolExecutor(
+            max_workers=workers,
+            initializer=_initialize_corpus_worker,
+            initargs=(population, records, output, 20, episode_seconds),
+        ) as executor:
+            for case, record in zip(cases, executor.map(_collect_case_worker, cases, chunksize=1), strict=True):
+                print(f"Collected {case['episode_id']}", flush=True)
+                episode_records.append(record)
+    collection_seconds = perf_counter() - collection_started
     write_parquet(output / "episodes.parquet", pd.DataFrame([
         {
             "episode_id": record["episode_id"],
@@ -274,8 +347,6 @@ def generate(population, output, flights=100, seed=26110600, episode_seconds=120
         }
         for record in episode_records
     ]))
-    classes = list(models[pilot_ids[0]].skill_names)
-    parameter_names = list(models[pilot_ids[0]].parameter_names)
     config = {
         "schema_version": "nn-duels-radar-v1",
         "observation_size": RADAR_POLICY_OBSERVATION_SIZE,
@@ -288,6 +359,9 @@ def generate(population, output, flights=100, seed=26110600, episode_seconds=120
         "skill_catalogue": classes,
         "parameter_names": parameter_names,
         "source_population": str(population),
+        "collection_workers": workers,
+        "collection_seconds": collection_seconds,
+        "collection_flights_per_second": len(episode_records) / collection_seconds if collection_seconds else 0.0,
         "cases": cases,
         "episodes": episode_records,
     }
@@ -317,6 +391,9 @@ def generate(population, output, flights=100, seed=26110600, episode_seconds=120
         "complete": True, "schema_version": "nn-duels-radar-v1",
         "observation_size": RADAR_POLICY_OBSERVATION_SIZE, "episodes": len(episode_records),
         "physical_flights": len(episode_records), "perspective_episodes": len(episode_records) * 2,
+        "collection_workers": workers,
+        "collection_seconds": collection_seconds,
+        "collection_flights_per_second": len(episode_records) / collection_seconds if collection_seconds else 0.0,
         "files": files,
     })
     return config
@@ -329,8 +406,16 @@ def main():
     parser.add_argument("--flights", type=int, default=100)
     parser.add_argument("--seed", type=int, default=26110600)
     parser.add_argument("--episode-seconds", type=float, default=120.0)
+    parser.add_argument(
+        "--workers", type=int,
+        default=int(os.getenv("BVR_CORPUS_WORKERS", "0")),
+        help="parallel flight collectors; 0 selects a conservative maximum of four",
+    )
     args = parser.parse_args()
-    generate(args.population, args.output, args.flights, args.seed, args.episode_seconds)
+    generate(
+        args.population, args.output, args.flights, args.seed,
+        args.episode_seconds, args.workers,
+    )
 
 
 if __name__ == "__main__":

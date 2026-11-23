@@ -261,6 +261,10 @@ collector for comparisons; the standalone `PilotTrainingConfig` keeps that defau
 CPU load varies by phase: flight collection uses the CPU workers, while policy
 updates use the GPU. An 80% worker budget does not guarantee 80% sustained CPU load.
 The progress bar labels collection, PPO updates, validation, and demonstration saving.
+Set `demonstration_interval=0` to omit intermediate demonstration flights when only
+training metrics and final evaluation are required; notebook 31 does this by default
+and retains the final inspection replays. With the legacy `None` default, the
+demonstration interval follows `checkpoint_interval`.
 Notebooks 05 and 06 enable `cuda_graph_updates` for CUDA: full minibatches replay a captured
 forward/backward pass, avoiding repeated Python and GPU launch overhead. The optimizer,
 gradient clipping, and AMP scaler still execute once per minibatch. Notebook 06 keeps
@@ -295,6 +299,24 @@ by the logical CPU count. These describe simulator steps only, excluding startup
 policy work, and other applications. The former `simulator_parallel_speedup` and
 `estimated_total_speedup` metrics were removed because summing threaded wall times
 includes waiting and is not a valid measurement of speedup.
+
+Notebook 31 enables `reuse_simulator_environments`: compatible scenario slots remain
+alive between collection batches and are reset in place; changed scenarios are
+reconstructed, and all slots are closed at trainer shutdown. This saves repeated
+JSBSim/scripted-opponent construction for both `simple` and `tactical` runs. The
+expected whole-training gain is roughly 5--20% when construction is material, with
+the larger gain for simple opponents because tactical step computation is heavier.
+Peak live simulator memory is unchanged; idle memory remains resident between
+batches, approximately one environment footprint per active worker.
+
+The radar-aware forecasting collector accepts `--workers` or `BVR_CORPUS_WORKERS`.
+The default `0` selects at most four independent CPU flight processes. Each process
+loads its ten CPU pilots once and writes disjoint episode files. For large corpora,
+four workers should usually provide about 2--3.5x wall-clock acceleration rather
+than the ideal 4x because of simulator imbalance, process startup, and Parquet I/O.
+The added memory is primarily one Torch/model runtime and one simulator per worker;
+four workers are normally a safer default than using every logical CPU. The selected
+worker count is recorded in `config.json` and `manifest.json`.
 
 Install the project with `python -m pip install -e '.[ml,video]'`. For a short
 PowerShell installation check, set these before launching the notebook:

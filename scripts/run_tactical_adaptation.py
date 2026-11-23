@@ -46,6 +46,9 @@ def config_from(directory, output, **overrides):
     saved = read(Path(directory) / "config.json")["training"]
     known = {f.name for f in fields(PilotTrainingConfig)}
     settings = {k: v for k, v in saved.items() if k in known}
+    # Older populations predate scenario-compatible simulator reuse. Enable it
+    # for tactical continuation while retaining compatibility with their manifests.
+    settings.setdefault("reuse_simulator_environments", True)
     settings["reward"] = RewardWeights(**settings["reward"])
     return PilotTrainingConfig(**{**settings, "output_dir": Path(output), **overrides})
 
@@ -141,14 +144,21 @@ def prepare(baseline, epochs=150, assessment_scenarios=300, job_root=None, seed_
     return job
 
 
-def make_environment_factory(config, opponent_type="tactical"):
+def make_environment_factory(config, opponent_type="tactical", observation_size=51):
     from bvr_behavior_prediction.rl.bvr_jsbsim_backend import BVRJSBSimBackend
     from bvr_behavior_prediction.rl.environment import BluePilotEnvironment
+
+    if observation_size not in (51, 91, 114):
+        raise ValueError(f"unsupported tactical policy observation size: {observation_size}")
+    include_hostile_missiles = observation_size in (91, 114)
+    include_radar_features = observation_size == 114
 
     def backend(scenario, recording_path=None):
         return BVRJSBSimBackend(scenario, recording_path=recording_path,
                                log_dir=config.output_dir / "simulator_logs",
-                               opponent_type=opponent_type)
+                               opponent_type=opponent_type,
+                               include_hostile_missiles=include_hostile_missiles,
+                               include_radar_features=include_radar_features)
 
     def environment(scenario, recording_path=None):
         return BluePilotEnvironment(
@@ -230,7 +240,9 @@ def evaluate_population(job, population, directory, suite, stage, status):
         output = job / directory / pilot_id
         config = config_from(population / pilot_id, output)
         metadata = read(population / pilot_id / "config.json")
-        trainer = PPOTrainer(make_environment_factory(config), metadata["observation_size"],
+        trainer = PPOTrainer(
+            make_environment_factory(config, observation_size=metadata["observation_size"]),
+            metadata["observation_size"],
                              config, device=plan["device"], reward_definition=definition(metadata["reward"]))
         try:
             model = load_trained_pilot(population / pilot_id, plan["device"])
@@ -303,8 +315,14 @@ def run(job):
         status.update(status="training", pilot_id=first["pilot_id"], updated_utc=now())
         write(job / "status.json", status)
         save_progress_report(job)
-        train_pilots(pilots, config, make_environment_factory,
-                     read(baseline / first["pilot_id"] / "config.json")["observation_size"],
+        observation_size = read(baseline / first["pilot_id"] / "config.json")["observation_size"]
+        train_pilots(
+                     pilots,
+                     config,
+                     lambda run_config: make_environment_factory(
+                         run_config, observation_size=observation_size
+                     ),
+                     observation_size,
                      device=plan["device"], benchmark_reward=definition(batch["benchmark_reward"]),
                      population_metadata={**batch.get("population_metadata", {}),
                                           "adaptation": {"opponent_type": "tactical", "parent": str(baseline),

@@ -232,7 +232,8 @@ class PPOTrainer:
                 else ThreadSimulatorPool
             )
             pool = pool_type(
-                self.env_factory, min(self.config.resolved_simulator_workers, len(scenarios))
+                self.env_factory, min(self.config.resolved_simulator_workers, len(scenarios)),
+                reuse_environments=self.config.reuse_simulator_environments,
             )
             if self._training_active:
                 self._simulator_pool = pool
@@ -297,8 +298,11 @@ class PPOTrainer:
                 pool.close(force=failed)
                 if self._simulator_pool is pool:
                     self._simulator_pool = None
-            else:
-                pool.release()
+            # Keep scenario-compatible environments alive between collection
+            # batches.  The next reset recreates only slots whose scenario
+            # geometry changed; trainer.close() still closes every environment.
+            # This avoids rebuilding JSBSim and scripted-opponent state between
+            # ordinary epochs without changing reset seeds or trajectories.
         self._last_collection_profile = {
             "collection_seconds": perf_counter() - collection_started,
             "policy_seconds": policy_seconds,
@@ -609,7 +613,10 @@ class PPOTrainer:
                 if evaluation_performed and evaluation_mean > self.best_score:
                     self.best_score = evaluation_mean
                     torch.save(self.pilot.state_dict(), self.output / "best_model.pt")
-                if epoch % self.config.checkpoint_interval == 0:
+                demonstration_interval = self.config.demonstration_interval
+                if demonstration_interval is None:
+                    demonstration_interval = self.config.checkpoint_interval
+                if demonstration_interval and epoch % demonstration_interval == 0:
                     progress.set_postfix(phase="saving demonstration")
                     demo_dir = self.output / "demonstrations" / f"epoch_{epoch:04d}"
                     demo_dir.mkdir(parents=True, exist_ok=True)

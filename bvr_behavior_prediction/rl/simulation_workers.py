@@ -1,6 +1,7 @@
 """Stateful simulator workers; policy inference stays in the parent process."""
 
 import os
+import json
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter, process_time, thread_time
@@ -12,6 +13,12 @@ class SimulatorWorkerError(RuntimeError):
 
 class SimulatorWorkerTimeout(SimulatorWorkerError, TimeoutError):
     """A worker exceeded its response deadline."""
+
+
+def _scenario_key(scenario):
+    """Return a stable key for deciding whether an environment can be reset in place."""
+    return json.dumps(scenario, sort_keys=True, separators=(",", ":"), allow_nan=False,
+                      default=str)
 
 
 def _close_environments(environments):
@@ -34,15 +41,26 @@ def _step(environment, name, parameters, cpu_clock):
 
 
 class ThreadSimulatorPool:
-    def __init__(self, factory, workers):
+    def __init__(self, factory, workers, reuse_environments=False):
         self.factory = factory
+        self.reuse_environments = reuse_environments
         self.environments = {}
+        self.scenario_keys = {}
         self.executor = ThreadPoolExecutor(max_workers=workers)
 
     def reset(self, scenarios, seeds):
-        self.release()
+        if not self.reuse_environments:
+            self.release()
+        expected = {index: _scenario_key(scenario)
+                    for index, scenario in enumerate(scenarios)}
+        for index in list(self.environments):
+            if index not in expected or self.scenario_keys.get(index) != expected[index]:
+                self.environments.pop(index).close()
+                self.scenario_keys.pop(index, None)
         for index, scenario in enumerate(scenarios):
-            self.environments[index] = self.factory(scenario, None)
+            if index not in self.environments:
+                self.environments[index] = self.factory(scenario, None)
+                self.scenario_keys[index] = expected[index]
         # The BVR backend seeds NumPy's process-global RNG during reset. Resetting
         # concurrently in threads races those seeds and changes initial geometries.
         return [self.environments[index].reset(seed) for index, seed in enumerate(seeds)]
@@ -55,6 +73,7 @@ class ThreadSimulatorPool:
 
     def release(self):
         _close_environments(self.environments)
+        self.scenario_keys.clear()
 
     def close(self, force=False):
         try:
@@ -63,21 +82,32 @@ class ThreadSimulatorPool:
             self.release()
 
 
-def _simulator_worker(connection, factory_bytes):
+def _simulator_worker(connection, factory_bytes, reuse_environments):
     """Importable loky entry point; never constructs a policy or CUDA context."""
     import cloudpickle
 
     environments = {}
+    scenario_keys = {}
     try:
         factory = cloudpickle.loads(factory_bytes)
         connection.send((True, os.getpid()))
         while True:
             operation, payload = connection.recv()
             if operation == "reset":
-                _close_environments(environments)
+                if not reuse_environments:
+                    _close_environments(environments)
+                    scenario_keys.clear()
+                expected = {index: _scenario_key(scenario)
+                            for index, scenario, _ in payload}
+                for index in list(environments):
+                    if index not in expected or scenario_keys.get(index) != expected[index]:
+                        _close_environments({index: environments.pop(index)})
+                        scenario_keys.pop(index, None)
                 observations = []
                 for index, scenario, seed in payload:
-                    environments[index] = factory(scenario, None)
+                    if index not in environments:
+                        environments[index] = factory(scenario, None)
+                        scenario_keys[index] = expected[index]
                     observations.append((index, environments[index].reset(seed)))
                 connection.send((True, observations))
             elif operation == "step":
@@ -88,6 +118,7 @@ def _simulator_worker(connection, factory_bytes):
                 connection.send((True, results))
             elif operation in ("release", "close"):
                 _close_environments(environments)
+                scenario_keys.clear()
                 connection.send((True, None))
                 if operation == "close":
                     break
@@ -115,12 +146,13 @@ class ProcessSimulatorPool:
     Only observations/actions cross pipes. Notebook closures are serialized once.
     """
 
-    def __init__(self, factory, workers, timeout=120):
+    def __init__(self, factory, workers, timeout=120, reuse_environments=False):
         import cloudpickle
         from loky.backend.context import get_context
 
         self.workers = []
         self.timeout = timeout
+        self.reuse_environments = reuse_environments
         self.closed = False
         factory_bytes = cloudpickle.dumps(factory)
         context = get_context("loky")
@@ -133,7 +165,8 @@ class ProcessSimulatorPool:
             for _ in range(workers):
                 parent, child = context.Pipe()
                 process = context.Process(
-                    target=_simulator_worker, args=(child, factory_bytes), env=worker_env,
+                    target=_simulator_worker,
+                    args=(child, factory_bytes, reuse_environments), env=worker_env,
                     daemon=True,
                 )
                 try:

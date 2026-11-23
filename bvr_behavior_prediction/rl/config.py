@@ -31,6 +31,7 @@ class PilotTrainingConfig:
     evaluation_interval: int = 5
     simulator_workers: int = 0
     simulator_executor: str = "thread"
+    reuse_simulator_environments: bool = False
     epochs: int = 100
     simulation_dt_s: float = 0.1
     seed: int = 7
@@ -60,6 +61,7 @@ class PilotTrainingConfig:
     target_kl: float | None = None
     log_ppo_diagnostics: bool = False
     checkpoint_interval: int = 10
+    demonstration_interval: int | None = None
     diagnostic_interval: int = 1
     output_dir: Path = Path("artifacts/rl_pilot")
     mlflow_experiment: str = "jsbsim-blue-1v1-pilot"
@@ -71,6 +73,8 @@ class PilotTrainingConfig:
             raise ValueError("selected_skill_parameters must be a boolean")
         if type(self.skill_conditioned_parameters) is not bool:
             raise ValueError("skill_conditioned_parameters must be a boolean")
+        if type(self.reuse_simulator_environments) is not bool:
+            raise ValueError("reuse_simulator_environments must be a boolean")
         if self.skill_conditioned_parameters and not self.selected_skill_parameters:
             raise ValueError("skill-conditioned parameters require selected_skill_parameters")
         for name in ("seed", "evaluation_seed", "test_seed"):
@@ -101,6 +105,10 @@ class PilotTrainingConfig:
             raise ValueError("update_epochs and minibatch_size must be positive")
         if self.evaluation_interval < 1:
             raise ValueError("evaluation_interval must be positive")
+        if self.demonstration_interval is not None and (
+            type(self.demonstration_interval) is not int or self.demonstration_interval < 0
+        ):
+            raise ValueError("demonstration_interval must be None or a non-negative integer")
         if self.simulator_workers < 0:
             raise ValueError("simulator_workers must be non-negative")
         if self.simulator_executor not in ("thread", "process"):

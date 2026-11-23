@@ -253,13 +253,20 @@ def prepare(args):
                       if key not in ("source_hashes", "baseline_hashes")}, indent=2))
 
 
-def make_environment_factory(config):
+def make_environment_factory(config, observation_size=51):
     from bvr_behavior_prediction.rl.bvr_jsbsim_backend import BVRJSBSimBackend
     from bvr_behavior_prediction.rl.environment import BluePilotEnvironment
 
+    if observation_size not in (51, 91, 114):
+        raise ValueError(f"unsupported policy observation size: {observation_size}")
+    include_hostile_missiles = observation_size in (91, 114)
+    include_radar_features = observation_size == 114
+
     def backend(scenario, recording_path=None):
         return BVRJSBSimBackend(scenario, recording_path=recording_path,
-                               log_dir=config.output_dir / "simulator_logs")
+                               log_dir=config.output_dir / "simulator_logs",
+                               include_hostile_missiles=include_hostile_missiles,
+                               include_radar_features=include_radar_features)
 
     def environment(scenario, recording_path=None):
         return BluePilotEnvironment(
@@ -535,9 +542,11 @@ def run(job):
             for old, p in zip(batch["pilots"], pilots) if old["reward"] != p.reward.as_dict()
         })
         print(f"Starting {len(pilots)} pilots, {config.epochs} epochs each: {plan['change_description']}", flush=True)
+        observation_size = read(baseline / pilots[0].pilot_id / "config.json")["observation_size"]
         results = train_pilots(
-            pilots, config, make_environment_factory,
-            read(baseline / pilots[0].pilot_id / "config.json")["observation_size"],
+            pilots, config,
+            lambda run_config: make_environment_factory(run_config, observation_size),
+            observation_size,
             device=plan["device"], benchmark_reward=benchmark,
             population_metadata={**batch["population_metadata"], "experiment": {
                 "intervention": plan["intervention"], "baseline": str(baseline),
@@ -580,7 +589,9 @@ def run(job):
                 directory = job / "confirmation" / population / pilot.pilot_id
                 run_config = config_for(root / pilot.pilot_id, directory)
                 model_config = read(root / pilot.pilot_id / "config.json")
-                trainer = PPOTrainer(make_environment_factory(run_config), model_config["observation_size"],
+                trainer = PPOTrainer(
+                                     make_environment_factory(run_config, model_config["observation_size"]),
+                                     model_config["observation_size"],
                                      run_config, plan["device"], definition(model_config["reward"]))
                 try:
                     trainer.pilot.load_state_dict(load_trained_pilot(root / pilot.pilot_id, plan["device"]).state_dict())

@@ -244,6 +244,8 @@ def train_pilots(
             expected = configs[pilot.pilot_id].as_dict()
             expected.setdefault("skill_conditioned_parameters", False)
             metadata["training"].setdefault("skill_conditioned_parameters", False)
+            metadata["training"].setdefault("reuse_simulator_environments", False)
+            metadata["training"].setdefault("demonstration_interval", None)
             if ({k: v for k, v in metadata["training"].items() if k not in ignored}
                     != {k: v for k, v in expected.items() if k not in ignored}
                     or metadata["reward"] != pilot.reward.as_dict()
