@@ -33,9 +33,12 @@ MODEL_CONTRACT = "relative-motion-hgt-v2-tcn-v1"
 ARCHITECTURE = "hgt_v2_tcn_relative_motion"
 TRANSFORMER_MODEL_CONTRACT = "relative-motion-hgt-v2-horizon-transformer-v1"
 TRANSFORMER_ARCHITECTURE = "hgt_v2_horizon_transformer_relative_motion"
+HORIZON_TCN_MODEL_CONTRACT = "relative-motion-hgt-v2-horizon-tcn-v1"
+HORIZON_TCN_ARCHITECTURE = "hgt_v2_horizon_tcn_relative_motion"
 MODEL_CONTRACTS = {
     ARCHITECTURE: MODEL_CONTRACT,
     TRANSFORMER_ARCHITECTURE: TRANSFORMER_MODEL_CONTRACT,
+    HORIZON_TCN_ARCHITECTURE: HORIZON_TCN_MODEL_CONTRACT,
 }
 
 
@@ -73,16 +76,16 @@ def default_training_config(architecture=ARCHITECTURE):
         "precision": "bf16",
         "cpu_threads": 4,
     }
-    if architecture == ARCHITECTURE:
-        config.update(tcn_kernel_size=3, tcn_dilations=[1, 2, 4, 8])
-    else:
+    if architecture != ARCHITECTURE:
+        config.update(batch_size=256, evaluation_batch_size=256)
+    if architecture == TRANSFORMER_ARCHITECTURE:
         config.update(
             transformer_layers=2,
             transformer_heads=4,
             transformer_ff_width=384,
-            batch_size=256,
-            evaluation_batch_size=256,
         )
+    else:
+        config.update(tcn_kernel_size=3, tcn_dilations=[1, 2, 4, 8])
     return config
 
 
@@ -375,6 +378,13 @@ class _RelativeMotionHGT(nn.Module):
         )
 
 
+def _history_tcn(width, kernel_size, dilations, dropout):
+    temporal = CausalTemporalConvEncoder(width, kernel_size, dilations, dropout)
+    if temporal.receptive_field < HISTORY_STEPS:
+        raise ValueError(f"TCN receptive field must cover all {HISTORY_STEPS} history frames")
+    return temporal
+
+
 class RelativeMotionHGTTCN(_RelativeMotionHGT):
     """Notebook-28 HGT-v2/TCN adapted to the exact 91-feature pilot frames."""
 
@@ -388,11 +398,7 @@ class RelativeMotionHGTTCN(_RelativeMotionHGT):
         **graph_options,
     ):
         super().__init__(width=width, dropout=dropout, **graph_options)
-        self.temporal = CausalTemporalConvEncoder(
-            width, tcn_kernel_size, tcn_dilations, dropout
-        )
-        if self.temporal.receptive_field < HISTORY_STEPS:
-            raise ValueError("TCN receptive field must cover all 20 history frames")
+        self.temporal = _history_tcn(width, tcn_kernel_size, tcn_dilations, dropout)
         self.norm = nn.LayerNorm(width)
         self.head = nn.Sequential(
             nn.Linear(width, width),
@@ -408,6 +414,45 @@ class RelativeMotionHGTTCN(_RelativeMotionHGT):
         return self.head(self.encode_history(windows)).reshape(
             -1, len(HORIZONS), len(TARGET_FIELDS)
         )
+
+
+class _TemporalTCNSection(nn.Module):
+    def __init__(self, width, kernel_size, dilations, dropout):
+        super().__init__()
+        self.temporal = _history_tcn(width, kernel_size, dilations, dropout)
+        self.head = nn.Sequential(
+            nn.LayerNorm(width),
+            nn.Linear(width, width),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(width, len(TARGET_FIELDS)),
+        )
+
+    def forward(self, frames):
+        return self.head(self.temporal(frames)[:, -1])
+
+
+class RelativeMotionHGTHorizonTCN(_RelativeMotionHGT):
+    """Shared spatial graphs and an independent causal TCN for each forecast horizon."""
+
+    def __init__(
+        self,
+        *,
+        width=96,
+        tcn_kernel_size=3,
+        tcn_dilations=(1, 2, 4, 8),
+        dropout=0.25,
+        **graph_options,
+    ):
+        super().__init__(width=width, dropout=dropout, **graph_options)
+        self.sections = nn.ModuleList([
+            _TemporalTCNSection(width, tcn_kernel_size, tcn_dilations, dropout)
+            for _ in HORIZONS
+        ])
+
+    def forward(self, windows):
+        frames = self.encode_frames(windows)
+        return torch.stack([section(frames) for section in self.sections], dim=1)
 
 
 class _TemporalTransformerSection(nn.Module):
@@ -501,19 +546,20 @@ def model_configuration(config):
         "missile_distance_floor_m",
         "missile_distance_power",
     )
-    if architecture == ARCHITECTURE:
-        keys += ("tcn_kernel_size", "tcn_dilations")
-    else:
+    if architecture == TRANSFORMER_ARCHITECTURE:
         keys += ("transformer_layers", "transformer_heads", "transformer_ff_width")
+    else:
+        keys += ("tcn_kernel_size", "tcn_dilations")
     return {key: config[key] for key in keys}
 
 
 def make_model(config, data):
     options = model_configuration(config)
-    model_type = (
-        RelativeMotionHGTTCN if config["architecture"] == ARCHITECTURE
-        else RelativeMotionHGTTransformer
-    )
+    model_type = {
+        ARCHITECTURE: RelativeMotionHGTTCN,
+        TRANSFORMER_ARCHITECTURE: RelativeMotionHGTTransformer,
+        HORIZON_TCN_ARCHITECTURE: RelativeMotionHGTHorizonTCN,
+    }[config["architecture"]]
     return model_type(**options, mean=data.mean, std=data.std)
 
 

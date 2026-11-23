@@ -215,7 +215,9 @@ def test_notebook_33_is_clean_and_compiles():
             assert not cell["outputs"]
 
 
-@pytest.mark.parametrize("architecture", [gnn.ARCHITECTURE, gnn.TRANSFORMER_ARCHITECTURE])
+@pytest.mark.parametrize("architecture", [
+    gnn.ARCHITECTURE, gnn.TRANSFORMER_ARCHITECTURE, gnn.HORIZON_TCN_ARCHITECTURE,
+])
 def test_hgt_regression_train_reload_and_final_metrics(tmp_path, architecture):
     torch.set_num_threads(1)
     corpus = _corpus(tmp_path)
@@ -236,10 +238,10 @@ def test_hgt_regression_train_reload_and_final_metrics(tmp_path, architecture):
         "precision": "fp32",
         "cpu_threads": 1,
     }
-    if architecture == gnn.ARCHITECTURE:
-        config["tcn_dilations"] = [1, 2, 4]
-    else:
+    if architecture == gnn.TRANSFORMER_ARCHITECTURE:
         config.update(transformer_layers=1, transformer_heads=2, transformer_ff_width=24)
+    else:
+        config["tcn_dilations"] = [1, 2, 4]
     model = gnn.make_model(config, data)
     ids = data.indices["train"][:2]
     inputs = torch.from_numpy(data.history(ids).astype(np.float32))
@@ -296,9 +298,36 @@ def test_hgt_transformer_sections_are_independent_and_causal():
         torch.testing.assert_close(model(windows), expected)
 
 
+def test_horizon_tcns_are_independent_and_causal():
+    torch.set_num_threads(1)
+    torch.manual_seed(42)
+    model = gnn.RelativeMotionHGTHorizonTCN(
+        width=8, graph_width=8, graph_heads=2, graph_layers=1, dropout=0.0,
+    ).eval()
+    assert len(model.sections) == len(motion.HORIZONS) == 3
+    windows = torch.randn(2, motion.HISTORY_STEPS, 91)
+    with torch.inference_mode():
+        frames = model.encode_frames(windows)
+        changed = frames.clone()
+        changed[:, -1] += torch.randn_like(changed[:, -1])
+        for section in model.sections:
+            assert section.temporal.receptive_field >= motion.HISTORY_STEPS
+            original = section.temporal(frames)
+            updated = section.temporal(changed)
+            torch.testing.assert_close(original[:, :-1], updated[:, :-1])
+            assert not torch.allclose(original[:, -1], updated[:, -1])
+
+        prediction = model(windows)
+        model.sections[1].temporal.blocks[-1].convolutions[-1].bias[0].add_(1)
+        changed_prediction = model(windows)
+        torch.testing.assert_close(prediction[:, (0, 2)], changed_prediction[:, (0, 2)])
+        assert not torch.allclose(prediction[:, 1], changed_prediction[:, 1])
+
+
 @pytest.mark.parametrize(("filename", "architecture_symbol"), [
     ("34_train_relative_motion_hgt_tcn.ipynb", "RelativeMotionHGTTCN"),
     ("35_train_relative_motion_hgt_transformer.ipynb", "TRANSFORMER_ARCHITECTURE"),
+    ("36_train_relative_motion_hgt_horizon_tcn.ipynb", "HORIZON_TCN_ARCHITECTURE"),
 ])
 def test_hgt_training_notebook_is_clean_and_compiles(filename, architecture_symbol):
     notebook = json.loads((ROOT / "notebooks" / filename).read_text())

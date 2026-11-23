@@ -46,6 +46,11 @@ transformer sections, with one six-component regression head for each of the
 +1, +2, and +5 second horizons. Runs are saved under
 `artifacts/relative_motion_transformer_forecasting/`.
 
+[36_train_relative_motion_hgt_horizon_tcn.ipynb](36_train_relative_motion_hgt_horizon_tcn.ipynb)
+uses one independent causal TCN and regression head per horizon with the same
+shared graph encoder and evaluation workflow as notebook 35. Runs are saved
+under `artifacts/relative_motion_horizon_tcn_forecasting/`.
+
 **Current workflow:** train catalogue-v4 pilots with notebooks 04–06, then use
 [29_trajectory_state_forecasting.ipynb](29_trajectory_state_forecasting.ipynb) for
 future speed, heading and altitude regression. See the
