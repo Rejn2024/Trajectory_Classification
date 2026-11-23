@@ -310,12 +310,12 @@ Peak live simulator memory is unchanged; idle memory remains resident between
 batches, approximately one environment footprint per active worker.
 
 The radar-aware forecasting collector accepts `--workers` or `BVR_CORPUS_WORKERS`.
-The default `0` selects at most four independent CPU flight processes. Each process
+The default `0` selects at most eight independent CPU flight processes. Each process
 loads its ten CPU pilots once and writes disjoint episode files. For large corpora,
-four workers should usually provide about 2--3.5x wall-clock acceleration rather
-than the ideal 4x because of simulator imbalance, process startup, and Parquet I/O.
+eight workers should usually provide about 3--6x wall-clock acceleration rather
+than the ideal 8x because of simulator imbalance, process startup, and Parquet I/O.
 The added memory is primarily one Torch/model runtime and one simulator per worker;
-four workers are normally a safer default than using every logical CPU. The selected
+eight workers are normally a safer default than using every logical CPU. The selected
 worker count is recorded in `config.json` and `manifest.json`.
 
 Install the project with `python -m pip install -e '.[ml,video]'`. For a short

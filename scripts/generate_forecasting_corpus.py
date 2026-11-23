@@ -304,7 +304,7 @@ def generate(population, output, flights=100, seed=26110600, episode_seconds=120
     if type(workers) is not int or workers < 0:
         raise ValueError("workers must be a nonnegative integer")
     if workers == 0:
-        workers = max(1, min(4, os.cpu_count() or 1))
+        workers = max(1, min(8, os.cpu_count() or 1))
     sampler = ScenarioSampler(seed)
     scenarios = sampler.sample_batch(flights)
     cases = []
@@ -409,7 +409,7 @@ def main():
     parser.add_argument(
         "--workers", type=int,
         default=int(os.getenv("BVR_CORPUS_WORKERS", "0")),
-        help="parallel flight collectors; 0 selects a conservative maximum of four",
+        help="parallel flight collectors; 0 selects a conservative maximum of eight",
     )
     args = parser.parse_args()
     generate(

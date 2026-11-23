@@ -10,7 +10,7 @@ parameters and raw NN parameter vectors. The resulting `schema.json` and
 skill/manoeuvre forecasting. Set `BVR_CORPUS_FLIGHTS` to a small value for an
 installation check; outputs are timestamped and are never overwritten.
 Set `BVR_PILOT_OPPONENT=tactical` to train the same roster against the tactical
-opponent. Corpus collection uses up to four CPU workers by default; control it with
+opponent. Corpus collection uses up to eight CPU workers by default; control it with
 `BVR_CORPUS_WORKERS`.
 
 For joint skill and offensive/defensive/context-dependent intent forecasting, run
