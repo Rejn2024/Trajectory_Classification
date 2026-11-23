@@ -1,8 +1,8 @@
-"""Collect a forecasting-ready corpus from a newly trained pilot population.
+"""Collect a forecasting-ready radar-aware corpus from a newly trained population.
 
 The collector deliberately records the exact frame submitted to each runtime
 controller.  It does not reconstruct a reduced observation later, which keeps
-hostile-missile geometry, energy features, and future skill labels aligned.
+hostile-missile geometry, radar state, energy features, and future skill labels aligned.
 """
 
 from __future__ import annotations
@@ -21,7 +21,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "scripts"), str(ROOT), str(ROOT / "bvr_sim_source")]
 
 from bvr_behavior_prediction.rl.multi_pilot import load_trained_pilot
-from bvr_behavior_prediction.rl.observation_features import POLICY_OBSERVATION_SIZE, observation_feature_schema
+from bvr_behavior_prediction.rl.observation_features import (
+    RADAR_POLICY_OBSERVATION_SIZE, observation_feature_schema,
+)
 from bvr_behavior_prediction.rl.scenarios import ScenarioSampler
 from tactical_corpus_schema import DT, KEYS, observer_frame, observation_columns
 from bvr_sim.agents.skill_manager import SkillManager
@@ -147,7 +149,7 @@ def collect_case(case, models, output, history_steps=20, episode_seconds=120.0):
 
     def snapshot():
         for side, other in (("A01", "B01"), ("B01", "A01")):
-            frame = observer_frame(env, side, other, POLICY_OBSERVATION_SIZE)
+            frame = observer_frame(env, side, other, RADAR_POLICY_OBSERVATION_SIZE)
             frames[side].append(frame)
             histories[side].append(frame)
             if len(histories[side]) < history_steps:
@@ -209,7 +211,9 @@ def collect_case(case, models, output, history_steps=20, episode_seconds=120.0):
         env.close()
 
     for side in SIDES:
-        observation = pd.DataFrame(frames[side], columns=observation_columns(POLICY_OBSERVATION_SIZE))
+        observation = pd.DataFrame(
+            frames[side], columns=observation_columns(RADAR_POLICY_OBSERVATION_SIZE)
+        )
         key_frame = pd.DataFrame(tracks[side])[list(KEYS)]
         observation = pd.concat([key_frame.reset_index(drop=True), observation], axis=1)
         track = pd.DataFrame(tracks[side])
@@ -273,8 +277,8 @@ def generate(population, output, flights=100, seed=26110600, episode_seconds=120
     classes = list(models[pilot_ids[0]].skill_names)
     parameter_names = list(models[pilot_ids[0]].parameter_names)
     config = {
-        "schema_version": "nn-duels-current-v1",
-        "observation_size": POLICY_OBSERVATION_SIZE,
+        "schema_version": "nn-duels-radar-v1",
+        "observation_size": RADAR_POLICY_OBSERVATION_SIZE,
         "sample_interval_s": DT,
         "decision_interval_s": 1.0,
         "history_steps": 20,
@@ -295,9 +299,9 @@ def generate(population, output, flights=100, seed=26110600, episode_seconds=120
         "parameter_names": parameter_names,
     })
     write_json(output / "schema.json", {
-        "schema_version": "nn-duels-current-v1",
-        "observation_columns": list(observation_columns(POLICY_OBSERVATION_SIZE)),
-        "features": observation_feature_schema(POLICY_OBSERVATION_SIZE),
+        "schema_version": "nn-duels-radar-v1",
+        "observation_columns": list(observation_columns(RADAR_POLICY_OBSERVATION_SIZE)),
+        "features": observation_feature_schema(RADAR_POLICY_OBSERVATION_SIZE),
         "history": "Chronological 20 frames at 10 Hz; reset frame is repeated for left padding.",
         "decision_labels": {
             "skill_index": "catalogue index",
@@ -310,8 +314,8 @@ def generate(population, output, flights=100, seed=26110600, episode_seconds=120
     files = {p.relative_to(output).as_posix(): sha256(p)
              for p in sorted(output.rglob("*")) if p.is_file()}
     write_json(output / "manifest.json", {
-        "complete": True, "schema_version": "nn-duels-current-v1",
-        "observation_size": POLICY_OBSERVATION_SIZE, "episodes": len(episode_records),
+        "complete": True, "schema_version": "nn-duels-radar-v1",
+        "observation_size": RADAR_POLICY_OBSERVATION_SIZE, "episodes": len(episode_records),
         "physical_flights": len(episode_records), "perspective_episodes": len(episode_records) * 2,
         "files": files,
     })

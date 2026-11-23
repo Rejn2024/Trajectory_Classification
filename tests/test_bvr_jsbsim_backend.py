@@ -193,6 +193,19 @@ def test_backend_can_append_hostile_missile_slots_for_forecasting_pilots(tmp_pat
     backend.close()
 
 
+def test_backend_can_append_radar_features_after_hostile_missiles(tmp_path):
+    backend = BVRJSBSimBackend(
+        {"range_m": 30_000, "blue_altitude_m": 6000, "red_altitude_m": 7000},
+        env_factory=_Environment, log_dir=tmp_path,
+        include_hostile_missiles=True, include_radar_features=True,
+    )
+    observation, _ = backend.reset(17)
+    assert backend.observation_size == 110
+    assert observation.shape == (110,)
+    assert backend.include_radar_features is True
+    backend.close()
+
+
 def test_tactical_selection_reaches_simulator_and_episode_metadata(tmp_path):
     backend = BVRJSBSimBackend(
         {"range_m": 30_000, "blue_altitude_m": 6000, "red_altitude_m": 7000},

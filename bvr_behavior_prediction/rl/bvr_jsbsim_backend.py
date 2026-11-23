@@ -11,7 +11,11 @@ from .observation_features import (
     COMPACT_OBSERVATION_SIZE,
     HOSTILE_MISSILE_FEATURE_NAMES,
     HOSTILE_MISSILE_OBSERVATION_SIZE,
+    HOSTILE_MISSILE_RADAR_OBSERVATION_SIZE,
     HOSTILE_MISSILE_SLOTS,
+    RADAR_FEATURE_SIZE,
+    RADAR_OBSERVATION_SIZE,
+    append_radar_features,
     append_hostile_missile_features,
     hostile_missile_features,
 )
@@ -24,7 +28,9 @@ class BVRJSBSimBackend:
     exposes that aircraft as ``blue`` to preserve the public blue-pilot contract
     used by the training pipeline.  Both aircraft are F-16s using BVR Sim's
     JSBSim FDM, and the opposing (internally blue) aircraft uses the simulator's
-    selected scripted baseline policy (simple by default).
+    selected scripted baseline policy (simple by default).  Optional radar
+    features are appended after compact/hostile-missile features and before the
+    environment's four energy features.
     """
 
     CONTROLLED_ID = "A01"
@@ -33,22 +39,29 @@ class BVRJSBSimBackend:
     HOSTILE_MISSILE_SLOTS = HOSTILE_MISSILE_SLOTS
     HOSTILE_MISSILE_FEATURE_NAMES = HOSTILE_MISSILE_FEATURE_NAMES
     HOSTILE_MISSILE_OBSERVATION_SIZE = HOSTILE_MISSILE_OBSERVATION_SIZE
+    RADAR_FEATURE_SIZE = RADAR_FEATURE_SIZE
+    RADAR_OBSERVATION_SIZE = RADAR_OBSERVATION_SIZE
+    HOSTILE_MISSILE_RADAR_OBSERVATION_SIZE = HOSTILE_MISSILE_RADAR_OBSERVATION_SIZE
 
     def __init__(self, scenario: dict, recording_path=None, env_factory=None, log_dir=None,
                  opponent_type="simple", include_hostile_missiles=False,
-                 episode_duration_s=120.0):
+                 episode_duration_s=120.0, include_radar_features=False):
         if opponent_type not in ("simple", "tactical"):
             raise ValueError("opponent_type must be simple or tactical")
         if type(include_hostile_missiles) is not bool:
             raise ValueError("include_hostile_missiles must be a boolean")
+        if type(include_radar_features) is not bool:
+            raise ValueError("include_radar_features must be a boolean")
         if not np.isfinite(episode_duration_s) or not 0 < episode_duration_s <= 300:
             raise ValueError("episode_duration_s must be in (0, 300]")
         self.episode_duration_s = float(episode_duration_s)
         self.include_hostile_missiles = include_hostile_missiles
-        self.observation_size = (
-            self.HOSTILE_MISSILE_OBSERVATION_SIZE if include_hostile_missiles
-            else self.OBSERVATION_SIZE
-        )
+        self.include_radar_features = include_radar_features
+        self.observation_size = self.OBSERVATION_SIZE
+        if include_hostile_missiles:
+            self.observation_size = self.HOSTILE_MISSILE_OBSERVATION_SIZE
+        if include_radar_features:
+            self.observation_size += self.RADAR_FEATURE_SIZE
         self.opponent_type = opponent_type
         self.scenario = scenario
         self.recording_path = Path(recording_path) if recording_path else None
@@ -105,13 +118,18 @@ class BVRJSBSimBackend:
         return result
 
     def _policy_observation(self, observation) -> np.ndarray:
-        """Return the configured compact or hostile-missile policy vector."""
+        """Return the configured compact, missile, and radar policy vector."""
         compact = self._flat_observation(observation)
-        if not self.include_hostile_missiles:
-            return compact
-        return append_hostile_missile_features(
-            compact, self.env.agents[self.CONTROLLED_ID]
-        )
+        controlled = self.env.agents[self.CONTROLLED_ID]
+        if self.include_hostile_missiles:
+            compact = append_hostile_missile_features(compact, controlled)
+        if self.include_radar_features:
+            compact = append_radar_features(compact, controlled)
+        if compact.size != self.observation_size:
+            raise ValueError(
+                f"expected {self.observation_size} backend features, got {compact.size}"
+            )
+        return compact
 
     @classmethod
     def hostile_missile_features(cls, controlled):

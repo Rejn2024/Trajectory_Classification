@@ -3,7 +3,7 @@
 For a fresh current-branch population, run
 [31: train ten new pilots and generate a forecasting corpus](31_train_new_pilots_and_generate_forecasting_corpus.ipynb).
 It trains ten pilots from scratch against the current SkillManager catalogue with
-91-channel runtime frames, then records both NN-versus-NN perspectives, physical
+114-channel radar-aware runtime frames, then records both NN-versus-NN perspectives, physical
 tracks, exact policy histories, selected skills, one-hot skill labels, decoded
 parameters and raw NN parameter vectors. The resulting `schema.json` and
 `skill_catalogue.json` are the authoritative feature and label contracts for later

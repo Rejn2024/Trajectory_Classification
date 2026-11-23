@@ -4,7 +4,9 @@ import numpy as np
 
 from bvr_behavior_prediction.rl.observation_features import (
     COMPACT_OBSERVATION_SIZE,
+    RADAR_POLICY_OBSERVATION_SIZE,
     POLICY_OBSERVATION_SIZE,
+    append_radar_features,
     append_hostile_missile_features,
     observation_feature_schema,
 )
@@ -27,10 +29,12 @@ def observer_frame(simulator, observer_id, target_id, observation_size=51):
     observer = simulator.agents[observer_id]
     target = simulator.agents[target_id]
     compact = simulator.obs_manager.extract_obs(observer, simulator.agents, simulator.missiles)
-    if observation_size == POLICY_OBSERVATION_SIZE:
+    if observation_size in (POLICY_OBSERVATION_SIZE, RADAR_POLICY_OBSERVATION_SIZE):
         compact = append_hostile_missile_features(compact, observer)
+        if observation_size == RADAR_POLICY_OBSERVATION_SIZE:
+            compact = append_radar_features(compact, observer)
     elif observation_size != COMPACT_OBSERVATION_SIZE + 4:
-        raise ValueError("Expected a 51- or 91-feature observer frame")
+        raise ValueError("Expected a 51-, 91-, or 114-feature observer frame")
     energy = [(float(aircraft.get_speed()) / 400.0) ** 2
               if kind == "speed" else float(aircraft.get_altitude()) / 12000.0
               for aircraft in (observer, target) for kind in ("speed", "altitude")]
@@ -47,7 +51,7 @@ def forecasting_schema(observation_size=POLICY_OBSERVATION_SIZE):
 
 
 def observation_columns(observation_size):
-    if observation_size not in (51, POLICY_OBSERVATION_SIZE):
+    if observation_size not in (51, POLICY_OBSERVATION_SIZE, RADAR_POLICY_OBSERVATION_SIZE):
         raise ValueError(f"unsupported observation size: {observation_size}")
     return tuple(f"obs_{i:02d}" for i in range(observation_size))
 
