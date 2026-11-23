@@ -53,7 +53,7 @@ def test_actions_architecture_and_sampling_match_legacy(pilot):
 
 def test_log_probability_and_gradient_ignore_only_unused_parameters(pilot):
     obs = torch.randn(1, 2, 3)
-    skill_index = pilot._skill_indices["maintain_heading"]
+    skill_index = pilot._skill_indices["set_trajectory"]
     skills = torch.tensor([skill_index])
     active = active_indices(pilot, skill_index)
     inactive = [j for j in range(len(pilot.parameter_names)) if j not in active]

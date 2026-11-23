@@ -7,6 +7,15 @@ from pathlib import Path
 import numpy as np
 from bvr_sim.agents.skill_manager import SkillManager
 
+from .observation_features import (
+    COMPACT_OBSERVATION_SIZE,
+    HOSTILE_MISSILE_FEATURE_NAMES,
+    HOSTILE_MISSILE_OBSERVATION_SIZE,
+    HOSTILE_MISSILE_SLOTS,
+    append_hostile_missile_features,
+    hostile_missile_features,
+)
+
 
 class BVRJSBSimBackend:
     """Adapt the Python BVR environment to :class:`BluePilotEnvironment`.
@@ -20,12 +29,26 @@ class BVRJSBSimBackend:
 
     CONTROLLED_ID = "A01"
     OPPONENT_ID = "B01"
-    OBSERVATION_SIZE = 47  # compact 1-v-1 observation supplied by BVR Sim
+    OBSERVATION_SIZE = COMPACT_OBSERVATION_SIZE  # compact 1-v-1 observation supplied by BVR Sim
+    HOSTILE_MISSILE_SLOTS = HOSTILE_MISSILE_SLOTS
+    HOSTILE_MISSILE_FEATURE_NAMES = HOSTILE_MISSILE_FEATURE_NAMES
+    HOSTILE_MISSILE_OBSERVATION_SIZE = HOSTILE_MISSILE_OBSERVATION_SIZE
 
     def __init__(self, scenario: dict, recording_path=None, env_factory=None, log_dir=None,
-                 opponent_type="simple"):
+                 opponent_type="simple", include_hostile_missiles=False,
+                 episode_duration_s=120.0):
         if opponent_type not in ("simple", "tactical"):
             raise ValueError("opponent_type must be simple or tactical")
+        if type(include_hostile_missiles) is not bool:
+            raise ValueError("include_hostile_missiles must be a boolean")
+        if not np.isfinite(episode_duration_s) or not 0 < episode_duration_s <= 300:
+            raise ValueError("episode_duration_s must be in (0, 300]")
+        self.episode_duration_s = float(episode_duration_s)
+        self.include_hostile_missiles = include_hostile_missiles
+        self.observation_size = (
+            self.HOSTILE_MISSILE_OBSERVATION_SIZE if include_hostile_missiles
+            else self.OBSERVATION_SIZE
+        )
         self.opponent_type = opponent_type
         self.scenario = scenario
         self.recording_path = Path(recording_path) if recording_path else None
@@ -50,12 +73,12 @@ class BVRJSBSimBackend:
             self.env.enable_render(str(self.recording_path))
 
     def _sim_config(self) -> dict:
-        duration = 120.0
+        duration = self.episode_duration_s
         dt = 0.1
         altitudes = (self.scenario["blue_altitude_m"], self.scenario["red_altitude_m"])
         return {
             "dt": dt,
-            "max_steps": int(duration / dt),
+            "max_steps": round(duration / dt),
             "red_fighters": {
                 self.CONTROLLED_ID: {"model": "F16", "record": False},
             },
@@ -81,6 +104,20 @@ class BVRJSBSimBackend:
             raise ValueError(f"expected one flat BVR observation, got shape {result.shape}")
         return result
 
+    def _policy_observation(self, observation) -> np.ndarray:
+        """Return the configured compact or hostile-missile policy vector."""
+        compact = self._flat_observation(observation)
+        if not self.include_hostile_missiles:
+            return compact
+        return append_hostile_missile_features(
+            compact, self.env.agents[self.CONTROLLED_ID]
+        )
+
+    @classmethod
+    def hostile_missile_features(cls, controlled):
+        """Expose the shared threat encoder for corpus recording."""
+        return hostile_missile_features(controlled)
+
     def _target_geometry(self):
         controlled = self.env.agents[self.CONTROLLED_ID]
         opponent = self.env.agents[self.OPPONENT_ID]
@@ -91,10 +128,15 @@ class BVRJSBSimBackend:
         alignment = float(np.dot(velocity, relative) / (speed * distance)) if speed * distance else 0.0
         return {"target_range_m": distance, "target_alignment": float(np.clip(alignment, -1, 1))}
 
-    def _aircraft_info(self, fired=0, missiles_avoided=0) -> dict:
+    def _aircraft_info(self, skill_name=None, fired=0, missiles_avoided=0) -> dict:
         controlled = self.env.agents[self.CONTROLLED_ID]
         opponent = self.env.agents[self.OPPONENT_ID]
         locked = bool(controlled.enemies_lock)
+        # A launch command is retained as a reward event even when the
+        # simulator rejects the shot. This is notebook 31's un-locked launch
+        # accounting and drives the dumb-launch penalty.
+        launch_ordered = skill_name == "launch"
+        fired_for_reward = bool(launch_ordered or fired)
         threats = [
             missile for missile in controlled.under_missiles
             if missile.is_alive and missile.target is controlled
@@ -132,8 +174,8 @@ class BVRJSBSimBackend:
             "crashed": not controlled.is_alive and controlled.get_altitude() <= 500.0,
             "shot_down": not controlled.is_alive and controlled.get_altitude() > 500.0,
             "reward_event_counts": {
-                "fired_with_lock": int(fired if locked else 0),
-                "fired_without_lock": int(fired if not locked else 0),
+                "fired_with_lock": int(fired_for_reward if locked else 0),
+                "fired_without_lock": int(fired_for_reward if not locked else 0),
                 "missile_avoided": missiles_avoided,
             },
         }
@@ -157,10 +199,43 @@ class BVRJSBSimBackend:
         }
         if self.recording_path:
             self.env.render()
-        return self._flat_observation(observation), self._aircraft_info()
+        return self._policy_observation(observation), self._aircraft_info()
 
     def _guidance_observation(self) -> dict:
         aircraft = self.env.agents[self.CONTROLLED_ID]
+        targets = {}
+        incoming_missiles = []
+        support_missiles = []
+        if aircraft.enemies_lock:
+            target = min(
+                aircraft.enemies_lock,
+                key=lambda candidate: np.linalg.norm(candidate.position - aircraft.position),
+            )
+            targets["primary"] = {
+                "id": target.uid,
+                "position": np.asarray(target.position, dtype=float).tolist(),
+                "velocity": np.asarray(target.velocity, dtype=float).tolist(),
+            }
+        for missile in aircraft.under_missiles:
+            if not missile.is_alive or missile.target is not aircraft:
+                continue
+            incoming_missiles.append({
+                "id": missile.uid,
+                "target_id": getattr(getattr(missile, "target", None), "uid", None),
+                "position": np.asarray(missile.position, dtype=float).tolist(),
+                "velocity": np.asarray(missile.velocity, dtype=float).tolist(),
+                "is_alive": True,
+            })
+        for missile in aircraft.launched_missiles:
+            if not missile.is_alive:
+                continue
+            support_missiles.append({
+                "id": missile.uid,
+                "target_id": getattr(getattr(missile, "target", None), "uid", None),
+                "position": np.asarray(missile.position, dtype=float).tolist(),
+                "velocity": np.asarray(missile.velocity, dtype=float).tolist(),
+                "is_alive": True,
+            })
         return {
             "time": self.env.current_step * self.env.dt,
             "self_status": {
@@ -170,6 +245,9 @@ class BVRJSBSimBackend:
                 },
                 "performance": {"speed_mps": float(aircraft.get_speed())},
             },
+            "targets": targets,
+            "incoming_missiles": incoming_missiles,
+            "support_missiles": support_missiles,
         }
 
     def step(self, blue_action, red_action):
@@ -213,13 +291,13 @@ class BVRJSBSimBackend:
         self._missiles_avoided_total += avoided
         info = {
             **simulator_info,
-            **self._aircraft_info(fired=fired, missiles_avoided=avoided),
+            **self._aircraft_info(skill_name=name, fired=fired, missiles_avoided=avoided),
         }
         simulator_reward = float(np.asarray(reward).reshape(-1)[0])
         terminated = bool(np.asarray(done).reshape(-1)[0]) or bool(
             simulator_info.get("episode_done", False)
         )
-        return self._flat_observation(observation), simulator_reward, terminated, info
+        return self._policy_observation(observation), simulator_reward, terminated, info
 
     def close(self):
         self.env.close()

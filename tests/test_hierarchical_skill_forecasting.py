@@ -74,7 +74,7 @@ def test_hierarchical_loss_and_gradients_equal_weighted_joint_leaf_nll(weighted,
     direction_logits = torch.randn(2, 3, 4, 2, requires_grad=True)
     classes = model.skill_hierarchy["classes"]
     targets = torch.tensor([[classes.index("launch"), classes.index("notch_right"), -1],
-                            [classes.index("crank_target_left"), -1, classes.index("maintain_heading")]])
+                            [classes.index("crank_target_left"), -1, classes.index("set_trajectory")]])
     if missing:
         targets[:] = -1
     weights = torch.rand(3, 33) + .1 if weighted else None
@@ -129,7 +129,7 @@ def test_direction_uses_all_valid_skill_labels_as_denominator_and_greedy_can_dif
 
 
 def test_no_directional_skills_and_empty_direction_horizons_are_valid():
-    model = network(["launch", "maintain_heading"])
+    model = network(["launch", "set_trajectory"])
     result = model(torch.zeros(1, 51, 84), return_hierarchy=True)
     assert result["direction_logits"].shape == (1, 3, 0, 2)
     torch.testing.assert_close(result["skill_log_probs"].exp().sum(-1), torch.ones(1, 3))

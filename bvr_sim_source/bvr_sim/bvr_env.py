@@ -38,7 +38,10 @@ ENABLE_MADDOG_MISSILE = False
 # RED_BASELINE_TYPES = ['mad']
 RED_BASELINE_TYPES = ['tactical']
 BYPASS_RL_CONTROL = False
-BYPASS_RL_THROTTLE_CONTROL = True
+# Preserve the NN/SkillManager speed command by default.  The old forced-speed
+# behaviour remains available for explicitly versioned legacy experiments, but
+# must never silently replace the controller's throttle intent.
+BYPASS_RL_THROTTLE_CONTROL = os.environ.get("BVR_BYPASS_RL_THROTTLE_CONTROL", "0") == "1"
 
 USE_DISTILL_REWARD_ACTION = False
 

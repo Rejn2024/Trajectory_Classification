@@ -5,18 +5,14 @@ vocabulary. It builds its registry from `_catalogue()` and provides methods to l
 skills, instantiate them, retrieve an individual contract, or describe the full
 catalogue.
 
-The catalogue contains **33 skills** in four categories:
+The catalogue contains **23 skills** in four categories:
 
-## Kinematic (6)
+## Kinematic (1)
 
-- `maintain_heading`
-- `turn_to_heading`
-- `climb_to_altitude`
-- `descend_to_altitude`
-- `accelerate_to_speed`
-- `decelerate_to_speed`
+- `set_trajectory` — sets heading, altitude, and speed together; its emitted
+  deltas are relative to the aircraft's current state.
 
-Defined in `bvr_sim_source/bvr_sim/agents/skill_manager.py`, lines 98–110.
+Defined in `bvr_sim_source/bvr_sim/agents/skill_manager.py` in `_catalogue()`.
 
 ## Relational (10)
 
@@ -31,20 +27,15 @@ Defined in `bvr_sim_source/bvr_sim/agents/skill_manager.py`, lines 98–110.
 - `extend`
 - `recommit`
 
-Defined in `bvr_sim_source/bvr_sim/agents/skill_manager.py`, lines 112–130.
+Defined in `bvr_sim_source/bvr_sim/agents/skill_manager.py` in `_catalogue()`.
 
-## Weapon employment (8)
+## Weapon employment (3)
 
 - `search`
-- `lock_target`
-- `commit`
 - `launch`
 - `support_missile`
-- `abort_support`
-- `secondary_shot`
-- `short_range_attack`
 
-Defined in `bvr_sim_source/bvr_sim/agents/skill_manager.py`, lines 132–146.
+Defined in `bvr_sim_source/bvr_sim/agents/skill_manager.py` in `_catalogue()`.
 
 ## Defensive (9)
 
@@ -58,16 +49,16 @@ Defined in `bvr_sim_source/bvr_sim/agents/skill_manager.py`, lines 132–146.
 - `last_ditch_break`
 - `defensive_reversal`
 
-Defined in `bvr_sim_source/bvr_sim/agents/skill_manager.py`, lines 148–165.
+Defined in `bvr_sim_source/bvr_sim/agents/skill_manager.py` in `_catalogue()`.
 
 ## Related implementation locations
 
-- `SkillSpec`, the immutable lifecycle-contract definition: lines 45–71.
-- `TacticalSkill`, the executable skill implementation: lines 168–240.
+- `SkillSpec`, the immutable lifecycle-contract definition.
+- `TacticalSkill`, the executable skill implementation.
 - `SkillManager`, including `create_skill()`, `list_skills()`, `get_contract()`,
-  and `describe_skills()`: lines 243–266.
+  and `describe_skills()`.
 - The unit-test declaration of the complete expected vocabulary:
-  `tests/test_skill_manager.py`, lines 9–18.
+  `tests/test_skill_manager.py`.
 
 Every skill contract includes its name, category, semantic version, start and
 termination conditions, interruption conditions, parameter schema, and a common

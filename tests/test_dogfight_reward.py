@@ -129,13 +129,14 @@ def test_hybrid_guidance_is_shared_bounded_and_cannot_be_farmed_by_lock_cycles()
         assert reward({**common, "missile_support_time_s": 110.0})[1]["missile_support"] == 0
 
 
-def test_hybrid_does_not_reward_an_unlocked_launch_or_claim_an_unrelated_crash():
+def test_hybrid_penalizes_an_unlocked_launch_and_does_not_claim_an_unrelated_crash():
     reward = HybridDogfightReward()
     _, components = reward(info(
         missile_support_time_s=0.0, fired=True, target_locked=False,
         opponent_destroyed=True, reward_event_counts={"fired_without_lock": 1},
     ))
-    assert sum(components.values()) == 0
+    assert components["dumb_launch"] == -8
+    assert sum(components.values()) == -8
 
 
 def test_hybrid_shared_elimination_and_loss_keep_style_tradeoffs():

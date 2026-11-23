@@ -13,13 +13,11 @@ from .paired_skill_forecasting import HORIZONS, SPLITS, read_json, sha256, write
 INTENT_DATA_CONTRACT = "nn-duel-target-relative-missile-skill-intent-horizon-v2"
 INTENT_CLASSES = ["offensive", "defensive", "context_dependent"]
 INTENT_GROUPS = {
-    "offensive": ["pursue_target", "lead_pursuit", "recommit", "lock_target", "commit", "launch",
-                  "support_missile", "secondary_shot", "short_range_attack"],
+    "offensive": ["pursue_target", "lead_pursuit", "recommit", "launch", "support_missile"],
     "defensive": ["preemptive_crank", "notch_left", "notch_right", "beam_missile_left",
                   "beam_missile_right", "drag_missile", "dive_defense", "last_ditch_break",
-                  "defensive_reversal", "turn_cold", "abort_support"],
-    "context_dependent": ["maintain_heading", "turn_to_heading", "climb_to_altitude", "descend_to_altitude",
-                          "accelerate_to_speed", "decelerate_to_speed", "search", "lag_pursuit", "extend",
+                  "defensive_reversal", "turn_cold"],
+    "context_dependent": ["set_trajectory", "search", "lag_pursuit", "extend",
                           "beam_target_left", "beam_target_right", "crank_target_left", "crank_target_right"],
 }
 SKILL_TO_INTENT = {skill: group for group, skills in INTENT_GROUPS.items() for skill in skills}

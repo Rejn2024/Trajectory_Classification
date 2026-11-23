@@ -1,5 +1,15 @@
 # Notebooks
 
+For a fresh current-branch population, run
+[31: train ten new pilots and generate a forecasting corpus](31_train_new_pilots_and_generate_forecasting_corpus.ipynb).
+It trains ten pilots from scratch against the current SkillManager catalogue with
+91-channel runtime frames, then records both NN-versus-NN perspectives, physical
+tracks, exact policy histories, selected skills, one-hot skill labels, decoded
+parameters and raw NN parameter vectors. The resulting `schema.json` and
+`skill_catalogue.json` are the authoritative feature and label contracts for later
+skill/manoeuvre forecasting. Set `BVR_CORPUS_FLIGHTS` to a small value for an
+installation check; outputs are timestamped and are never overwritten.
+
 For joint skill and offensive/defensive/context-dependent intent forecasting, run
 [26: prepare intent supervision](26_prepare_skill_intent_target_relative_missile_nn_duel_skill_forecasting.ipynb),
 then [27: train one HGT network](27_skill_intent_target_relative_missile_hgt_nn_duel_skill_forecasting.ipynb).

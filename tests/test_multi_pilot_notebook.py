@@ -148,7 +148,7 @@ def test_notebook_executes_configurable_roster_and_replays_selected_pilot(
                    for result in namespace["results"])
         assert all(set(result["benchmark_component_means"]) == {
             "evade", "pursue", "eliminate", "loss", "combat_elimination",
-            "lock_acquired", "locked_launch", "missile_support",
+            "lock_acquired", "locked_launch", "dumb_launch", "missile_support",
         } for result in namespace["results"])
         # A fixture lock pays during training, but not in the hybrid benchmark.
         assert all(result["selection_return"] == 2 for result in namespace["results"])

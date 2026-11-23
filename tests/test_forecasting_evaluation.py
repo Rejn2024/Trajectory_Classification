@@ -168,7 +168,7 @@ def test_batched_numerical_checks_keep_first_failure_and_sample_metadata(streami
 
 
 def test_no_mirrored_families_have_empty_direction_reports_with_streaming_cache():
-    data, model = example(["launch", "maintain_heading"])
+    data, model = example(["launch", "set_trajectory"])
     baseline = p.evaluate(model, data, "test", "cpu")
     fast = p.evaluate(model, data, "test", "cpu", streaming=True, frame_cache=True, frame_batch_size=23)
     assert_equivalent(baseline, fast)

@@ -149,14 +149,16 @@ class HybridDogfightReward(DogfightReward):
 
     def __init__(
         self, weights=None, elimination_bonus=100.0, lock_bonus=2.0,
-        launch_bonus=8.0, support_bonus=5.0, support_budget_s=20.0, **settings,
+        dumb_launch_penalty=-8.0, launch_bonus=8.0, support_bonus=5.0,
+        support_budget_s=20.0, **settings,
     ):
         for name, value in (
             ("elimination_bonus", elimination_bonus), ("lock_bonus", lock_bonus),
+            ("dumb_launch_penalty", dumb_launch_penalty),
             ("launch_bonus", launch_bonus), ("support_bonus", support_bonus),
         ):
-            if not math.isfinite(value) or value < 0:
-                raise ValueError(f"{name} must be finite and non-negative")
+            if not math.isfinite(value):
+                raise ValueError(f"{name} must be finite")
             setattr(self, name, value)
         if not math.isfinite(support_budget_s) or support_budget_s <= 0:
             raise ValueError("support_budget_s must be finite and positive")
@@ -184,6 +186,9 @@ class HybridDogfightReward(DogfightReward):
         counts = info.get("reward_event_counts", {})
         acquired = counts.get("target_locked", int(bool(info.get("target_locked", False)))) > 0
         launched = counts.get("fired_with_lock", int(bool(info.get("fired_with_lock", False)))) > 0
+        dumb_launch = counts.get(
+            "fired_without_lock", int(bool(info.get("fired_without_lock", False)))
+        ) > 0
         support = min(1.0, max(0.0, float(info["missile_support_time_s"])) / self.support_budget_s)
         components.update({
             "combat_elimination": self.elimination_bonus * (
@@ -191,6 +196,7 @@ class HybridDogfightReward(DogfightReward):
             ),
             "lock_acquired": self.lock_bonus * (acquired and not self._lock_paid),
             "locked_launch": self.launch_bonus * (launched and not self._launch_paid),
+            "dumb_launch": self.dumb_launch_penalty * dumb_launch,
             "missile_support": self.support_bonus * max(0.0, support - self._support_paid),
         })
         self._lock_paid |= acquired
@@ -227,7 +233,8 @@ def hybrid_dogfight_reward_definition(name="hybrid_dogfight", weights=None, **se
     parameters = {
         **_style_parameters(reward),
         **{key: getattr(reward, key) for key in (
-            "elimination_bonus", "lock_bonus", "launch_bonus", "support_bonus", "support_budget_s",
+            "elimination_bonus", "lock_bonus", "dumb_launch_penalty", "launch_bonus",
+            "support_bonus", "support_budget_s",
         )},
     }
     return RewardDefinition(

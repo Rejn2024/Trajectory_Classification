@@ -74,7 +74,7 @@ def test_initial_policy_and_random_draws_match_shared_head(device):
 def test_selected_head_probability_and_gradients_exclude_other_heads_and_coordinates():
     pilot = model()
     obs = torch.randn(1, 2, 3)
-    index = pilot._skill_indices["maintain_heading"]
+    index = pilot._skill_indices["set_trajectory"]
     skills = torch.tensor([index])
     with torch.no_grad():
         # Heads must be able to disagree even when two skills share a parameter.
@@ -105,7 +105,7 @@ def test_selected_head_probability_and_gradients_exclude_other_heads_and_coordin
         pilot.skill_head.bias.fill_(-100)
         pilot.skill_head.bias[index] = 100
     action = pilot.act_batch(obs.numpy(), deterministic=True)[0]
-    assert action[0] == "maintain_heading"
+    assert action[0] == "set_trajectory"
     np.testing.assert_allclose(action[4], gaussian.mean[:, index].detach().numpy()[0])
     assert action[1] == pilot.decode_parameters(index, action[4])
 

@@ -23,11 +23,12 @@ class StrategicLLM:
         self.last_plan_time = 0
         self.api = get_api_class(self.model)()
         self.skill_manager = SkillManager()
+        self.last_selection = None
 
     def should_replan(self, obs):
         """Check if planning is needed"""
         current_time = obs.get("time", 0)
-        return current_time - self.last_plan_time >= self.planning_interval
+        return self.last_selection is None or current_time - self.last_plan_time >= self.planning_interval
 
     async def select_skill(self, obs):
         """Select skill with parameters"""

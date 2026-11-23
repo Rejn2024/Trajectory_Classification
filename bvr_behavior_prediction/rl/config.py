@@ -81,8 +81,8 @@ class PilotTrainingConfig:
                 raise ValueError(f"{name} must be an integer in [0, 2**32)")
         if self.planning_horizon_s <= 0:
             raise ValueError("planning_horizon_s must be positive")
-        if not 0 < self.episode_duration_s <= 120:
-            raise ValueError("episode_duration_s must be in (0, 120]")
+        if not 0 < self.episode_duration_s <= 300:
+            raise ValueError("episode_duration_s must be in (0, 300]")
         if self.scenarios_per_epoch < 3:
             raise ValueError("scenarios_per_epoch must be at least 3")
         if self.evaluation_scenarios_per_epoch < 3:

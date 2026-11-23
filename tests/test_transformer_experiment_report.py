@@ -52,13 +52,11 @@ def portable_fixture(destination, secondary=True):
         gain = -0.0123 if role == "primary_transformer" else 0.0045
         recipes[role] = {"mean_accuracy_gain": gain,
                          "mean_accuracy_interval": {"lower_95": gain - 0.01, "upper_95": gain + 0.01}}
-    classes = ["abort_support", "accelerate_to_speed", "beam_missile_left", "beam_missile_right",
-               "beam_target_left", "beam_target_right", "climb_to_altitude", "commit", "crank_target_left",
-               "crank_target_right", "decelerate_to_speed", "defensive_reversal", "descend_to_altitude",
-               "dive_defense", "drag_missile", "extend", "lag_pursuit", "last_ditch_break", "launch",
-               "lead_pursuit", "lock_target", "maintain_heading", "notch_left", "notch_right",
-               "preemptive_crank", "pursue_target", "recommit", "search", "secondary_shot",
-               "short_range_attack", "support_missile", "turn_cold", "turn_to_heading"]
+    classes = ["beam_missile_left", "beam_missile_right", "beam_target_left", "beam_target_right",
+               "crank_target_left", "crank_target_right", "defensive_reversal", "dive_defense",
+               "drag_missile", "extend", "lag_pursuit", "last_ditch_break", "launch", "lead_pursuit",
+               "notch_left", "notch_right", "preemptive_crank", "pursue_target", "recommit", "search",
+               "set_trajectory", "support_missile", "turn_cold"]
     metrics, pilots, skills = [], [], []
     for role in roles:
         for horizon in (1, 2, 5):

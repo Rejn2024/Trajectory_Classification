@@ -117,8 +117,8 @@ def test_unseen_side_singleton_and_missing_labels_do_not_gain_direction_loss():
 
 def test_no_mirrored_families_and_disabled_weighting_are_supported():
     assert paired.fit_handedness_weighting(None, {}) is None
-    policy = intent.hierarchy_policy(["launch", "maintain_heading"])
-    data = SimpleNamespace(classes=["launch", "maintain_heading"], targets=np.zeros((2, 3), dtype=np.int64),
+    policy = intent.hierarchy_policy(["launch", "set_trajectory"])
+    data = SimpleNamespace(classes=["launch", "set_trajectory"], targets=np.zeros((2, 3), dtype=np.int64),
                            indices={"train": np.arange(2)}, manifest={"skill_hierarchy": policy})
     state = paired.fit_handedness_weighting(data, {"handedness_weighting": "sqrt_inverse"})
     assert paired.handedness_weight_tensor(state, "cpu").shape == (3, 0, 2)

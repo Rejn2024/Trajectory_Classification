@@ -47,8 +47,8 @@ class BluePilotEnvironment:
         speed_scale_mps=400.0,
         altitude_scale_m=12_000.0,
     ):
-        if episode_duration_s > 120:
-            raise ValueError("episodes may not exceed 120 in-game seconds")
+        if episode_duration_s > 300:
+            raise ValueError("episodes may not exceed 300 in-game seconds")
         if min(planning_horizon_s, history_duration_s, sample_interval_s) <= 0:
             raise ValueError(
                 "planning horizon, history duration, and sample interval must be positive"
@@ -126,7 +126,7 @@ class BluePilotEnvironment:
 
     def step(self, skill_name, parameters):
         blue_action = {"skill_name": skill_name, "parameters": parameters}
-        red_action = {"skill_name": "maintain_heading", "parameters": {}}
+        red_action = {"skill_name": "set_trajectory", "parameters": {}}
         simulator_reward, terminated, info = 0.0, False, {}
         event_counts = dict.fromkeys(self.REWARD_EVENTS, 0)
         pulse_events = {"fired": False, "fired_with_lock": False, "missile_avoided": False}

@@ -8,7 +8,8 @@ from bvr_behavior_prediction.rl.bvr_jsbsim_backend import BVRJSBSimBackend
 
 
 class _Aircraft:
-    def __init__(self, altitude, speed):
+    def __init__(self, uid, altitude, speed):
+        self.uid = uid
         self.position = np.array([0.0, 0.0, altitude])
         self.speed = speed
         self.velocity = np.array([speed, 0.0, 0.0])
@@ -30,7 +31,11 @@ class _Aircraft:
 class _ActionManager:
     def legacy_norm_campus_action(self, action, to_std1=False):
         assert to_std1
-        return action
+        result = dict(action)
+        result["delta_heading"] = np.clip(float(result["delta_heading"]), -np.deg2rad(45), np.deg2rad(45)) / np.deg2rad(45)
+        result["delta_altitude"] = np.clip(float(result["delta_altitude"]), -80, 80) / 80
+        result["delta_speed"] = np.clip(float(result["delta_speed"]), -80, 80) / 80
+        return result
 
 
 class _Environment:
@@ -40,10 +45,11 @@ class _Environment:
         self.dt = config["dt"]
         self.current_step = 0
         self.act_manager = _ActionManager()
-        self.agents = {"A01": _Aircraft(6000, 250), "B01": _Aircraft(7000, 275)}
+        self.agents = {"A01": _Aircraft("A01", 6000, 250), "B01": _Aircraft("B01", 7000, 275)}
         self.render_path = None
         self.render_calls = 0
         self.closed = False
+        self.last_actions = None
 
     def enable_render(self, path):
         self.render_path = path
@@ -57,6 +63,7 @@ class _Environment:
 
     def step(self, actions):
         self.current_step += 1
+        self.last_actions = actions
         assert set(actions) == {"A01"}
         return np.ones((1, 47), dtype=np.float32), np.array([1.5]), np.array([False]), {}
 
@@ -87,8 +94,8 @@ def test_backend_runs_bvr_flight_and_records_acmi(tmp_path):
     assert info["red_speed_mps"] == 275
 
     observation, reward, terminated, info = backend.step(
-        {"skill_name": "maintain_heading", "parameters": {}},
-        {"skill_name": "maintain_heading", "parameters": {}},
+        {"skill_name": "set_trajectory", "parameters": {}},
+        {"skill_name": "set_trajectory", "parameters": {}},
     )
     assert observation.shape == (47,)
     assert reward == 1.5
@@ -99,8 +106,72 @@ def test_backend_runs_bvr_flight_and_records_acmi(tmp_path):
     assert backend.env.closed
 
 
+def test_speed_skill_reaches_simulator_as_controller_command(tmp_path):
+    backend = BVRJSBSimBackend(
+        {"range_m": 30_000, "blue_altitude_m": 6000, "red_altitude_m": 7000},
+        env_factory=_Environment, log_dir=tmp_path,
+    )
+    backend.reset(17)
+    backend.step(
+        {"skill_name": "set_trajectory", "parameters": {"speed_mps": 300}},
+        {},
+    )
+    speed_command = backend.env.last_actions["A01"]["delta_speed"]
+    assert 0.0 < speed_command < 1.0
+    backend.close()
+
+
+def test_launch_request_without_lock_is_counted_for_notch_reward_contract(tmp_path):
+    backend = BVRJSBSimBackend(
+        {"range_m": 30_000, "blue_altitude_m": 6000, "red_altitude_m": 7000},
+        env_factory=_Environment, log_dir=tmp_path,
+    )
+    backend.reset(17)
+    info = backend._aircraft_info(skill_name="launch", fired=0)
+    assert info["fired"] is False
+    assert info["reward_event_counts"]["fired_without_lock"] == 1
+    backend.close()
+
+
+def test_guidance_observation_exposes_radar_detected_target(tmp_path):
+    backend = BVRJSBSimBackend(
+        {"range_m": 30_000, "blue_altitude_m": 6000, "red_altitude_m": 7000},
+        env_factory=_Environment, log_dir=tmp_path,
+    )
+    backend.reset(17)
+    controlled = backend.env.agents[backend.CONTROLLED_ID]
+    target = SimpleNamespace(
+        uid="B01", position=np.array([1000.0, 2000.0, 6000.0]),
+        velocity=np.array([250.0, 0.0, 0.0]),
+    )
+    controlled.enemies_lock.append(target)
+    incoming = SimpleNamespace(
+        uid="IN01", is_alive=True, target=controlled,
+        position=np.array([2500.0, 0.0, 6000.0]), velocity=np.array([-300.0, 0.0, 0.0]),
+    )
+    controlled.under_missiles.append(incoming)
+    controlled.launched_missiles.append(SimpleNamespace(
+        uid="M01", is_alive=True, target=target,
+        position=np.array([500.0, 0.0, 6000.0]), velocity=np.array([300.0, 0.0, 0.0]),
+    ))
+    guidance = backend._guidance_observation()
+    assert guidance["targets"]["primary"]["id"] == "B01"
+    assert guidance["targets"]["primary"]["position"] == [1000.0, 2000.0, 6000.0]
+    assert guidance["incoming_missiles"][0]["id"] == "IN01"
+    assert guidance["incoming_missiles"][0]["target_id"] == "A01"
+    assert guidance["support_missiles"][0]["id"] == "M01"
+    assert guidance["support_missiles"][0]["target_id"] == "B01"
+    backend.close()
+
+
+def test_python_environment_does_not_force_throttle_by_default():
+    source = Path("bvr_sim_source/bvr_sim/bvr_env.py").read_text()
+    assert 'BVR_BYPASS_RL_THROTTLE_CONTROL", "0"' in source
+
+
 def test_backend_declares_expected_compact_observation_and_energy_fields():
     assert BVRJSBSimBackend.OBSERVATION_SIZE == 47
+    assert BVRJSBSimBackend.HOSTILE_MISSILE_OBSERVATION_SIZE == 87
     source = Path("bvr_behavior_prediction/rl/bvr_jsbsim_backend.py").read_text()
     for field in (
         '"blue_speed_mps"',
@@ -109,6 +180,17 @@ def test_backend_declares_expected_compact_observation_and_energy_fields():
         '"red_altitude_m"',
     ):
         assert field in source
+
+
+def test_backend_can_append_hostile_missile_slots_for_forecasting_pilots(tmp_path):
+    backend = BVRJSBSimBackend(
+        {"range_m": 30_000, "blue_altitude_m": 6000, "red_altitude_m": 7000},
+        env_factory=_Environment, log_dir=tmp_path, include_hostile_missiles=True,
+    )
+    observation, _ = backend.reset(17)
+    assert backend.observation_size == 87
+    assert observation.shape == (87,)
+    backend.close()
 
 
 def test_tactical_selection_reaches_simulator_and_episode_metadata(tmp_path):
@@ -132,7 +214,7 @@ def _backend(tmp_path):
 
 
 def _step(backend):
-    return backend.step({"skill_name": "maintain_heading", "parameters": {}}, {})[-1]
+    return backend.step({"skill_name": "set_trajectory", "parameters": {}}, {})[-1]
 
 
 def test_evasion_tracks_individual_live_missiles_despite_persistent_history(tmp_path):

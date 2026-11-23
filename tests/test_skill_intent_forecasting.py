@@ -22,7 +22,7 @@ from tests.test_hgt_missile_models import target_example
 ROOT = Path(__file__).parents[1]
 PREP = "26_prepare_skill_intent_target_relative_missile_nn_duel_skill_forecasting.ipynb"
 TRAIN = "27_skill_intent_target_relative_missile_hgt_nn_duel_skill_forecasting.ipynb"
-CLASSES = ["launch", "maintain_heading", "notch_left", "notch_right"]
+CLASSES = ["launch", "set_trajectory", "notch_left", "notch_right"]
 
 
 @pytest.fixture(autouse=True)
@@ -60,13 +60,13 @@ def prepare_base(tmp_path, monkeypatch):
 def test_taxonomy_covers_the_real_catalogue_and_masks_missing_labels():
     classes = paired.catalogue(ROOT)
     policy = intent.intent_policy(classes)
-    assert set(classes) == set(intent.SKILL_TO_INTENT) and len(classes) == 33
-    assert [len(intent.INTENT_GROUPS[c]) for c in intent.INTENT_CLASSES] == [9, 11, 13]
+    assert set(classes) == set(intent.SKILL_TO_INTENT) and len(classes) == 23
+    assert [len(intent.INTENT_GROUPS[c]) for c in intent.INTENT_CLASSES] == [5, 10, 8]
     assert policy["mapping"]["preemptive_crank"] == "defensive"
     assert policy["mapping"]["crank_target_left"] == "context_dependent"
-    assert policy["mapping"]["lock_target"] == "offensive"
+    assert policy["mapping"]["set_trajectory"] == "context_dependent"
     labels = np.array([[classes.index("launch"), classes.index("notch_left"), -1],
-                        [-1, classes.index("maintain_heading"), classes.index("turn_cold")]])
+                        [-1, classes.index("set_trajectory"), classes.index("turn_cold")]])
     np.testing.assert_array_equal(intent.map_intent_targets(labels, policy["skill_to_intent"]),
                                   [[0, 1, -1], [-1, 2, 1]])
     with pytest.raises(ValueError, match="Unknown skills"):

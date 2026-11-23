@@ -2,14 +2,22 @@
 
 import numpy as np
 
+from bvr_behavior_prediction.rl.observation_features import (
+    COMPACT_OBSERVATION_SIZE,
+    POLICY_OBSERVATION_SIZE,
+    append_hostile_missile_features,
+    observation_feature_schema,
+)
+
 DT = 0.1
 KEYS = ("episode_id", "step", "time_s")
-OBSERVATION_COLUMNS = tuple(f"obs_{i:02d}" for i in range(51))
+LEGACY_OBSERVATION_COLUMNS = tuple(f"obs_{i:02d}" for i in range(51))
+OBSERVATION_COLUMNS = LEGACY_OBSERVATION_COLUMNS
 STATE_COLUMNS = tuple(f"{role}_{name}" for role in ("observer", "target")
                       for name in ("x", "y", "z", "vx", "vy", "vz"))
 
 
-def observer_frame(simulator, observer_id, target_id):
+def observer_frame(simulator, observer_id, target_id, observation_size=51):
     """Read the compact interface for either aircraft, with observer-first energies.
 
     The scripted tactical controller uses aircraft objects directly. This is a
@@ -19,14 +27,29 @@ def observer_frame(simulator, observer_id, target_id):
     observer = simulator.agents[observer_id]
     target = simulator.agents[target_id]
     compact = simulator.obs_manager.extract_obs(observer, simulator.agents, simulator.missiles)
+    if observation_size == POLICY_OBSERVATION_SIZE:
+        compact = append_hostile_missile_features(compact, observer)
+    elif observation_size != COMPACT_OBSERVATION_SIZE + 4:
+        raise ValueError("Expected a 51- or 91-feature observer frame")
     energy = [(float(aircraft.get_speed()) / 400.0) ** 2
               if kind == "speed" else float(aircraft.get_altitude()) / 12000.0
               for aircraft in (observer, target) for kind in ("speed", "altitude")]
     frame = np.concatenate((np.asarray(compact, dtype=np.float32),
                             np.asarray(energy, dtype=np.float32)))
-    if frame.shape != (51,):
-        raise ValueError("Expected a 51-feature observer frame")
+    if frame.shape != (observation_size,):
+        raise ValueError(f"Expected a {observation_size}-feature observer frame")
     return frame
+
+
+def forecasting_schema(observation_size=POLICY_OBSERVATION_SIZE):
+    """Return the feature metadata stored beside a forecasting corpus."""
+    return observation_feature_schema(observation_size)
+
+
+def observation_columns(observation_size):
+    if observation_size not in (51, POLICY_OBSERVATION_SIZE):
+        raise ValueError(f"unsupported observation size: {observation_size}")
+    return tuple(f"obs_{i:02d}" for i in range(observation_size))
 
 
 def validate_observer_geometry(observations, tracks):

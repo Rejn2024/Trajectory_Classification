@@ -10,7 +10,7 @@ from torch.distributions import Categorical, Normal
 class HybridSkillPilot(nn.Module):
     """Select any SkillManager skill and parameterise it on every decision.
 
-    The categorical head covers the complete runtime catalogue (currently 33
+    The categorical head covers the complete runtime catalogue (currently 23
     skills). The Gaussian head supplies one normalized value per numeric parameter;
     values are transformed through each skill's public bounds rather than replaced
     by fixed primitive defaults.
