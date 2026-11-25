@@ -106,6 +106,23 @@ def test_backend_runs_bvr_flight_and_records_acmi(tmp_path):
     assert backend.env.closed
 
 
+def test_backend_can_terminate_immediately_when_aircraft_is_eliminated(tmp_path):
+    backend = BVRJSBSimBackend(
+        {"range_m": 30_000, "blue_altitude_m": 6000, "red_altitude_m": 7000},
+        env_factory=_Environment, log_dir=tmp_path,
+        terminate_on_aircraft_elimination=True,
+    )
+    backend.reset(17)
+    backend.env.agents[backend.OPPONENT_ID].is_alive = False
+
+    _, _, terminated, _ = backend.step(
+        {"skill_name": "set_trajectory", "parameters": {}}, {}
+    )
+
+    assert terminated
+    backend.close()
+
+
 def test_speed_skill_reaches_simulator_as_controller_command(tmp_path):
     backend = BVRJSBSimBackend(
         {"range_m": 30_000, "blue_altitude_m": 6000, "red_altitude_m": 7000},

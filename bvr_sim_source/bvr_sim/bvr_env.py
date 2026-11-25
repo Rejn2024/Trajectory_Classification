@@ -297,9 +297,19 @@ class BVR3DEnv(gymnasium.Env):
     def _gen_expert_action(self):
         expert_action = []
         for uid in self.ego_ids:
-            expert_action.append(self._expert_action(self.agents[uid])) if self.agents[uid].is_alive else expert_action.append(np.zeros(4))
-        expert_action = np.expand_dims(expert_action, 0)
-        return np.array(expert_action)
+            if not self.agents[uid].is_alive:
+                action = np.zeros(4, dtype=float)
+            else:
+                # In self-play, an ego aircraft may not have a scripted
+                # baseline opponent.  The old code appended None here and
+                # failed while coercing the mixed list into a NumPy array.
+                # Keep the expert-action diagnostic rectangular; the actual
+                # NN action is still supplied through env.step().
+                action = self._expert_action(self.agents[uid])
+                if action is None:
+                    action = np.zeros(4, dtype=float)
+            expert_action.append(np.asarray(action, dtype=float))
+        return np.expand_dims(np.asarray(expert_action, dtype=float), 0)
 
     def step(self, action):
         """Execute one time step"""

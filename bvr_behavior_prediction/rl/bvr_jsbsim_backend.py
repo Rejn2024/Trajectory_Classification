@@ -45,18 +45,22 @@ class BVRJSBSimBackend:
 
     def __init__(self, scenario: dict, recording_path=None, env_factory=None, log_dir=None,
                  opponent_type="simple", include_hostile_missiles=False,
-                 episode_duration_s=120.0, include_radar_features=False):
+                 episode_duration_s=120.0, include_radar_features=False,
+                 terminate_on_aircraft_elimination=False):
         if opponent_type not in ("simple", "tactical"):
             raise ValueError("opponent_type must be simple or tactical")
         if type(include_hostile_missiles) is not bool:
             raise ValueError("include_hostile_missiles must be a boolean")
         if type(include_radar_features) is not bool:
             raise ValueError("include_radar_features must be a boolean")
+        if type(terminate_on_aircraft_elimination) is not bool:
+            raise ValueError("terminate_on_aircraft_elimination must be a boolean")
         if not np.isfinite(episode_duration_s) or not 0 < episode_duration_s <= 300:
             raise ValueError("episode_duration_s must be in (0, 300]")
         self.episode_duration_s = float(episode_duration_s)
         self.include_hostile_missiles = include_hostile_missiles
         self.include_radar_features = include_radar_features
+        self.terminate_on_aircraft_elimination = terminate_on_aircraft_elimination
         self.observation_size = self.OBSERVATION_SIZE
         if include_hostile_missiles:
             self.observation_size = self.HOSTILE_MISSILE_OBSERVATION_SIZE
@@ -315,6 +319,10 @@ class BVRJSBSimBackend:
         terminated = bool(np.asarray(done).reshape(-1)[0]) or bool(
             simulator_info.get("episode_done", False)
         )
+        if self.terminate_on_aircraft_elimination:
+            terminated = terminated or not controlled.is_alive or not self.env.agents[
+                self.OPPONENT_ID
+            ].is_alive
         return self._policy_observation(observation), simulator_reward, terminated, info
 
     def close(self):

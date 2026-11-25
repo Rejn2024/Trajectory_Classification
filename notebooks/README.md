@@ -8,10 +8,20 @@ tracks, exact policy histories, selected skills, one-hot skill labels, decoded
 parameters and raw NN parameter vectors. The resulting `schema.json` and
 `skill_catalogue.json` are the authoritative feature and label contracts for later
 skill/manoeuvre forecasting. Set `BVR_CORPUS_FLIGHTS` to a small value for an
-installation check; outputs are timestamped and are never overwritten.
+installation check; outputs use four-digit sequential IDs and are never overwritten.
 Set `BVR_PILOT_OPPONENT=tactical` to train the same roster against the tactical
 opponent. Corpus collection uses up to eight CPU workers by default; control it with
 `BVR_CORPUS_WORKERS`.
+
+For checkpoint continuation, run [32: continue notebook 31 pilots, then generate the
+corpus](32_continue_notebook31_pilots_and_generate_corpus.ipynb). It reloads notebook
+31's ten best policy/critic checkpoints, runs 200 epochs with 60 resampled training,
+60 validation, and 60 test scenarios against the simple opponent, then repeats the
+same budget from those selected checkpoints against the tactical opponent. The final
+population is passed to the two-sided NN-versus-NN collector. Training and corpus
+flights run for at most 300 seconds and stop when either aircraft is eliminated.
+Outputs use four-digit sequential IDs and the notebook enforces a Windows-safe
+absolute-path budget.
 
 For joint skill and offensive/defensive/context-dependent intent forecasting, run
 [26: prepare intent supervision](26_prepare_skill_intent_target_relative_missile_nn_duel_skill_forecasting.ipynb),
